@@ -158,28 +158,42 @@ jobs:
           upload-artifact: false
           upload-release-assets: false
 
-      - name: Attest the build provenance and the SBOM
+      - name: Attest the build provenance
         env:
           REF: ${{ steps.push.outputs.ref }}
           COMPONENT: ${{ matrix.component }}
         run: |
           set -euo pipefail
           python3 fork/ci/slsa_provenance.py --component "$COMPONENT" --out provenance.json
-          ls -l provenance.json sbom.spdx.json
           # Rekor is a public service: retry, and keep cosign's debug output so a
-          # rejected entry (size, validation) is visible instead of "giving up".
-          attest() {
-            for n in 1 2 3 4 5; do
-              if cosign attest --yes --verbose --type "$1" --predicate "$2" "$REF"; then
-                return 0
-              fi
-              echo "attest $1: attempt $n failed" >&2
-              sleep $((n * 20))
-            done
-            return 1
-          }
-          attest slsaprovenance1 provenance.json
-          attest spdxjson sbom.spdx.json
+          # rejected entry stays visible instead of "giving up".
+          for n in 1 2 3 4 5; do
+            cosign attest --yes --verbose --type slsaprovenance1 --predicate provenance.json "$REF" && exit 0
+            echo "attest: attempt $n failed" >&2
+            sleep $((n * 20))
+          done
+          exit 1
+
+      # The SBOM of an image is tens of megabytes: far over what the public Rekor log
+      # accepts as an attestation (it rejected 25 MB). It is pushed as its own OCI
+      # artifact, tagged sha256-<image digest>.sbom, and that artifact is signed with
+      # the same keyless identity (a signature entry is a few hundred bytes).
+      - name: Publish and sign the SBOM
+        env:
+          REF: ${{ steps.push.outputs.ref }}
+        run: |
+          set -euo pipefail
+          ls -l sbom.spdx.json
+          repo="${REF%@*}"
+          digest="${REF#*@}"
+          tag="${repo}:${digest/:/-}.sbom"
+          sbom_ref="$(cosign upload blob -f sbom.spdx.json --ct application/spdx+json "$tag" | tail -n 1)"
+          case "$sbom_ref" in
+            "$repo"@sha256:*) ;;
+            *) echo "unexpected upload output: $sbom_ref" >&2; exit 1 ;;
+          esac
+          cosign sign --yes "$sbom_ref"
+          echo "SBOM artifact: $sbom_ref (tag ${digest/:/-}.sbom)"
 
       - name: Record the signed reference
         env:
