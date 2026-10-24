@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, current_app, request
 from models.identity import Identity
-from utils.caller import require_caller
+from adapters.inbound.flask.endpoints.team_routes import _can_access
+from utils.caller import current_caller, require_caller
 
 identity_bp = Blueprint("identity", __name__)
 
@@ -24,6 +25,9 @@ def resolve_identity():
     try:
         if identity_type == "team":
             team = svc.get(identity_id)
+            # Same rule as team.get: a team's name is only for its members, the trusted service and admins.
+            if not _can_access(svc, team, current_caller()):
+                return jsonify({"error": "Identity not found"}), 404
             identity = Identity.team(team.team_id, display_name=team.name)
             return jsonify(identity.model_dump(mode="json")), 200
 

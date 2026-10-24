@@ -107,6 +107,12 @@ class DocumentDuplicateCheckerAdapter:
         if not md5_hash:
             return False
 
+        # A duplicate is the same content uploaded by the SAME user: matching other users' documents
+        # would tell a user that someone else holds this exact file.
+        owner = doc.get("upload_by") if isinstance(doc, dict) else None
+        if owner and not (extra_filters and "upload_by" in extra_filters):
+            extra_filters = {**(extra_filters or {}), "upload_by": owner}
+
         # Consider documents as blocking duplicates unless they're in FAILED status
         existing = self.find_existing_by_md5(
             md5_hash, 

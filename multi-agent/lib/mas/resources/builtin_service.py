@@ -202,7 +202,7 @@ class BuiltinResourceService:
         resource = self._store.get(rid)
         descriptor = self.get_descriptor(rid)
         if descriptor is None:
-            raise ValueError("Resource is not a built-in resource")
+            raise KeyError(rid)  # same answer as a missing resource: callers may not probe other users' resource ids
         if descriptor.visibility != ResourceVisibility.PUBLIC and not is_admin:
             raise KeyError(rid)
 
@@ -246,7 +246,7 @@ class BuiltinResourceService:
         resource = self._store.get(rid)
         descriptor = self.get_descriptor(rid)
         if descriptor is None:
-            raise ValueError("Resource is not a built-in resource")
+            raise KeyError(rid)  # same answer as a missing resource: callers may not probe other users' resource ids
         if descriptor.visibility != ResourceVisibility.PUBLIC:
             raise KeyError(rid)
 
@@ -284,7 +284,7 @@ class BuiltinResourceService:
         resource = self._store.get(rid)
         descriptor = self.get_descriptor(rid)
         if descriptor is None:
-            raise ValueError("Resource is not a built-in resource")
+            raise KeyError(rid)  # same answer as a missing resource: callers may not probe other users' resource ids
         if descriptor.visibility != ResourceVisibility.PUBLIC:
             raise KeyError(rid)
 

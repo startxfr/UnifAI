@@ -64,7 +64,7 @@ class ShareService:
         
         # Validate recipient (case-insensitive for user ids — Keycloak vs UI drift)
         if not self._principal_matches_identity(invite.recipient_identity, recipient_user_id):
-            raise ValueError("Not authorized to accept this invite")
+            raise KeyError(f"Share invite not found: {share_id}")  # same answer as a missing invite
 
         # Check if expired
         if invite.is_expired:
@@ -173,7 +173,7 @@ class ShareService:
         invite = self._repo.get(share_id)
         
         if not self._principal_matches_identity(invite.recipient_identity, recipient_user_id):
-            raise ValueError("Not authorized to decline this invite")
+            raise KeyError(f"Share invite not found: {share_id}")  # same answer as a missing invite
         
         if invite.status != ShareStatus.PENDING:
             raise ValueError(f"Invite is not pending (status: {invite.status})")
@@ -185,7 +185,7 @@ class ShareService:
         invite = self._repo.get(share_id)
         
         if not self._principal_matches_identity(invite.sender_identity, sender_user_id):
-            raise ValueError("Not authorized to cancel this invite")
+            raise KeyError(f"Share invite not found: {share_id}")  # same answer as a missing invite
         
         if invite.status != ShareStatus.PENDING:
             raise ValueError(f"Cannot cancel invite with status: {invite.status}")
@@ -255,7 +255,7 @@ class ShareService:
         
         # Check authorization
         if not self._can_delete_invite(invite, user_id):
-            raise ValueError("Not authorized to delete this invite")
+            raise KeyError(f"Share invite not found: {share_id}")  # same answer as a missing invite
         
         # Don't allow deleting ACCEPTED invites (audit trail)
         if invite.status == ShareStatus.ACCEPTED:

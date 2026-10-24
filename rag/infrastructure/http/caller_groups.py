@@ -55,18 +55,21 @@ def _jwks_client(issuer: str, verify_tls: bool) -> jwt.PyJWKClient:
     return jwt.PyJWKClient(config.json()["jwks_uri"], cache_keys=True, lifespan=300, ssl_context=ctx)
 
 
-def verify_bearer(token: str, issuer: str, verify_tls: bool = True) -> dict[str, Any] | None:
-    """Claims of a token signed by the issuer and not expired, else None."""
+def verify_bearer(token: str, issuer: str, verify_tls: bool = True, audience: str = "") -> dict[str, Any] | None:
+    """Claims of a token signed by the issuer and not expired, else None.
+
+    With ``audience`` set, a token minted for another client of the realm is refused."""
     try:
         key = _jwks_client(issuer, verify_tls).get_signing_key_from_jwt(token)
         return jwt.decode(token, key.key, algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "PS256"],
-                          issuer=issuer.rstrip("/"), options={"verify_aud": False, "require": ["exp", "iss"]})
+                          issuer=issuer.rstrip("/"), audience=audience or None,
+                          options={"verify_aud": bool(audience), "require": ["exp", "iss"]})
     except (jwt.PyJWTError, requests.RequestException, KeyError, ValueError) as e:
         logger.warning(f"Forwarded bearer token rejected: {e}")
         return None
 
 
-def caller_groups(issuer: str = "", verify_tls: bool = True) -> list[str]:
+def caller_groups(issuer: str = "", verify_tls: bool = True, audience: str = "") -> list[str]:
     """Groups of the current caller, or [] when none can be established."""
     session = getattr(g, "identity_session", None)
     token = getattr(session, "access_token", None)
@@ -76,7 +79,7 @@ def caller_groups(issuer: str = "", verify_tls: bool = True) -> list[str]:
     auth = request.headers.get("Authorization", "")
     if not (issuer and auth.lower().startswith("bearer ")):
         return []
-    claims = verify_bearer(auth.split(" ", 1)[1].strip(), issuer, verify_tls)
+    claims = verify_bearer(auth.split(" ", 1)[1].strip(), issuer, verify_tls, audience)
     if not claims:
         return []
     username = claims.get("preferred_username")
