@@ -19,7 +19,9 @@ Fork-only files (never part of an upstream PR): `Makefile`, `fork.mk` (local, gi
 
 `.github/workflows/publish-images.yml` builds the five application images with the Makefile's Dockerfiles, pushes them to
 `quay.io/zuno/unifai-<component>` and signs each digest keyless with the workflow's GitHub OIDC identity, with a SLSA provenance
-(`fork/ci/slsa_provenance.py`) and an SPDX SBOM attached as attestations. zuno-demo verifies them before deploying
+(`fork/ci/slsa_provenance.py`) attached as an attestation. The SPDX SBOM (tens of MB, far over what the public Rekor log
+accepts) is pushed as its own OCI artifact tagged `sha256-<image digest>.sbom` and signed with the same identity. zuno-demo
+verifies all of it before deploying
 (zuno-demo ADR-0586, WP-176).
 
 - A push to `devel` that touches an image's code publishes `devel-<sha>` and `devel` (environment `quay-devel`, no approval,
