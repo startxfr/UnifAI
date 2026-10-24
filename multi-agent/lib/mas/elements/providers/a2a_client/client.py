@@ -32,6 +32,7 @@ from a2a.types import (
 
 from mas.elements.providers.a2a_client.result import A2AResult
 from mas.elements.providers.a2a_client.handlers import BaseHandler
+from global_utils.utils.net_guard import UnsafeUrlError, check_outbound_url
 
 
 class A2AClientError(Exception):
@@ -73,6 +74,10 @@ class A2AClient:
 
     async def __aenter__(self) -> "A2AClient":
         """Connect to agent."""
+        try:
+            check_outbound_url(self._base_url)  # a user-typed URL must not reach metadata, loopback or other pods
+        except UnsafeUrlError as e:
+            raise A2AConnectionError(f"Failed to connect: {e}") from e
         self._httpx = httpx.AsyncClient(
             headers=self._headers,
             timeout=httpx.Timeout(

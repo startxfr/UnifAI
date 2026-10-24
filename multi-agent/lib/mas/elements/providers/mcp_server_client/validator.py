@@ -26,6 +26,7 @@ from mas.elements.providers.mcp_server_client.config import (
     McpProviderConfig,
 )
 from mas.elements.providers.mcp_server_client.mcp_provider_factory import McpProviderFactory
+from global_utils.utils.net_guard import check_outbound_url
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ class McpProviderValidator(BaseElementValidator):
         """
         messages: List[ValidationMessage] = []
         try:
+            check_outbound_url(str(config.mcp_url))
             with httpx.Client(timeout=context.timeout_seconds) as http_client:
                 http_client.get(str(config.mcp_url))
             messages.append(self._info(

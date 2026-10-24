@@ -11,6 +11,7 @@ from mcp.client.sse import sse_client
 
 from .base_transport import BaseTransportManager
 from .enums import McpTransportType
+from global_utils.utils.net_guard import check_outbound_url
 
 
 class SseTransportManager(BaseTransportManager):
@@ -30,6 +31,7 @@ class SseTransportManager(BaseTransportManager):
         return "SSE"
 
     def _create_transport_context(self) -> Any:
+        check_outbound_url(str(self.endpoint))  # a user-typed URL must not reach metadata, loopback or other pods
         return sse_client(url=self.endpoint, headers=self.headers)
 
     async def _enter_transport_context(self, ctx: Any) -> Tuple:
