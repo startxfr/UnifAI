@@ -192,4 +192,4 @@ def slack_events():
 
 def _caller_groups():
     cfg = AppConfig.get_instance()
-    return _resolve_caller_groups(cfg.oidc_issuer_url, cfg.oidc_verify_tls, cfg.rag_bearer_audience)
+    return _resolve_caller_groups(cfg.oidc_issuer_url, cfg.oidc_verify_tls, getattr(cfg, "rag_bearer_audience", ""))

@@ -42,7 +42,7 @@ def query_match(query, source_type, top_k_results, doc_ids, tags):
             query=query,
             limit=top_k_results,
             owner_id=g.user_id,
-            caller_groups=caller_groups(cfg.oidc_issuer_url, cfg.oidc_verify_tls, cfg.rag_bearer_audience),
+            caller_groups=caller_groups(cfg.oidc_issuer_url, cfg.oidc_verify_tls, getattr(cfg, "rag_bearer_audience", "")),
             doc_ids=doc_ids,
             tags=tags,
         )
