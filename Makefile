@@ -25,7 +25,9 @@ DOCKERFILE_identity    = shared-resources/identity/Dockerfile
 DOCKERFILE_ui          = ui/deployment/Dockerfile
 IMAGE_multi-agent      = multiagent
 BUILD_ARGS_multi-agent = --build-arg CERT_URL=
-TAG                  ?= $(DEVEL_TAG)
+# Hand builds: local-<sha>. `devel` and `devel-<sha>` are pushed, signed, only by .github/workflows/publish-images.yml.
+LOCAL_TAG            := local-$(shell git rev-parse --short HEAD 2>/dev/null)
+TAG                  ?= $(LOCAL_TAG)
 export REGISTRY IMAGE_PREFIX UI_HOST IDENTITY_HOST_NAME STORAGE_CLASS SHARED_STORAGE_CLASS DOCLING_URL EMBEDDING_URL
 
 .DEFAULT_GOAL := help
@@ -123,19 +125,17 @@ build-multi-agent: multiagent-perms
 build-%: check-quay ## Build one component (rag multi-agent backend identity ui); TAG=...
 	$(ENGINE) build $(BUILD_ARGS_$*) -t $(call img,$*):$(TAG) -f $(DOCKERFILE_$*) .
 
-push-%: check-quay ## Push one component (local image must exist)
+push-%: check-quay ## Push one component (local image must exist; never a devel* tag, the CI's)
+	@case "$(TAG)" in devel|devel-*) echo "devel* tags are pushed by the CI only (publish-images.yml)"; exit 1;; esac
 	$(ENGINE) push $(call img,$*):$(TAG)
 
 build-all: $(addprefix build-,$(COMPONENTS)) ## Build every component
 push-all: $(addprefix push-,$(COMPONENTS)) ## Push every component
 
-images-devel: ## Build+push :devel and :devel-<sha> (devel branch only, FORCE=1 to bypass)
-	@test "$(FORCE)" = 1 || test "$$(git branch --show-current)" = devel || { echo "run from devel (or FORCE=1)"; exit 1; }
-	$(MAKE) build-all TAG=$(DEVEL_TAG)
-	for c in $(COMPONENTS); do $(ENGINE) tag $(REGISTRY)/$(IMAGE_PREFIX)-$${c/multi-agent/multiagent}:$(DEVEL_TAG) \
-	  $(REGISTRY)/$(IMAGE_PREFIX)-$${c/multi-agent/multiagent}:$(DEVEL_TAG)-$$(git rev-parse --short HEAD); done
-	$(MAKE) push-all TAG=$(DEVEL_TAG)
-	$(MAKE) push-all TAG=$(DEVEL_TAG)-$$(git rev-parse --short HEAD)
+images-devel: ## Build+push unsigned test images :local-<sha> (devel and devel-<sha> belong to the CI)
+	@case "$(TAG)" in devel|devel-*) echo "devel* tags are pushed by the CI only (publish-images.yml)"; exit 1;; esac
+	$(MAKE) build-all TAG=$(TAG)
+	$(MAKE) push-all TAG=$(TAG)
 
 # --- deployment ----------------------------------------------------------------------------------
 overlay: check-quay ## Render helm/ + fork overlays into $(RENDER_DIR)

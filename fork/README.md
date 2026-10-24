@@ -29,7 +29,8 @@ verifies all of it before deploying
 - Both environments hold `QUAY_USERNAME` and `QUAY_TOKEN` of a quay robot with write access to `unifai-*`.
 - The identity zuno accepts is the workflow path and ref: do not rename the workflow file or change its triggers without changing
   zuno-demo's `platform/supply-chain/image-identities.yaml`.
-- `make images-devel` stays for local development and quick test images. Those images are **unsigned**: a cluster that verifies
+- `make images-devel` stays for local development and quick test images, pushed as `local-<sha>` only (the Makefile refuses a
+  `devel*` tag). Those images are **unsigned**: a cluster that verifies
   its UnifAI images refuses them, so pin only digests taken from a CI run's summary.
 - Do not push `devel` or `devel-<sha>` by hand: those tags belong to this workflow, and a hand push would replace a signed
   digest with an unsigned one (or the reverse). Use another prefix for local images.
