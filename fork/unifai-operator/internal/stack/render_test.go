@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -394,5 +395,59 @@ func TestInternalAuthAndExtraEnv(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("BaseObjects lacks %s with the effective secret", InternalAuthSecret)
+	}
+}
+
+func TestParseImage(t *testing.T) {
+	const d = "sha256:7f5a72974a247319124a1d88608bc6a35b09b5bf33aa226f58c3db1a543dca30"
+	for img, want := range map[string]imageRef{
+		"quay.io/zuno/unifai-rag":                   {repo: "quay.io/zuno/unifai-rag"},
+		"quay.io/zuno/unifai-rag:v1":                {repo: "quay.io/zuno/unifai-rag", tag: "v1"},
+		"quay.io/zuno/unifai-rag@" + d:              {repo: "quay.io/zuno/unifai-rag", digest: d},
+		"quay.io/zuno/unifai-rag:v1@" + d:           {repo: "quay.io/zuno/unifai-rag", tag: "v1", digest: d},
+		"registry.example.com:5000/ui@" + d:         {repo: "registry.example.com:5000/ui", digest: d},
+		"registry.example.com:5000/ui:v2@" + d:      {repo: "registry.example.com:5000/ui", tag: "v2", digest: d},
+		"registry.example.com:5000/redis/redis:7.2": {repo: "registry.example.com:5000/redis/redis", tag: "7.2"},
+	} {
+		if got := parseImage(img); got != want {
+			t.Errorf("parseImage(%q) = %+v, want %+v", img, got, want)
+		}
+	}
+	r := parseImage("quay.io/zuno/unifai-rag:v1@" + d)
+	if r.chartTag() != "v1-sha256-7f5a72974a24" || r.pinned() != ":v1@"+d {
+		t.Errorf("chart tag %q, pinned %q", r.chartTag(), r.pinned())
+	}
+}
+
+func TestRenderDigestPins(t *testing.T) {
+	const d = "sha256:7f5a72974a247319124a1d88608bc6a35b09b5bf33aa226f58c3db1a543dca30"
+	p := testPlan(t, func(s *unifaiv1.UnifaiStackSpec) {
+		s.Images = map[string]string{
+			"rag":   "quay.io/zuno/unifai-rag@" + d,
+			"ui":    "registry.example.com:5000/ui:v2@" + d,
+			"redis": "registry.example.com/redis/redis@" + d,
+		}
+	})
+	m := renderAll(t, p)
+	for rel, want := range map[string]string{
+		"unifai-rag-server": "image: quay.io/zuno/unifai-rag@" + d,
+		"unifai-rag-celery": "image: quay.io/zuno/unifai-rag@" + d,
+		"unifai-ui":         "registry.example.com:5000/ui:v2@" + d,
+		"unifai-redis":      "registry.example.com/redis/redis@" + d,
+	} {
+		if !strings.Contains(m[rel], want) {
+			t.Errorf("%s: no pinned image %q", rel, want)
+		}
+	}
+	// The version variable carries the readable stand-in, never a bare digest; no image keeps the stand-in.
+	if !regexp.MustCompile(`name: APP_VERSION\s+value: "?sha256-7f5a72974a24"?\n`).MatchString(m["unifai-rag-server"]) {
+		t.Errorf("rag-server APP_VERSION is not the readable stand-in")
+	}
+	for rel, out := range m {
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, "image:") && strings.Contains(line, "sha256-7f5a72974a24") {
+				t.Errorf("%s: stand-in tag left in %q", rel, strings.TrimSpace(line))
+			}
+		}
 	}
 }

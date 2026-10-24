@@ -334,12 +334,16 @@ func (r *postRenderer) mutatePod(tpl map[string]any) error {
 		}
 		ps["imagePullSecrets"] = ips
 	}
+	pins := imagePins(s)
 	for _, key := range []string{"containers", "initContainers"} {
 		cs := asSlice(ps[key])
 		for i, c := range cs {
 			cm, ok := c.(map[string]any)
 			if !ok {
 				continue
+			}
+			if img, _ := cm["image"].(string); img != "" && len(pins) > 0 {
+				cm["image"] = pinImage(img, pins)
 			}
 			res, err := r.resources(cm["resources"], key == "containers" && i == 0)
 			if err != nil {

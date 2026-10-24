@@ -100,7 +100,8 @@ func (p *Plan) registry() string {
 // appImage returns repository and tag of an UnifAI image (component = rag, multiagent, backend, identity, ui).
 func (p *Plan) appImage(component string) (repo, tag string) {
 	if img := p.Spec.Images[component]; img != "" {
-		return splitTag(img)
+		r := parseImage(img)
+		return r.repo, r.chartTag()
 	}
 	return fmt.Sprintf("%s/unifai-%s", p.registry(), component), p.Version
 }
@@ -126,7 +127,8 @@ func (p *Plan) imageValues(component string) map[string]any {
 	if img == "" { // keep the chart's image
 		return map[string]any{}
 	}
-	name, tag := splitTag(img)
+	ref := parseImage(img)
+	name, tag := ref.repo, ref.chartTag()
 	registry, repo := "docker.io", name
 	if i := strings.Index(name, "/"); i > 0 && strings.ContainsAny(name[:i], ".:") || strings.HasPrefix(name, "localhost/") {
 		registry, repo = name[:i], name[i+1:]
@@ -141,6 +143,68 @@ func (p *Plan) imageValues(component string) map[string]any {
 		out["pullPolicy"] = string(p.Spec.ImagePullPolicy)
 	}
 	return out
+}
+
+// imageRef is an image reference: repository, tag and digest ("sha256:<hex>"), each optional but the repository.
+type imageRef struct{ repo, tag, digest string }
+
+// parseImage splits "repo", "repo:tag", "repo@sha256:<hex>" and "repo:tag@sha256:<hex>" (a registry port is not
+// a tag).
+func parseImage(img string) imageRef {
+	var r imageRef
+	if i := strings.Index(img, "@"); i >= 0 {
+		img, r.digest = img[:i], img[i+1:]
+	}
+	r.repo, r.tag = splitTag(img)
+	return r
+}
+
+// chartTag is the tag given to the charts. For a digest pin it is a readable stand-in, "sha256-<12 hex>" or
+// "<tag>-sha256-<12 hex>": charts build "repository:tag" and copy the tag into version variables (APP_VERSION), and
+// the post-renderer swaps the stand-in for the digest in the container images.
+func (r imageRef) chartTag() string {
+	if r.digest == "" {
+		return r.tag
+	}
+	short := strings.Replace(r.digest, ":", "-", 1)
+	if n := len("sha256-") + 12; len(short) > n {
+		short = short[:n]
+	}
+	if r.tag == "" {
+		return short
+	}
+	return r.tag + "-" + short
+}
+
+// pinned is what replaces ":"+chartTag in a rendered image: "@<digest>" or ":<tag>@<digest>".
+func (r imageRef) pinned() string {
+	if r.tag == "" {
+		return "@" + r.digest
+	}
+	return ":" + r.tag + "@" + r.digest
+}
+
+// imagePins maps the chart tag of every digest-pinned spec.images entry to its pinned suffix.
+func imagePins(s *unifaiv1.UnifaiStackSpec) map[string]string {
+	pins := map[string]string{}
+	for _, img := range s.Images {
+		if r := parseImage(img); r.digest != "" {
+			pins[r.chartTag()] = r.pinned()
+		}
+	}
+	return pins
+}
+
+// pinImage returns a rendered image with a digest stand-in tag replaced by its digest.
+func pinImage(img string, pins map[string]string) string {
+	i := strings.LastIndex(img, ":")
+	if i < 0 || strings.Contains(img[i:], "/") {
+		return img
+	}
+	if s, ok := pins[img[i+1:]]; ok {
+		return img[:i] + s
+	}
+	return img
 }
 
 // splitTag splits "name:tag" (a registry port is not a tag).

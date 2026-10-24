@@ -279,6 +279,13 @@ The bundle ships a ServiceMonitor for these metrics (see "Install with OLM"). In
 operator's (target) namespace: the stack namespace of `unifai_operator_stack_ready` and
 `unifai_operator_keycloak_repairs_total` is `exported_namespace`.
 
+### Image pins by digest
+
+`spec.images.<component>` accepts `repo`, `repo:tag`, `repo@sha256:<digest>` and `repo:tag@sha256:<digest>`. A digest pin
+is deployed exactly as written: the charts receive a readable stand-in tag (`sha256-<12 hex>` or `<tag>-sha256-<12 hex>`,
+what the `APP_VERSION` variables show) and the post-renderer replaces it with the digest in every container image. Pin
+the digests a CI run of `publish-images.yml` reports: they are the signed ones.
+
 ### A2A delegation (zuno WP-173)
 
 Delegation between agents over A2A is refused until its contract ships: the caller's identity, the delegation

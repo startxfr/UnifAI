@@ -263,6 +263,7 @@ type UnifaiStackSpec struct {
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 	// Full image overrides by component: mongodb, qdrant, rabbitmq, redis, redisInsight, temporal, rag, multiagent, backend, identity, ui, docling, embedding.
+	// A value is repo, repo:tag, repo@sha256:<digest> or repo:tag@sha256:<digest>; a digest pin is deployed as is.
 	// +kubebuilder:validation:XValidation:rule="self.all(k, k in ['mongodb', 'qdrant', 'rabbitmq', 'redis', 'redisInsight', 'temporal', 'rag', 'multiagent', 'backend', 'identity', 'ui', 'docling', 'embedding'])",message="images keys: mongodb, qdrant, rabbitmq, redis, redisInsight, temporal, rag, multiagent, backend, identity, ui, docling, embedding"
 	// +kubebuilder:validation:MaxProperties=16
 	// +optional

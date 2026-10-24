@@ -101,7 +101,7 @@ func Render(p *Plan, r Release) (*Rendered, error) {
 }
 
 // postRenderVersion changes when the post-renderer behaviour changes, forcing upgrades.
-const postRenderVersion = 6
+const postRenderVersion = 7
 
 // Apply installs the release, or upgrades it; it repairs releases left pending by an interrupted operation.
 func (e *Engine) Apply(ctx context.Context, p *Plan, rr *Rendered) (*release.Release, error) {
