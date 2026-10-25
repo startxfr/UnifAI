@@ -14,6 +14,7 @@ import httpx
 
 from mas.core.auth.ports import HttpClient, HttpResponse
 from global_utils.flask.correlation import correlation_headers
+from global_utils.utils.net_guard import check_outbound_url
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,9 @@ class HttpxClient(HttpClient):
         headers: Optional[Dict[str, str]] = None,
         timeout: float = 10.0,
     ) -> HttpResponse:
+        # GET is the discovery path (well-known documents named by a server's own answer): a user-typed
+        # or server-supplied URL must not reach metadata, loopback or other pods.
+        check_outbound_url(url)
         merged = {**correlation_headers(), **(headers or {})}
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(url, headers=merged or None)

@@ -368,10 +368,10 @@ def test_mcp_validator_does_not_handshake_when_forwarding(monkeypatch):
     from mas.elements.providers.mcp_server_client.config import McpProviderConfig
 
     cfg = McpProviderConfig(
-        mcp_url="http://mcp-gateway:8080/mcp", transport_type="streamable http", auth_method="forward_user_token",
+        mcp_url="http://mcp-gateway.zuno-ai-run.svc:8080/mcp", transport_type="streamable http", auth_method="forward_user_token",
     )
     report, calls = _validate_mcp(cfg, monkeypatch)
-    assert calls == ["http://mcp-gateway:8080/mcp"]
+    assert calls == ["http://mcp-gateway.zuno-ai-run.svc:8080/mcp"]
     assert [m.code for m in report.messages] == ["CONNECTION_CHECK_SKIPPED"]
     assert all(m.severity.value != "error" for m in report.messages)
 
@@ -384,7 +384,7 @@ def test_mcp_validator_reports_an_unreachable_forwarding_endpoint(monkeypatch):
         raise httpx.ConnectError("refused", request=httpx.Request("GET", url))
 
     cfg = McpProviderConfig(
-        mcp_url="http://mcp-gateway:8080/mcp", transport_type="streamable http", auth_method="forward_user_token",
+        mcp_url="http://mcp-gateway.zuno-ai-run.svc:8080/mcp", transport_type="streamable http", auth_method="forward_user_token",
     )
     report, _ = _validate_mcp(cfg, monkeypatch, get=refuse)
     assert [m.severity.value for m in report.messages] == ["error"]

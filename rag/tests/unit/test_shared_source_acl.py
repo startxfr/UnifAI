@@ -240,6 +240,18 @@ def test_forged_or_expired_tokens_yield_no_group(app):
             assert cg.caller_groups(ISSUER) == []
 
 
+def test_forwarded_token_minted_for_another_client_is_refused_when_an_audience_is_required(app):
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    other_client = _signed(key, preferred_username="alice", groups=["/agent_tekos"], aud="some-other-client")
+    right_client = _signed(key, preferred_username="alice", groups=["/agent_tekos"], aud=["zuno-admin-api", "unifai"])
+    with _verify_with(key):
+        for token, expected in ((other_client, []), (right_client, ["agent_tekos"])):
+            with app.test_request_context("/", headers={"Authorization": f"Bearer {token}"}):
+                g.identity_session = SimpleNamespace(access_token=None)
+                g.user_id = "alice"
+                assert cg.caller_groups(ISSUER, True, "zuno-admin-api") == expected
+
+
 def test_no_issuer_configured_ignores_bearer_tokens(app):
     with app.test_request_context("/", headers={"Authorization": "Bearer anything"}):
         g.identity_session = SimpleNamespace(access_token=None)

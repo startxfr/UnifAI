@@ -571,10 +571,14 @@ def confluence_pipeline_handler():
     """Confluence pipeline handler; credentials come from CONFLUENCE_USERNAME / CONFLUENCE_TOKEN."""
     from core.data_sources.types.confluence.pipeline_handler import ConfluencePipelineHandler
     from infrastructure.sources.confluence.connector import ConfluenceConnector, credentials_allowed
+    from global_utils.utils.net_guard import check_outbound_url
     from config.app_config import AppConfig
     cfg = AppConfig.get_instance()
 
     def connector(base_url: str) -> ConfluenceConnector:
+        # The base URL is typed by a session user and fetched from inside the cluster: it must be a public
+        # site (or one the operator listed), never metadata, loopback or another pod.
+        check_outbound_url(base_url, allowed_hosts=cfg.confluence_allowed_hosts)
         # The deployment credentials go only to the hosts the operator listed; any other baseUrl
         # (typed by a session user) is fetched without them.
         if cfg.confluence_allowed_hosts is None:

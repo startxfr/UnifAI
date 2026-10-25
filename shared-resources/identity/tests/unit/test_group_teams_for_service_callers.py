@@ -259,3 +259,18 @@ def test_group_removal_after_cache_expiry_revokes_access():
     assert _ids(client.get("/api/teams/teams.list?userId=bob", headers=_service_headers())) == []
     del cache.data["bob"]  # TTL expiry -> unknown -> user members only
     assert _ids(client.get("/api/teams/teams.list?userId=bob", headers=_service_headers())) == []
+
+
+def test_identity_resolve_of_a_team_is_for_members_only():
+    from adapters.inbound.flask.endpoints.identity_routes import identity_bp
+
+    client, cache, team = _setup("bob")
+    client.application.register_blueprint(identity_bp, url_prefix="/api/identity")
+    url = f"/api/identity/identity.resolve?type=team&id={team.team_id}"
+    missing = client.get("/api/identity/identity.resolve?type=team&id=nope")
+    denied = client.get(url)
+    assert denied.status_code == missing.status_code == 404
+    assert denied.get_json() == missing.get_json()
+    cache.data["bob"] = [_group(GROUP)]
+    assert client.get(url).status_code == 200
+    assert client.get(url, headers=_service_headers()).status_code == 200

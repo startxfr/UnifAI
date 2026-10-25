@@ -326,7 +326,7 @@ def get_share(authenticated_user, share_id):
             invite.recipient_identity, authenticated_user
         )
         if not (sender_ok or recipient_ok):
-            return jsonify({"error": "Not authorized to view this invitation"}), 403
+            return jsonify({"error": "Share invitation not found"}), 404  # same answer as a missing invite
 
         payload = invite.model_dump(mode="json")
         payload["sender_user_id"] = invite.sender_identity.id
