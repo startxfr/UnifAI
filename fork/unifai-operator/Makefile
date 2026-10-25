@@ -363,6 +363,33 @@ CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:latest
 # demo333 subscribes to stable: production changes only on promotion.
 CANARY_NS ?= unifai-operator-canary
 
+# The operator image the canary tests and the release ships is built and signed by the CI (publish-images.yml, on a
+# push to devel that changes these paths), tagged devel-<sha> of the last commit that changed them. It is deployed
+# and released by digest, never rebuilt: hand-built images (docker-build-local) are for development only.
+OPERATOR_BUILD_PATHS := cmd api internal go.mod go.sum Dockerfile Makefile
+CI_SIGNER ?= https://github.com/startxfr/UnifAI/.github/workflows/publish-images.yml@refs/heads/devel
+CI_ISSUER ?= https://token.actions.githubusercontent.com
+
+.PHONY: ci-image
+ci-image: ## Resolve the CI-built operator image of the operator's last commit, verify its signature and VERSION (bin/ci-image.ref).
+	@[ -z "$$(git status --porcelain -- $(OPERATOR_BUILD_PATHS))" ] || \
+	  { echo "uncommitted changes in $(OPERATOR_BUILD_PATHS): commit and push them, then wait for publish-images"; exit 1; }
+	@git fetch -q origin devel
+	@sha=$$(git rev-parse --short=9 $$(git log -1 --format=%H -- $(OPERATOR_BUILD_PATHS))); \
+	  git merge-base --is-ancestor $$sha origin/devel || { echo "$$sha is not on origin/devel: push it first"; exit 1; }; \
+	  digest=$$(skopeo inspect --no-tags --format '{{.Digest}}' docker://$(IMAGE_TAG_BASE):devel-$$sha) || \
+	    { echo "no $(IMAGE_TAG_BASE):devel-$$sha yet: is publish-images still running for $$sha?"; exit 1; }; \
+	  img=$(IMAGE_TAG_BASE)@$$digest; \
+	  cosign verify --certificate-identity $(CI_SIGNER) --certificate-oidc-issuer $(CI_ISSUER) $$img > /dev/null 2>&1 || \
+	    { echo "$$img (devel-$$sha): signature not verified for $(CI_SIGNER)"; exit 1; }; \
+	  ver=$$(skopeo inspect --no-tags --format '{{index .Labels "version"}}' docker://$$img); \
+	  [ "$$ver" = "$(VERSION)" ] || { echo "$$img (devel-$$sha) is operator $$ver, the Makefile says $(VERSION)"; exit 1; }; \
+	  mkdir -p bin && echo $$img > bin/ci-image.ref && echo "devel-$$sha $$img (signed, operator $$ver)"
+
+.PHONY: canary-ci
+canary-ci: ci-image ## Deploy the CI-built, signed operator image of VERSION as the canary instance.
+	$(MAKE) canary-deploy IMG=$$(cat bin/ci-image.ref)
+
 .PHONY: canary-deploy
 canary-deploy: manifests kustomize ## Deploy IMG as a canary instance (only reconciles objects labelled operator-instance=canary).
 	kubectl apply --server-side --force-conflicts -f config/crd/bases
@@ -386,12 +413,15 @@ canary-delete: kustomize ## Remove the canary instance.
 	$(KUSTOMIZE) build config/canary | kubectl delete --ignore-not-found -f -
 
 .PHONY: release
-release: test docker-build-local docker-push canary-deploy canary-e2e canary-delete bundle bundle-build bundle-push ## Test, build, canary e2e, publish VERSION on alpha.
+release: test canary-ci canary-e2e canary-delete ## Test, canary e2e of the CI image, publish VERSION on alpha from this machine (the GitHub release workflow is the usual way).
+	$(MAKE) bundle IMG=$$(cat bin/ci-image.ref)
+	$(MAKE) bundle-build bundle-push
 	$(MAKE) catalog-add CHANNELS=alpha
 	$(MAKE) catalog-build catalog-push
 
 .PHONY: release-files
-release-files: bundle ## Write the release files of VERSION (bundle, catalog template on alpha and stable): commit them, then tag operator-vVERSION (GitHub publishes after approval).
+release-files: ci-image ## Write the release files of VERSION (bundle on the CI image's digest, catalog template on alpha and stable): commit them, then tag operator-vVERSION (GitHub publishes after approval).
+	$(MAKE) bundle IMG=$$(cat bin/ci-image.ref)
 	$(MAKE) catalog-add CHANNELS=alpha,stable
 
 .PHONY: promote

@@ -29,6 +29,9 @@ verifies all of it before deploying
 - Both environments hold `QUAY_USERNAME` and `QUAY_TOKEN` of a quay robot with write access to `unifai-*`.
 - The identity zuno accepts is the workflow path and ref: do not rename the workflow file or change its triggers without changing
   zuno-demo's `platform/supply-chain/image-identities.yaml`.
+- The operator image (`quay.io/zuno/unifai-operator:devel-<sha>`) is built by the same workflow, on `devel` only, when
+  the operator's code or Makefile changed; the canary deploys it by digest and the operator release re-tags that signed
+  digest `vX.Y.Z` (see `fork/unifai-operator/README.md`). The quay robot needs write access to `unifai-operator` too.
 - `make images-devel` stays for local development and quick test images, pushed as `local-<sha>` only (the Makefile refuses a
   `devel*` tag). Those images are **unsigned**: a cluster that verifies
   its UnifAI images refuses them, so pin only digests taken from a CI run's summary.
