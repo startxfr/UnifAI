@@ -790,6 +790,15 @@ spec:
                       Dense + sparse (BM25) search with rank fusion. Uses new `<collection>_hybrid` collections: existing
                       sources must be re-ingested.
                     type: boolean
+                  minChunkChars:
+                    description: |-
+                      Web source chunks with fewer characters of text than this (whitespace normalised: navigation fragments, a lone
+                      heading) are not embedded (WEB_MIN_CHUNK_CHARS). Unset = the RAG default, 200; 0 = keep every chunk. Takes
+                      effect on the pages a sync re-ingests (new or changed).
+                    format: int32
+                    maximum: 10000
+                    minimum: 0
+                    type: integer
                   sharedPublishers:
                     description: |-
                       Users allowed to publish shared sources (visible to members of the source's ACL groups). Empty =
