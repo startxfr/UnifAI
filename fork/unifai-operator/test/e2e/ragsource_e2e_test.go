@@ -86,6 +86,22 @@ func checkWebSourceRefusesPrivateHosts(t *testing.T, ns string) {
 	})
 }
 
+// checkConfluenceSourceRefusesPrivateHosts registers a Confluence source on an in-cluster host: the RAG server
+// refuses it at registration (the outbound URL guard), before any fetch, so no worker is needed.
+func checkConfluenceSourceRefusesPrivateHosts(t *testing.T, ns string) {
+	src := &unifaiv1.UnifaiRAGSource{ObjectMeta: metav1.ObjectMeta{Name: "e2e-confluence-private", Namespace: ns}, Spec: unifaiv1.UnifaiRAGSourceSpec{
+		Type: "confluence", Confluence: &unifaiv1.RAGConfluenceSource{BaseURL: "http://unifai-qdrant:6333", SpaceKey: "E2E"}}}
+	create(t, src)
+	eventually(t, "Confluence source on an in-cluster host refused at registration", 3*time.Minute, func() (bool, string) {
+		must(t, c.Get(ctx, client.ObjectKeyFromObject(src), src))
+		return src.Status.Phase == "Failed" && strings.Contains(src.Status.Message, "non-public"), src.Status.Phase + " " + src.Status.Message
+	})
+	if src.Status.SourceID != "" {
+		t.Errorf("the refused source was registered: %s", src.Status.SourceID)
+	}
+	must(t, c.Delete(ctx, src))
+}
+
 // podLogs returns the logs of the pods of the namespace whose name starts with prefix.
 func podLogs(t *testing.T, ns, prefix string) string {
 	t.Helper()

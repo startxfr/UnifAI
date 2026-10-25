@@ -388,6 +388,10 @@ func TestUnifaiStack(t *testing.T) {
 		checkWebSourceRefusesPrivateHosts(t, ns)
 	})
 
+	t.Run("a Confluence source on an in-cluster host is refused at registration (SSRF guard)", func(t *testing.T) {
+		checkConfluenceSourceRefusesPrivateHosts(t, ns)
+	})
+
 	t.Run("a real Red Hat documentation page is ingested", func(t *testing.T) {
 		if os.Getenv("E2E_FULL") == "" {
 			t.Skip("E2E_FULL=1 required (embedding service, Internet access)")
