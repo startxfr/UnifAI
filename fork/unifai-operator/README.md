@@ -288,11 +288,33 @@ the digests a CI run of `publish-images.yml` reports: they are the signed ones.
 
 ### A2A delegation (zuno WP-173)
 
-Delegation between agents over A2A is refused until its contract ships: the caller's identity, the delegation
-limits and the approval across hops. The CRD refuses an `UnifaiAgent` of type `a2a_agent_node`. A workflow or a
-template holding an A2A node, written inline or reached through `$ref` once the library nodes are expanded, goes to
-`Error`. An agent bundle declaring `zuno.delegation.targets` is `Valid=False` (`DelegationUnsupported`), and nothing is
-emitted. This guards the objects the operator manages; workflows built by hand in the UnifAI UI do not go through it.
+Free-form delegation stays refused: the CRD refuses an `UnifaiAgent` of type `a2a_agent_node`, and a workflow or a
+template holding an A2A node (inline or through `$ref`) goes to `Error`. Workflows built by hand in the UnifAI UI do not
+go through these checks.
+
+An agent bundle may delegate, read-only, through the zuno a2a-gateway (ADR-0401/0403/0585):
+
+```yaml
+spec:
+  delegation:
+    gatewayURL: http://a2a-gateway.zuno-ai-run.svc:8080
+    maxRounds: 5                                # orchestrator rounds per turn (default 5)
+  ceilings:
+    delegationTargets: [arkos/draft-architecture-testimonial]
+```
+
+- Without `spec.delegation`, a bundle declaring `zuno.delegation.targets` is `Valid=False` (`DelegationUnsupported`).
+  A target missing from `ceilings.delegationTargets` is `WithinCeilings=False` (`Widening`).
+- Each target is resolved against its `Verified`, `Ready` `UnifaiAgentBundle` in the namespace. Only the target's primary
+  task can be reached until the gateway reads `X-Zuno-Task`; other tasks are `DelegationTargetUnresolved`.
+- Every task of a delegating agent becomes an orchestrator (`<task>-orchestrator`) over the task's own agent and one
+  inline `a2a_agent_node` per target (`<gatewayURL>/agents/<agent>`). The A2A node forwards the user's token and the chain
+  headers the gateway verifies: `X-Zuno-Delegated-By: <agent>:<task>` and `X-Zuno-Delegation-Depth: 1`. A worker runs only
+  on the work the orchestrator sends it, so a target is not called on a turn that does not need it.
+- Classification is monotone and applied statically: every task of a delegating agent runs at the highest level of the
+  task and its targets, from its first call (a C1 agent delegating to a C3 one is C3, local models only).
+- Only a workflow owned by such a bundle may hold A2A nodes, and only towards its own gateway. The `plan_draft_write`
+  shape does not delegate yet.
 
 ### Spec rules (R-304)
 
