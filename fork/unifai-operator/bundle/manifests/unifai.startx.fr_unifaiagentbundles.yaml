@@ -63,8 +63,9 @@ spec:
               UnifAI objects.
             properties:
               agentConfig:
-                description: 'Extra custom_agent_node settings merged under every
-                  emitted agent (e.g. hitl_mode, or max_rounds: 15 by default).'
+                description: |-
+                  Extra custom_agent_node settings merged under every emitted agent (e.g. hitl_mode). max_rounds here is the
+                  default round bound (15 when unset); a bundle's zuno.limits.max_steps replaces it, within ceilings.maxSteps.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
               ceilings:
@@ -78,6 +79,14 @@ spec:
                     items:
                       type: string
                     type: array
+                  maxSteps:
+                    description: |-
+                      Most reasoning/tool rounds a task may declare (zuno.limits.max_steps); unset = 50. A bundle declaring more is
+                      refused (WithinCeilings=False).
+                    format: int32
+                    maximum: 1000
+                    minimum: 1
+                    type: integer
                   minClassification:
                     description: |-
                       The least restrictive classification the bundle may run at (C1 < C2 < C3): a bundle declaring a lower
