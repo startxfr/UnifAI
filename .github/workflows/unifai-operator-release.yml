@@ -4,6 +4,11 @@
 # and the canary tested (make canary-ci, make release-files). It is not rebuilt: its signature and VERSION are
 # checked, then the same digest is tagged quay.io/zuno/unifai-operator:vX.Y.Z.
 # The quay-release environment requires an approval and holds the quay robot credentials.
+#
+# Signing (zuno-demo ADR-0586, WP-176): the operator digest was signed on devel by publish-images.yml; a release adds
+# its OWN signature, provenance and SBOM-artifact signature on that digest (a production cluster accepts the release
+# identity only), and signs the bundle and the catalog it builds here, with their provenance and an SBOM artifact.
+# fork/ci/sign_and_attest.sh does it; keyless, so the publish job needs id-token: write.
 name: unifai-operator-release
 
 on:
@@ -25,7 +30,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     environment: quay-release
-    timeout-minutes: 30
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v5
 
@@ -77,12 +85,56 @@ jobs:
           [ "quay.io/zuno/unifai-operator@$tagged" = "$OPERATOR_IMAGE" ] || { echo "::error::v$VERSION is $tagged"; exit 1; }
           echo "operator v$VERSION = $OPERATOR_IMAGE" >> "$GITHUB_STEP_SUMMARY"
 
+      # What a production cluster verifies: this workflow's identity on the digest built on devel.
+      - name: Sign the released operator digest with the release identity
+        run: bash "$GITHUB_WORKSPACE/fork/ci/sign_and_attest.sh" "$OPERATOR_IMAGE" operator
+
       - name: Publish the bundle
         run: make bundle-build bundle-push CONTAINER_TOOL=docker
+
+      - name: The bundle digest
+        run: echo "BUNDLE_REF=quay.io/zuno/unifai-operator-bundle@$(skopeo inspect --no-tags --format '{{.Digest}}' "docker://quay.io/zuno/unifai-operator-bundle:v$VERSION")" >> "$GITHUB_ENV"
+
+      - name: SBOM of the bundle
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.BUNDLE_REF }}
+          format: spdx-json
+          output-file: sbom-bundle.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Sign the bundle
+        run: bash "$GITHUB_WORKSPACE/fork/ci/sign_and_attest.sh" "$BUNDLE_REF" operator-bundle "$GITHUB_WORKSPACE/sbom-bundle.spdx.json"
 
       # Rendering the catalog reads the bundle images from the registry: only once the bundle is pushed.
       - name: Publish the catalog
         run: make catalog-build catalog-push CONTAINER_TOOL=docker
+
+      - name: The catalog digest
+        run: echo "CATALOG_REF=quay.io/zuno/unifai-operator-catalog@$(skopeo inspect --no-tags --format '{{.Digest}}' docker://quay.io/zuno/unifai-operator-catalog:latest)" >> "$GITHUB_ENV"
+
+      - name: SBOM of the catalog
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.CATALOG_REF }}
+          format: spdx-json
+          output-file: sbom-catalog.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      # The d0 chart of zuno-demo pins this digest (catalogImage): `latest` moves with every release.
+      - name: Sign the catalog
+        run: bash "$GITHUB_WORKSPACE/fork/ci/sign_and_attest.sh" "$CATALOG_REF" operator-catalog "$GITHUB_WORKSPACE/sbom-catalog.spdx.json"
+
+      - name: Record the signed digests
+        run: |
+          {
+            echo "### Signed (release identity)"
+            echo "- operator: $OPERATOR_IMAGE"
+            echo "- bundle: $BUNDLE_REF"
+            echo "- catalog (pin as catalogImage): $CATALOG_REF"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Log out
         if: always()
