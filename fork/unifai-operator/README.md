@@ -325,9 +325,9 @@ make promote     # catalog on `stable` = production (demo333 subscribes to stabl
 The operator image is built and signed by the CI, never on the workstation: a push to `devel` that changes the
 operator's code or `Makefile` runs `.github/workflows/publish-images.yml`, which builds `fork/unifai-operator/Dockerfile`
 (with the `VERSION` of that commit), pushes `quay.io/zuno/unifai-operator:devel-<sha>` and signs the digest keyless,
-with a provenance attestation and a signed SBOM (the same identity as the UnifAI images). `make ci-image` resolves the
-image of the last commit that changed those paths, checks it is pushed, signed by that workflow on `devel` and built
-for `VERSION`, and writes its digest to `bin/ci-image.ref`; `canary-ci` deploys that digest, `release-files` writes
+with a provenance attestation and a signed SBOM (the same identity as the UnifAI images). `make ci-image`
+(`hack/ci-image.sh`) finds the newest `devel-<sha>` image built from the same operator code as HEAD (the CI tags
+only the head of each push), checks it is signed by that workflow on `devel` and built for `VERSION`, and writes its digest to `bin/ci-image.ref`; `canary-ci` deploys that digest, `release-files` writes
 it into the bundle. `docker-build-local` stays for quick local experiments only.
 
 `make release` runs, in order: `test`, `canary-ci` (the CI image as a second operator instance, namespace

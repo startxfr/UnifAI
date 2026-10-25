@@ -3,7 +3,7 @@
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.1.38
+VERSION ?= 0.1.39
 # Tag of the UnifAI images a stack deploys by default (spec.version overrides it).
 UNIFAI_VERSION ?= devel
 CHANNELS ?= alpha,stable
@@ -371,20 +371,8 @@ CI_SIGNER ?= https://github.com/startxfr/UnifAI/.github/workflows/publish-images
 CI_ISSUER ?= https://token.actions.githubusercontent.com
 
 .PHONY: ci-image
-ci-image: ## Resolve the CI-built operator image of the operator's last commit, verify its signature and VERSION (bin/ci-image.ref).
-	@[ -z "$$(git status --porcelain -- $(OPERATOR_BUILD_PATHS))" ] || \
-	  { echo "uncommitted changes in $(OPERATOR_BUILD_PATHS): commit and push them, then wait for publish-images"; exit 1; }
-	@git fetch -q origin devel
-	@sha=$$(git rev-parse --short=9 $$(git log -1 --format=%H -- $(OPERATOR_BUILD_PATHS))); \
-	  git merge-base --is-ancestor $$sha origin/devel || { echo "$$sha is not on origin/devel: push it first"; exit 1; }; \
-	  digest=$$(skopeo inspect --no-tags --format '{{.Digest}}' docker://$(IMAGE_TAG_BASE):devel-$$sha) || \
-	    { echo "no $(IMAGE_TAG_BASE):devel-$$sha yet: is publish-images still running for $$sha?"; exit 1; }; \
-	  img=$(IMAGE_TAG_BASE)@$$digest; \
-	  cosign verify --certificate-identity $(CI_SIGNER) --certificate-oidc-issuer $(CI_ISSUER) $$img > /dev/null 2>&1 || \
-	    { echo "$$img (devel-$$sha): signature not verified for $(CI_SIGNER)"; exit 1; }; \
-	  ver=$$(skopeo inspect --no-tags --format '{{index .Labels "version"}}' docker://$$img); \
-	  [ "$$ver" = "$(VERSION)" ] || { echo "$$img (devel-$$sha) is operator $$ver, the Makefile says $(VERSION)"; exit 1; }; \
-	  mkdir -p bin && echo $$img > bin/ci-image.ref && echo "devel-$$sha $$img (signed, operator $$ver)"
+ci-image: ## Resolve the CI-built operator image of HEAD's operator code, verify its signature and VERSION (bin/ci-image.ref).
+	@./hack/ci-image.sh $(IMAGE_TAG_BASE) $(VERSION) $(CI_SIGNER) $(CI_ISSUER) $(OPERATOR_BUILD_PATHS)
 
 .PHONY: canary-ci
 canary-ci: ci-image ## Deploy the CI-built, signed operator image of VERSION as the canary instance.
