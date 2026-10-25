@@ -575,7 +575,9 @@ def confluence_pipeline_handler():
     """Confluence pipeline handler; credentials come from CONFLUENCE_USERNAME / CONFLUENCE_TOKEN."""
     from core.data_sources.types.confluence.pipeline_handler import ConfluencePipelineHandler
     from infrastructure.sources.confluence.connector import ConfluenceConnector, credentials_allowed
+    import requests
     from global_utils.utils.net_guard import check_outbound_url
+    from global_utils.utils.net_guard_requests import guard_session
     from config.app_config import AppConfig
     cfg = AppConfig.get_instance()
 
@@ -592,8 +594,10 @@ def confluence_pipeline_handler():
             username, token = cfg.confluence_username, cfg.confluence_token
         else:
             username = token = ""
+        # Every request of the session, redirect hops and the API's own `next` links included, is vetted again.
+        session = guard_session(requests.Session(), allowed_hosts=cfg.confluence_allowed_hosts)
         return ConfluenceConnector(base_url, username=username, token=token,
-                                   verify_tls=cfg.confluence_verify_tls)
+                                   verify_tls=cfg.confluence_verify_tls, session=session)
 
     return ConfluencePipelineHandler(
         connector_factory=connector,

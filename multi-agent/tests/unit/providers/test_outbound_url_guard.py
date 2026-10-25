@@ -45,3 +45,12 @@ def test_oauth_discovery_get_refuses(url):
 
     with pytest.raises(UnsafeUrlError):
         asyncio.run(HttpxClient().get(url))
+
+
+def test_the_mcp_http_client_factory_uses_the_guarded_transport():
+    from global_utils.utils.net_guard_httpx import GuardedAsyncTransport
+    from mas.elements.providers.mcp_server_client.transport.guarded_http import create_guarded_mcp_http_client
+
+    client = create_guarded_mcp_http_client(headers={"x-test": "1"})
+    assert isinstance(client._transport, GuardedAsyncTransport)
+    assert client.headers["x-test"] == "1" and client.follow_redirects is False

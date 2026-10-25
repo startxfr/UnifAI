@@ -10,11 +10,11 @@ from contextlib import asynccontextmanager
 from typing import Any, Tuple
 
 from mcp.client.streamable_http import streamable_http_client
-from mcp.shared._httpx_utils import create_mcp_http_client
 
 from .base_transport import BaseTransportManager
 from .enums import McpTransportType
 from global_utils.utils.net_guard import check_outbound_url
+from .guarded_http import create_guarded_mcp_http_client
 
 
 class StreamableHttpTransportManager(BaseTransportManager):
@@ -38,7 +38,7 @@ class StreamableHttpTransportManager(BaseTransportManager):
         # The SDK does not close caller-provided HTTP clients. Keep the client
         # alive until the transport exits, including when connection fails.
         check_outbound_url(str(self.endpoint))  # a user-typed URL must not reach metadata, loopback or other pods
-        async with create_mcp_http_client(headers=self.headers) as http_client:
+        async with create_guarded_mcp_http_client(headers=self.headers) as http_client:
             async with streamable_http_client(
                 url=self.endpoint, http_client=http_client,
             ) as (read_stream, write_stream, _):

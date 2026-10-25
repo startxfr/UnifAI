@@ -33,6 +33,7 @@ from a2a.types import (
 from mas.elements.providers.a2a_client.result import A2AResult
 from mas.elements.providers.a2a_client.handlers import BaseHandler
 from global_utils.utils.net_guard import UnsafeUrlError, check_outbound_url
+from global_utils.utils.net_guard_httpx import GuardedAsyncTransport
 
 
 class A2AClientError(Exception):
@@ -80,6 +81,7 @@ class A2AClient:
             raise A2AConnectionError(f"Failed to connect: {e}") from e
         self._httpx = httpx.AsyncClient(
             headers=self._headers,
+            transport=GuardedAsyncTransport(),  # vets the address at connect time and on every redirect hop
             timeout=httpx.Timeout(
                 connect=10.0,
                 read=300.0,

@@ -13,8 +13,11 @@ The rule (:func:`check_outbound_url`):
   the platform's own runtime namespace (``*.zuno-ai-run.svc``) and the names listed in
   ``OUTBOUND_ALLOWED_HOSTS`` (comma-separated, exact host or ``.suffix``).
 
-Names are resolved here, before the connection. A name that answers differently a moment later
-(DNS rebinding) is not caught: this is a guard against mistakes and probing, not a network policy.
+:func:`check_outbound_url` alone resolves the name before the connection, so a name that answers
+differently a moment later (DNS rebinding) is not caught. The HTTP clients that carry a user-typed URL
+therefore use :mod:`global_utils.utils.net_guard_httpx` (or ``net_guard_requests``): they run
+:func:`vet_outbound_url` on every request, redirect hops included, and connect to the address that was
+just checked. This is still a guard against mistakes and probing, not a network policy.
 """
 from __future__ import annotations
 
@@ -55,13 +58,18 @@ def _allowed_by_name(host: str, extra: Iterable[str] | None) -> bool:
     return any(host == e or (e.startswith(".") and host.endswith(e)) for e in entries)
 
 
-def check_outbound_url(
+def vet_outbound_url(
     url: str,
     *,
     allowed_hosts: Iterable[str] | None = None,
     resolver: Resolver | None = None,
-) -> str:
-    """Return ``url`` when the server may connect to it, else raise :class:`UnsafeUrlError`."""
+) -> tuple[str, list[str] | None]:
+    """Check ``url`` and return ``(host, addresses)``.
+
+    ``addresses`` are the public addresses the host resolved to, in the order to try them; ``None`` when
+    the host is trusted by name (the platform's runtime namespace or the allow-list), in which case the
+    caller connects the usual way. Raises :class:`UnsafeUrlError` when the URL must not be reached.
+    """
     try:
         parts = urlparse((url or "").strip())
         host = (parts.hostname or "").lower()
@@ -77,7 +85,7 @@ def check_outbound_url(
         raise UnsafeUrlError("loopback hosts are not reachable from here")
 
     if _allowed_by_name(host, allowed_hosts):
-        return url
+        return host, None
     try:
         literal = ipaddress.ip_address(host)
         addresses = [str(literal)]
@@ -88,4 +96,15 @@ def check_outbound_url(
     for address in addresses:
         if not _is_public(address):
             raise UnsafeUrlError(f"the host '{host}' resolves to a non-public address; it is not reachable from here")
+    return host, addresses
+
+
+def check_outbound_url(
+    url: str,
+    *,
+    allowed_hosts: Iterable[str] | None = None,
+    resolver: Resolver | None = None,
+) -> str:
+    """Return ``url`` when the server may connect to it, else raise :class:`UnsafeUrlError`."""
+    vet_outbound_url(url, allowed_hosts=allowed_hosts, resolver=resolver)
     return url

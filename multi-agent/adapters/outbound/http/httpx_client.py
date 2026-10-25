@@ -15,6 +15,7 @@ import httpx
 from mas.core.auth.ports import HttpClient, HttpResponse
 from global_utils.flask.correlation import correlation_headers
 from global_utils.utils.net_guard import check_outbound_url
+from global_utils.utils.net_guard_httpx import GuardedAsyncTransport
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,8 @@ class HttpxClient(HttpClient):
         # or server-supplied URL must not reach metadata, loopback or other pods.
         check_outbound_url(url)
         merged = {**correlation_headers(), **(headers or {})}
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        # The transport vets the address again at connect time (DNS rebinding) and on any redirect hop.
+        async with httpx.AsyncClient(timeout=timeout, transport=GuardedAsyncTransport()) as client:
             resp = await client.get(url, headers=merged or None)
             body = self._parse_body(resp)
             return HttpResponse(
