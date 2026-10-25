@@ -94,3 +94,39 @@ func TestVerifyKeylessNeedsAnIdentity(t *testing.T) {
 		t.Fatal("an empty identity was accepted")
 	}
 }
+
+// Re-signing an unchanged artifact appends layers to its signature manifest: past the cap, the newest signatures are
+// read (newest first) instead of the whole manifest being refused.
+func TestDecodeKeylessReadsTheNewestSignatures(t *testing.T) {
+	dir := filepath.Join("testdata", "keyless")
+	root, _ := os.ReadFile(filepath.Join(dir, "trusted_root.json"))
+	raw, _ := os.ReadFile(filepath.Join(dir, "sig-manifest.json"))
+	payload, _ := os.ReadFile(filepath.Join(dir, "payload.json"))
+	var m ocispec.Manifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	good := m.Layers[len(m.Layers)-1]
+	stale := good
+	stale.Annotations = map[string]string{}
+	for k, v := range good.Annotations {
+		stale.Annotations[k] = v
+	}
+	stale.Annotations[annSignature] = "c3RhbGU=" // an older, now invalid signature
+	m.Layers = nil
+	for range maxSignatureLayers + 8 {
+		m.Layers = append(m.Layers, stale)
+	}
+	m.Layers = append(m.Layers, good)
+	manifest, _ := json.Marshal(m)
+	sigs, err := DecodeKeylessSignatures(context.Background(), manifest, func(context.Context, ocispec.Descriptor) ([]byte, error) { return payload, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sigs) != maxSignatureLayers || sigs[0].Signature != good.Annotations[annSignature] {
+		t.Fatalf("read %d signatures, newest first = %v; want the newest %d", len(sigs), sigs[0].Signature == good.Annotations[annSignature], maxSignatureLayers)
+	}
+	if _, err := VerifyKeyless(root, keylessDigest, sigs, keylessID); err != nil {
+		t.Fatal(err)
+	}
+}

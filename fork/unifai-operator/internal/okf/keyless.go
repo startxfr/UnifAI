@@ -102,12 +102,17 @@ func DecodeKeylessSignatures(ctx context.Context, manifest []byte,
 	if err := json.Unmarshal(manifest, &m); err != nil {
 		return nil, fmt.Errorf("signature manifest: %w", err)
 	}
-	if len(m.Layers) > maxSignatureLayers {
-		return nil, fmt.Errorf("signature manifest has %d layers, at most %d are read", len(m.Layers), maxSignatureLayers)
+	// cosign appends each new signature to the artifact's signature manifest, and re-signing an unchanged artifact
+	// (every release run of its repository) keeps adding layers: only the newest maxSignatureLayers are read, newest
+	// first, so the work stays bounded and the current signer is tried first.
+	layers := m.Layers
+	if len(layers) > maxSignatureLayers {
+		layers = layers[len(layers)-maxSignatureLayers:]
 	}
 	payloads := map[string][]byte{}
-	out := make([]KeylessSignature, 0, len(m.Layers))
-	for _, l := range m.Layers {
+	out := make([]KeylessSignature, 0, len(layers))
+	for i := len(layers) - 1; i >= 0; i-- {
+		l := layers[i]
 		if l.MediaType != SimpleSigningMediaType || l.Annotations[annSignature] == "" || l.Annotations[annCertificate] == "" {
 			continue // a key-based or incomplete signature: not usable keyless
 		}
