@@ -6,6 +6,12 @@
 # - tag vX.Y.Z: quay.io/zuno/unifai-<component>:vX.Y.Z, environment `quay-release` (requires an approval);
 # - manual run: from devel or a v* tag only.
 #
+# The operator image (quay.io/zuno/unifai-operator, fork/unifai-operator/Dockerfile) is built the same way on devel
+# only, when the operator's code or Makefile changed: devel-<sha> is the image the canary deploys by digest, and the
+# operator release (unifai-operator-release.yml, tag operator-vX.Y.Z) re-tags that signed digest vX.Y.Z without
+# rebuilding it. The application images are rebuilt only when their code changed, the operator image only when its
+# code changed.
+#
 # Each image is signed KEYLESS by this workflow's GitHub OIDC identity and carries two attestations, a SLSA
 # provenance and an SPDX SBOM. The identity zuno accepts is
 #   https://github.com/startxfr/UnifAI/.github/workflows/publish-images.yml@refs/tags/v...   (releases)
@@ -31,6 +37,13 @@ on:
       - global_utils/**
       - .github/workflows/publish-images.yml
       - fork/ci/**
+      - fork/unifai-operator/cmd/**
+      - fork/unifai-operator/api/**
+      - fork/unifai-operator/internal/**
+      - fork/unifai-operator/go.mod
+      - fork/unifai-operator/go.sum
+      - fork/unifai-operator/Dockerfile
+      - fork/unifai-operator/Makefile
   workflow_dispatch:
 
 permissions:
@@ -45,9 +58,52 @@ env:
   IMAGE_PREFIX: unifai
 
 jobs:
-  images:
-    # Only the two refs zuno accepts an identity for; a manual run elsewhere would sign with an unaccepted one.
+  # Which images this run builds: the application images when their code changed, the operator image (devel only)
+  # when its code changed; everything on a manual run or when the previous commit is unknown.
+  changes:
     if: github.ref == 'refs/heads/devel' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - name: Select the images to build
+        id: select
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          common='^(\.github/workflows/publish-images\.yml|fork/ci/)'
+          apps="$common|^(rag|multi-agent|backend|shared-resources/identity|ui|global_utils)/"
+          operator="$common|^fork/unifai-operator/(cmd/|api/|internal/|go\.mod$|go\.sum$|Dockerfile$|Makefile$)"
+          if [[ "$GITHUB_EVENT_NAME" == push && -n "$BEFORE" && ! "$BEFORE" =~ ^0+$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
+          else
+            changed="*all*"
+          fi
+          want() { [[ "$changed" == "*all*" ]] || grep -Eq "$1" <<< "$changed"; }
+          entries=()
+          if want "$apps"; then
+            # component = quay image suffix (the Makefile's IMAGE_<component> mapping); same Dockerfiles and
+            # arguments as the Makefile's build-<component> targets.
+            entries+=('{"component":"rag","dockerfile":"rag/Dockerfile","context":".","prepare":"","build_args":""}')
+            entries+=('{"component":"multiagent","dockerfile":"multi-agent/Dockerfile","context":".","prepare":"make multiagent-perms","build_args":"--build-arg CERT_URL="}')
+            entries+=('{"component":"backend","dockerfile":"backend/Dockerfile","context":".","prepare":"","build_args":""}')
+            entries+=('{"component":"identity","dockerfile":"shared-resources/identity/Dockerfile","context":".","prepare":"","build_args":""}')
+            entries+=('{"component":"ui","dockerfile":"ui/deployment/Dockerfile","context":".","prepare":"make ui-certs ui-perms","build_args":""}')
+          fi
+          if [[ "$GITHUB_REF" == refs/heads/devel ]] && want "$operator"; then
+            entries+=('{"component":"operator","dockerfile":"fork/unifai-operator/Dockerfile","context":"fork/unifai-operator","prepare":"","build_args":"--build-arg UNIFAI_VERSION=devel"}')
+          fi
+          matrix="$(IFS=,; echo "[${entries[*]}]")"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "images: $matrix"
+
+  images:
+    needs: changes
+    if: needs.changes.outputs.matrix != '[]'
     name: ${{ matrix.component }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -58,14 +114,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # component = quay image suffix (the Makefile's IMAGE_<component> mapping); same Dockerfiles and
-          # arguments as the Makefile's build-<component> targets.
-          - {component: rag,        dockerfile: rag/Dockerfile,                         prepare: "",                       build_args: ""}
-          - {component: multiagent, dockerfile: multi-agent/Dockerfile,                 prepare: "make multiagent-perms",  build_args: "--build-arg CERT_URL="}
-          - {component: backend,    dockerfile: backend/Dockerfile,                     prepare: "",                       build_args: ""}
-          - {component: identity,   dockerfile: shared-resources/identity/Dockerfile,   prepare: "",                       build_args: ""}
-          - {component: ui,         dockerfile: ui/deployment/Dockerfile,               prepare: "make ui-certs ui-perms", build_args: ""}
+        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
@@ -103,12 +152,19 @@ jobs:
           IMAGE: ${{ steps.tags.outputs.image }}
           TAGS: ${{ steps.tags.outputs.tags }}
           DOCKERFILE: ${{ matrix.dockerfile }}
+          CONTEXT: ${{ matrix.context }}
           BUILD_ARGS: ${{ matrix.build_args }}
+          COMPONENT: ${{ matrix.component }}
         run: |
           set -euo pipefail
           first="${TAGS%% *}"
+          if [[ "$COMPONENT" == operator ]]; then
+            # The operator reports the Makefile VERSION of this commit (status.operatorVersion, upgrade checks).
+            version="$(sed -n 's/^VERSION ?= //p' fork/unifai-operator/Makefile)"
+            BUILD_ARGS="$BUILD_ARGS --build-arg VERSION=$version"
+          fi
           # BUILD_ARGS is deliberately unquoted: it holds zero or more `--build-arg K=V` words from the matrix.
-          docker build $BUILD_ARGS -t "$IMAGE:$first" -f "$DOCKERFILE" .
+          docker build $BUILD_ARGS -t "$IMAGE:$first" -f "$DOCKERFILE" "$CONTEXT"
           for t in $TAGS; do
             docker tag "$IMAGE:$first" "$IMAGE:$t"
           done

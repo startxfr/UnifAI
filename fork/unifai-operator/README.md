@@ -318,20 +318,29 @@ Requirements: Go 1.26, operator-sdk 1.41, opm, podman, write access to `quay.io/
 
 ```bash
 make test        # unit tests (chart rendering, OKF) + envtest (controllers against a fake UnifAI API, CEL rules)
-make release     # VERSION=x.y.z: test, image, canary e2e, bundle, catalog on `alpha`
+make release     # VERSION=x.y.z: test, canary e2e of the CI image, bundle, catalog on `alpha`
 make promote     # catalog on `stable` = production (demo333 subscribes to stable)
 ```
 
-`make release` runs, in order: `test`, `docker-build-local docker-push`, `canary-deploy` (the candidate image as a
-second operator instance, namespace `unifai-operator-canary`, after applying its CRDs), `canary-e2e`, `canary-delete`,
-`bundle bundle-build bundle-push`, then `catalog-add CHANNELS=alpha catalog-build catalog-push`. Production is not
-touched before `make promote`.
+The operator image is built and signed by the CI, never on the workstation: a push to `devel` that changes the
+operator's code or `Makefile` runs `.github/workflows/publish-images.yml`, which builds `fork/unifai-operator/Dockerfile`
+(with the `VERSION` of that commit), pushes `quay.io/zuno/unifai-operator:devel-<sha>` and signs the digest keyless,
+with a provenance attestation and a signed SBOM (the same identity as the UnifAI images). `make ci-image` resolves the
+image of the last commit that changed those paths, checks it is pushed, signed by that workflow on `devel` and built
+for `VERSION`, and writes its digest to `bin/ci-image.ref`; `canary-ci` deploys that digest, `release-files` writes
+it into the bundle. `docker-build-local` stays for quick local experiments only.
 
-Release through GitHub (no quay credentials on the workstation for the bundle and the catalog):
+`make release` runs, in order: `test`, `canary-ci` (the CI image as a second operator instance, namespace
+`unifai-operator-canary`, after applying its CRDs), `canary-e2e`, `canary-delete`, `bundle bundle-build bundle-push`
+on that digest, then `catalog-add CHANNELS=alpha catalog-build catalog-push`. Production is not touched before
+`make promote`.
+
+Release through GitHub (no quay credentials on the workstation):
 
 ```bash
-make test docker-build-local docker-push canary-deploy canary-e2e canary-delete   # VERSION=x.y.z, on the cluster
-make release-files                                     # bundle + catalog template on alpha and stable
+# VERSION=x.y.z committed and pushed to devel; wait for publish-images to sign quay.io/zuno/unifai-operator:devel-<sha>
+make canary-ci canary-e2e canary-delete                # on the cluster: the signed CI image, by digest
+make release-files                                     # bundle on that digest + catalog template on alpha and stable
 git commit ... && git tag operator-vx.y.z && git push origin devel operator-vx.y.z
 ```
 
@@ -342,8 +351,8 @@ It takes about 45 to 60 min more. `make e2e-full` runs the same suite against th
 
 The tag runs `.github/workflows/unifai-operator-release.yml` in the `quay-release` environment (approval required,
 quay robot `QUAY_USERNAME`/`QUAY_TOKEN`): it checks that the tag matches `VERSION`, the committed bundle and the
-catalog template, that the operator image tested by the canary exists (it is not rebuilt), then pushes the bundle and
-the catalog (rendered there: rendering reads the bundle from the registry). Clusters subscribed to `stable` upgrade at
+catalog template, that the bundle references one operator image by digest, signed by `publish-images.yml` on `devel`
+and built for `VERSION` (it is not rebuilt), tags that same digest `vX.Y.Z`, then pushes the bundle and the catalog (rendered there: rendering reads the bundle from the registry). Clusters subscribed to `stable` upgrade at
 the next catalog poll. Afterwards, `make catalog` refreshes the committed `catalog/` (commit it with the next change).
 
 Operator instances: `OPERATOR_INSTANCE` names an instance ("" = the OLM one). An UnifAI resource labelled
@@ -362,7 +371,8 @@ removal); `E2E_FULL=1`: docling + TEI deployed; `E2E_KEEP=1` keeps the namespace
 (`E2E_STORAGE_CLASS=gp3-csi`, `E2E_SHARED_STORAGE_CLASS=nfs`, `E2E_NODE_SELECTOR=workload=unifai`) are in the Makefile.
 
 `make charts` refreshes `internal/stack/assets` from `../../helm`. `make docker-build` compiles inside the image
-(needs several GB on the container storage); `docker-build-local` (used by `release`) compiles on the host.
+(needs several GB on the container storage); `docker-build-local` compiles on the host. Both are for local
+experiments: such an image is unsigned and is not what the canary or a release uses.
 
 ## Install with OLM (OpenShift)
 

@@ -1,6 +1,8 @@
 # Fork-only (fork/fork-only-paths): publishes a release of the UnifAI operator (fork/unifai-operator) on quay.io.
 # Triggered by a tag operator-vX.Y.Z on a commit whose Makefile VERSION is X.Y.Z, after the canary e2e passed on the
-# cluster (the operator image quay.io/zuno/unifai-operator:vX.Y.Z is the one the canary tested: it is not rebuilt).
+# cluster. The bundle references the operator image by digest: the one publish-images.yml built and signed on devel
+# and the canary tested (make canary-ci, make release-files). It is not rebuilt: its signature and VERSION are
+# checked, then the same digest is tagged quay.io/zuno/unifai-operator:vX.Y.Z.
 # The quay-release environment requires an approval and holds the quay robot credentials.
 name: unifai-operator-release
 
@@ -31,11 +33,17 @@ jobs:
         run: |
           version=${GITHUB_REF_NAME#operator-v}
           grep -qx "VERSION ?= $version" Makefile || { echo "::error::$GITHUB_REF_NAME, but the Makefile VERSION differs"; exit 1; }
-          grep -q "image: quay.io/zuno/unifai-operator:v$version$" bundle/manifests/unifai-operator.clusterserviceversion.yaml ||
-            { echo "::error::the committed bundle is not v$version (make bundle)"; exit 1; }
+          grep -q "^  version: $version$" bundle/manifests/unifai-operator.clusterserviceversion.yaml ||
+            { echo "::error::the committed bundle is not v$version (make release-files)"; exit 1; }
+          image="$(sed -n 's#^ *image: \(quay.io/zuno/unifai-operator@sha256:[0-9a-f]\{64\}\)$#\1#p' bundle/manifests/unifai-operator.clusterserviceversion.yaml | sort -u)"
+          [ "$(wc -w <<< "$image")" = 1 ] ||
+            { echo "::error::the bundle must reference one operator image by digest (make release-files), found: $image"; exit 1; }
+          grep -q "^    containerImage: $image$" bundle/manifests/unifai-operator.clusterserviceversion.yaml ||
+            { echo "::error::the CSV containerImage is not $image (make release-files)"; exit 1; }
           grep -q "unifai-operator-bundle:v$version$" catalog-template.yaml ||
             { echo "::error::v$version is not in catalog-template.yaml (make release-files)"; exit 1; }
           echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "OPERATOR_IMAGE=$image" >> "$GITHUB_ENV"
 
       - name: Log in to quay.io
         env:
@@ -43,8 +51,31 @@ jobs:
           QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
         run: echo "$QUAY_TOKEN" | docker login quay.io -u "$QUAY_USERNAME" --password-stdin
 
-      - name: The operator image tested by the canary exists
-        run: docker manifest inspect "quay.io/zuno/unifai-operator:v$VERSION" > /dev/null
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          cosign-release: v2.4.1
+
+      - name: The operator image is the signed CI build of this VERSION
+        run: |
+          set -euo pipefail
+          cosign verify "$OPERATOR_IMAGE" \
+            --certificate-identity https://github.com/startxfr/UnifAI/.github/workflows/publish-images.yml@refs/heads/devel \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+          version="$(skopeo inspect --no-tags --format '{{index .Labels "version"}}' "docker://$OPERATOR_IMAGE")"
+          [ "$version" = "$VERSION" ] || { echo "::error::$OPERATOR_IMAGE is operator $version, not $VERSION"; exit 1; }
+
+      # The same digest, so its signature and attestations hold for the release tag too.
+      - name: Tag the operator image v${{ env.VERSION }}
+        env:
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          skopeo copy --preserve-digests --dest-creds "$QUAY_USERNAME:$QUAY_TOKEN" \
+            "docker://$OPERATOR_IMAGE" "docker://quay.io/zuno/unifai-operator:v$VERSION"
+          tagged="$(skopeo inspect --no-tags --format '{{.Digest}}' "docker://quay.io/zuno/unifai-operator:v$VERSION")"
+          [ "quay.io/zuno/unifai-operator@$tagged" = "$OPERATOR_IMAGE" ] || { echo "::error::v$VERSION is $tagged"; exit 1; }
+          echo "operator v$VERSION = $OPERATOR_IMAGE" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish the bundle
         run: make bundle-build bundle-push CONTAINER_TOOL=docker
