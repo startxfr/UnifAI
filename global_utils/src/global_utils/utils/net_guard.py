@@ -40,7 +40,8 @@ class UnsafeUrlError(ValueError):
 
 def _resolve(host: str) -> list[str]:
     try:
-        return sorted({info[4][0] for info in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)})
+        # IPv4 first: a pinned connection tries one address, and a cluster rarely routes IPv6.
+        return sorted({info[4][0] for info in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)}, key=lambda a: (":" in a, a))
     except socket.gaierror as exc:
         raise UnsafeUrlError(f"the host '{host}' cannot be resolved") from exc
 

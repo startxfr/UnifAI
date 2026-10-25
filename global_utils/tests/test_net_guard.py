@@ -78,3 +78,13 @@ def test_the_operator_can_allow_a_host_or_a_suffix(monkeypatch):
 def test_an_unresolvable_host_is_refused():
     with pytest.raises(UnsafeUrlError):
         check_outbound_url("https://nowhere.example.com/", resolver=lambda host: [])
+
+
+def test_the_resolver_lists_ipv4_addresses_before_ipv6(monkeypatch):
+    import socket as _socket
+
+    from global_utils.utils import net_guard
+
+    infos = [(0, 0, 0, "", ("2606:4700::1", 0)), (0, 0, 0, "", ("93.184.216.34", 0)), (0, 0, 0, "", ("104.18.0.1", 0))]
+    monkeypatch.setattr(_socket, "getaddrinfo", lambda *a, **k: infos)
+    assert net_guard._resolve("example.com") == ["104.18.0.1", "93.184.216.34", "2606:4700::1"]

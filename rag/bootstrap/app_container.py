@@ -610,14 +610,19 @@ def confluence_pipeline_handler():
 def web_pipeline_handler():
     """Web pipeline handler for public pages (no credentials)."""
     from core.data_sources.types.web.pipeline_handler import WebPipelineHandler
+    import requests
     from infrastructure.sources.web.connector import WebConnector
+    from global_utils.utils.net_guard_requests import guard_session
     from config.app_config import AppConfig
     cfg = AppConfig.get_instance()
 
     return WebPipelineHandler(
         connector_factory=lambda: WebConnector(timeout=cfg.web_timeout_seconds,
                                                min_interval=cfg.web_request_interval_seconds,
-                                               allowed_hosts=cfg.web_allowed_hosts),
+                                               allowed_hosts=cfg.web_allowed_hosts,
+                                               # The connector vets each URL and redirect itself; the adapter also
+                                               # connects to the address it vetted (no second resolution).
+                                               session=guard_session(requests.Session())),
         chunker=pdf_chunker(),
         embedder=embedding_generator(),
         data_source_service=data_source_service(),
