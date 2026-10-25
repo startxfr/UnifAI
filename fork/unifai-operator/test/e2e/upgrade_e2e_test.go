@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"os"
 	"testing"
@@ -98,10 +99,17 @@ func TestUpgrade(t *testing.T) {
 	if string(gen.Data["CREDENTIAL_ENCRYPTION_KEY"]) != key {
 		t.Fatalf("the encryption key changed during the upgrade")
 	}
-	eventually(t, "LLM reconciled by the candidate", 5*time.Minute, func() (bool, string) {
+	// A spec change only the candidate can apply (the object is labelled for it): its new generation observed and
+	// Ready proves the candidate reconciles the objects of the previous version (lastReconciled is only refreshed
+	// every resync/2, so it is no signal).
+	must(t, c.Get(ctx, client.ObjectKeyFromObject(llm), llm))
+	llm.Spec.Config = raw(map[string]any{"model_name": "mock-model", "base_url": "http://e2e-llm:8000/v1", "api_key": "EMPTY",
+		"temperature": 0.1})
+	must(t, c.Update(ctx, llm))
+	eventually(t, "LLM change applied by the candidate", 5*time.Minute, func() (bool, string) {
 		must(t, c.Get(ctx, client.ObjectKeyFromObject(llm), llm))
-		return llm.Status.Phase == "Ready" && llm.Status.LastReconciled != nil &&
-			time.Since(llm.Status.LastReconciled.Time) < 2*time.Minute, llm.Status.Phase + " " + llm.Status.Message
+		return llm.Status.Phase == "Ready" && llm.Status.ObservedGeneration == llm.Generation,
+			fmt.Sprintf("%s %s (generation %d, observed %d)", llm.Status.Phase, llm.Status.Message, llm.Generation, llm.Status.ObservedGeneration)
 	})
 	if llm.Status.RID != rid {
 		t.Errorf("LLM recreated in UnifAI: rid %s -> %s", rid, llm.Status.RID)
