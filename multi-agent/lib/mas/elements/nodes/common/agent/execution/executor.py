@@ -11,6 +11,7 @@ Design Principles:
 - No Special Tools: Removes unnecessary complexity
 """
 
+import json
 import time
 import asyncio
 from typing import Dict, List, Optional, Tuple, Union
@@ -54,7 +55,8 @@ class AgentActionExecutor:
         self,
         *,
         tool_executor_manager: ToolExecutorManager,
-        validate_args: bool = ToolExecutionDefaults.VALIDATE_ARGS
+        validate_args: bool = ToolExecutionDefaults.VALIDATE_ARGS,
+        max_identical_calls: int = ToolExecutionDefaults.MAX_IDENTICAL_TOOL_CALLS
     ):
         """
         Initialize agent action executor.
@@ -65,6 +67,9 @@ class AgentActionExecutor:
         """
         self.tool_executor_manager = tool_executor_manager
         self.validate_args = validate_args
+        # One executor serves one agent run: identical calls are counted for that run only.
+        self.max_identical_calls = max_identical_calls
+        self._identical_calls: Dict[str, int] = {}
     
     def execute(self, action: AgentAction) -> AgentObservation:
         """
@@ -112,12 +117,21 @@ class AgentActionExecutor:
             # Create ToolExecutionRequests and track missing tools
             requests = []
             missing_tools = []
+            repeated = []
             
             for action in actions:
                 # Check if tool exists
                 if not self.tool_executor_manager.has_tool(action.tool):
                     missing_tools.append(action)
                     continue
+                # A model can loop on a tool whose answer never changes (same query, same result): past
+                # max_identical_calls the call is not executed and the model is told to answer instead.
+                key = self._call_key(action)
+                count = self._identical_calls.get(key, 0)
+                if count >= self.max_identical_calls:
+                    repeated.append((action, count))
+                    continue
+                self._identical_calls[key] = count + 1
                 
                 request = ToolExecutionRequest(
                     tool_name=action.tool,
@@ -133,6 +147,15 @@ class AgentActionExecutor:
             
             # Create observations for missing tools
             observations = []
+            for action, count in repeated:
+                observations.append(AgentObservation(
+                    action_id=action.id,
+                    tool=action.tool,
+                    output=ToolExecutionDefaults.REPEATED_CALL_MESSAGE.format(tool=action.tool, count=count),
+                    success=True,
+                    execution_time=0.0,
+                    metadata={"repeated_call": True}
+                ))
             for action in missing_tools:
                 observations.append(AgentObservation(
                     action_id=action.id,
@@ -151,8 +174,9 @@ class AgentActionExecutor:
                 )
                 
                 # Convert responses to observations for successful tools
+                skipped = {a.id for a in missing_tools} | {a.id for a, _ in repeated}
                 for action in actions:
-                    if action in missing_tools:
+                    if action.id in skipped:
                         continue  # Already handled above
                         
                     response = batch_response.get_response(action.id)
@@ -189,6 +213,14 @@ class AgentActionExecutor:
                 for action in actions
             ]
     
+    @staticmethod
+    def _call_key(action: AgentAction) -> str:
+        try:
+            args = json.dumps(action.tool_input, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            args = repr(action.tool_input)
+        return f"{action.tool}\x00{args}"
+
     def _response_to_observation(
         self, 
         action: AgentAction, 

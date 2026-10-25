@@ -67,6 +67,12 @@ class ToolExecutionDefaults:
     VALIDATE_ARGS = True
     ON_MISSING_TOOL = ToolHandlingPolicy.REFLECT
     MAX_TOOL_CALLS_PER_MESSAGE = 30
+    # Identical calls (same tool, same arguments) executed per agent run; later ones get REPEATED_CALL_MESSAGE instead.
+    MAX_IDENTICAL_TOOL_CALLS = 2
+    REPEATED_CALL_MESSAGE = (
+        "Tool '{tool}' was already called {count} times with exactly these arguments in this request: its result "
+        "will not change and it was not called again. Do not repeat this call; answer from what you already have."
+    )
     REQUIRE_TOOL_CALL_ID = True
     ALLOW_EMPTY_ARGS = True
 
