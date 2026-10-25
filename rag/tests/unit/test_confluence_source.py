@@ -195,3 +195,35 @@ def test_deployment_credentials_go_only_to_listed_hosts():
     assert not credentials_allowed("https://startxfr.atlassian.net@evil.example/", allowed)
     assert not credentials_allowed("https://startxfr.atlassian.net", [])
     assert not credentials_allowed("", allowed)
+
+
+def test_registration_refuses_a_base_url_the_server_must_not_reach():
+    from global_utils.utils.net_guard import check_outbound_url
+
+    def guard(allowed):
+        return lambda url: check_outbound_url(url, allowed_hosts=allowed, resolver=lambda h: {
+            "metadata.example": ["169.254.169.254"], "wiki.corp": ["10.0.0.5"]}.get(h, ["93.184.216.34"]))
+
+    def validate(base_url, check):
+        reg = ConfluenceRegistration(MagicMock(), "u", {"baseUrl": base_url, "spaceKey": "SX"})
+        reg.url_check = check
+        return reg.run_validator()
+
+    ok, issue = validate("https://metadata.example", guard(None))
+    assert not ok and issue["issue_type"] == "InvalidUrl" and "non-public" in issue["message"]
+    assert validate("https://startxfr.atlassian.net", guard(None)) == (True, None)
+    # A Data Center site the operator listed may be private, as for the fetch.
+    assert validate("https://wiki.corp", guard(["wiki.corp"])) == (True, None)
+    assert not validate("https://wiki.corp", guard(["other.corp"]))[0]
+    # Without a check (tests, tools), registration keeps its syntactic validation only.
+    assert validate("https://wiki.corp", None) == (True, None)
+
+
+def test_the_factory_hands_its_url_check_to_confluence_registrations():
+    from core.registration.factory import RegistrationFactory
+
+    check = MagicMock()
+    factory = RegistrationFactory(MagicMock(), "/tmp", MagicMock(), MagicMock(), confluence_url_check=check)
+    reg = factory.create("confluence", "u", {"baseUrl": "https://c", "spaceKey": "SX"})
+    assert reg.run_validator() == (True, None)
+    check.assert_called_once_with("https://c")

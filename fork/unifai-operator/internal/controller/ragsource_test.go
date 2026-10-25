@@ -53,6 +53,15 @@ var _ = Describe("UnifaiRAGSource controller", func() {
 		}
 	}
 
+	It("says when a Confluence source is fetched without the stack credentials", func() {
+		src := newSource("ns", "SX", nil)
+		Expect(anonymousNote("", src)).To(BeEmpty())
+		Expect(anonymousNote("x.atlassian.net", src)).To(BeEmpty())
+		src.Spec.Confluence.BaseURL = "https://X.atlassian.net:443/wiki"
+		Expect(anonymousNote("x.atlassian.net", src)).To(BeEmpty())
+		Expect(anonymousNote("other.atlassian.net", src)).To(ContainSubstring("x.atlassian.net is not the site other.atlassian.net"))
+	})
+
 	It("registers the source tags only when set, so existing sources keep their hash", func() {
 		plain := newSource("ns", "SX9", nil)
 		_, without, err := ragSourceInstance(plain)

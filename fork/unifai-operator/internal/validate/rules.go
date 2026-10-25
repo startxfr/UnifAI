@@ -340,6 +340,12 @@ var Rules = map[string][]Rule{
 			}},
 		{Field: "spec.rag.embedding.dimension", Message: "embedding dimension is not negative",
 			check: func(obj client.Object) bool { return obj.(*unifaiv1.UnifaiStack).Spec.RAG.Embedding.Dimension >= 0 }},
+		{Field: "spec.rag.confluence.url", WarnOnly: true,
+			Message: "set confluence.url, the site the credentials belong to: without it they are sent to the baseUrl of every source",
+			check: func(obj client.Object) bool {
+				c := obj.(*unifaiv1.UnifaiStack).Spec.RAG.Confluence
+				return c == nil || c.URL != ""
+			}},
 	},
 }
 

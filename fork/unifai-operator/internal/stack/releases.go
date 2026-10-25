@@ -3,6 +3,7 @@ package stack
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -265,8 +266,23 @@ func ragValues(p *Plan, v map[string]any) map[string]any {
 		if c.VerifyTLS != nil && !*c.VerifyTLS {
 			set(v, "env.CONFLUENCE_VERIFY_TLS", "false")
 		}
+		// The credentials go only to the site they belong to; any other baseUrl is fetched anonymously.
+		if host := URLHost(c.URL); host != "" {
+			hosts, _ := json.Marshal([]string{host})
+			set(v, "env.CONFLUENCE_ALLOWED_HOSTS", string(hosts))
+		}
 	}
 	return v
+}
+
+// URLHost is the lower-case host name of an http(s) URL, without the port ("" when there is none): the form the
+// RAG service compares a source's baseUrl with.
+func URLHost(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
 }
 
 func multiagentValues(p *Plan, v map[string]any) map[string]any {

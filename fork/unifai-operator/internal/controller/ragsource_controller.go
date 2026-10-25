@@ -9,10 +9,12 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	unifaiv1 "github.com/startxfr/unifai-operator/api/v1alpha1"
+	"github.com/startxfr/unifai-operator/internal/stack"
 	"github.com/startxfr/unifai-operator/internal/unifai"
 )
 
@@ -143,13 +145,37 @@ func (r *RAGSourceReconciler) apply(ctx context.Context, api *unifai.Client, obj
 	case st.PipelineStatus == statusFailed:
 		setReady(&st.ObjectStatus, PhaseFailed, "the last sync failed; it is retried at the next interval or spec change")
 	default:
-		setReady(&st.ObjectStatus, "Ready", fmt.Sprintf("%d pages (%d changed, %d deleted at the last sync)",
-			st.Pages, st.PagesChanged, st.PagesDeleted))
+		setReady(&st.ObjectStatus, "Ready", fmt.Sprintf("%d pages (%d changed, %d deleted at the last sync)%s",
+			st.Pages, st.PagesChanged, st.PagesDeleted, anonymousNote(r.credentialsSite(ctx, obj.Namespace), obj)))
 	}
 	if st.NextSyncTime != nil {
 		return max(time.Until(st.NextSyncTime.Time), time.Second), nil
 	}
 	return 0, nil
+}
+
+// credentialsSite is the host the stack's Confluence credentials belong to ("" when unset or no stack).
+func (r *RAGSourceReconciler) credentialsSite(ctx context.Context, ns string) string {
+	var st unifaiv1.UnifaiStack
+	if err := r.Get(ctx, types.NamespacedName{Namespace: ns, Name: unifaiv1.StackName}, &st); err != nil {
+		return ""
+	}
+	if c := st.Spec.RAG.Confluence; c != nil {
+		return stack.URLHost(c.URL)
+	}
+	return ""
+}
+
+// anonymousNote tells why a Confluence source on another host than the credentials' site gets no credentials.
+func anonymousNote(site string, obj *unifaiv1.UnifaiRAGSource) string {
+	c := obj.Spec.Confluence
+	if site == "" || obj.Spec.Type != sourceTypeConfluence || c == nil {
+		return ""
+	}
+	if host := stack.URLHost(c.BaseURL); host != site {
+		return fmt.Sprintf("; fetched without the stack credentials: %s is not the site %s (spec.rag.confluence.url)", host, site)
+	}
+	return ""
 }
 
 // trigger registers the source and queues a sync. accepted reports whether the RAG service took the request

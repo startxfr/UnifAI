@@ -386,12 +386,16 @@ def registration_factory():
     """Registration factory for creating source-specific registrations."""
     from core.registration.factory import RegistrationFactory
     from config.app_config import AppConfig
+    from global_utils.utils.net_guard import check_outbound_url
+    cfg = AppConfig.get_instance()
     return RegistrationFactory(
         data_source_repository=data_source_repository(),
-        upload_folder=AppConfig.get_instance().upload_folder,
+        upload_folder=cfg.upload_folder,
         doc_validators=doc_validators(),
         slack_validators=slack_validators(),
-        shared_publishers=frozenset(AppConfig.get_instance().rag_shared_publishers),
+        shared_publishers=frozenset(cfg.rag_shared_publishers),
+        # Same rule as the fetch (confluence_pipeline_handler): a site on the operator's list may be private.
+        confluence_url_check=lambda url: check_outbound_url(url, allowed_hosts=cfg.confluence_allowed_hosts),
     )
 
 

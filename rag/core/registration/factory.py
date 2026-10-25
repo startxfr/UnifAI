@@ -1,6 +1,7 @@
 """Registration factory - creates registration instances."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Dict
 
 from core.registration.domain.port import RegistrationPort
@@ -29,8 +30,10 @@ class RegistrationFactory:
         doc_validators: DocValidators,
         slack_validators: SlackValidators,
         shared_publishers: frozenset = frozenset(),
+        confluence_url_check: Callable[[str], Any] | None = None,
     ) -> None:
         self._shared_publishers = frozenset(shared_publishers)
+        self._confluence_url_check = confluence_url_check
         self._data_source_repository = data_source_repository
         self._upload_folder = upload_folder
         self._doc_validators = doc_validators
@@ -68,12 +71,14 @@ class RegistrationFactory:
             )
 
         if normalized == "confluence":
-            return ConfluenceRegistration(
+            registration = ConfluenceRegistration(
                 data_source_repository=self._data_source_repository,
                 upload_by=upload_by,
                 instance=instance,
                 skip_validation=skip_validation,
             )
+            registration.url_check = self._confluence_url_check
+            return registration
 
         if normalized == "slack":
             return SlackRegistration(

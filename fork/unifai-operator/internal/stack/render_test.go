@@ -271,6 +271,18 @@ func TestRAGSettings(t *testing.T) {
 			}
 		}
 	}
+	// Without confluence.url the credentials keep going to every baseUrl (no change for existing stacks).
+	if strings.Contains(on["unifai-rag-server"], "CONFLUENCE_ALLOWED_HOSTS") {
+		t.Errorf("CONFLUENCE_ALLOWED_HOSTS rendered without spec.rag.confluence.url")
+	}
+	site := renderAll(t, testPlan(t, func(s *unifaiv1.UnifaiStackSpec) {
+		s.RAG.Confluence = &unifaiv1.ConfluenceSpec{URL: "https://StartX.atlassian.net/wiki", Token: unifaiv1.SecretKeySelector{Name: "conf", Key: "token"}}
+	}))
+	for _, rel := range []string{"unifai-rag-server", "unifai-rag-celery"} {
+		if !regexp.MustCompile(`name: CONFLUENCE_ALLOWED_HOSTS\s+value: '\["startx\.atlassian\.net"\]'`).MatchString(site[rel]) {
+			t.Errorf("%s: CONFLUENCE_ALLOWED_HOSTS is not the host of spec.rag.confluence.url", rel)
+		}
+	}
 	data := ragSecret(map[string]string{"CONFLUENCE_USERNAME": "u", "CONFLUENCE_TOKEN": "tok"})
 	if data["CONFLUENCE_TOKEN"] != "tok" || data["CONFLUENCE_USERNAME"] != "u" {
 		t.Errorf("unifai-rag-secrets lacks the Confluence credentials: %v", data)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cached_property
@@ -25,6 +26,9 @@ class ConfluenceMetadata:
 class ConfluenceRegistration(BaseRegistration):
     """Registers (or re-registers, idempotently) a Confluence space or subtree."""
     DATA_SOURCE_TYPE = "CONFLUENCE"
+    # Refuses a baseUrl the server must not reach (raises ValueError); set by the factory. The fetch is guarded
+    # too: this check only refuses such a source at registration instead of at its first sync.
+    url_check: Callable[[str], Any] | None = None
 
     @cached_property
     def source_data(self) -> BaseSourceData:
@@ -46,6 +50,12 @@ class ConfluenceRegistration(BaseRegistration):
         if not form["base_url"].startswith(("https://", "http://")):
             return False, {"source_name": self.source_data.source_name, "issue_type": "InvalidUrl",
                            "message": "baseUrl must be an http(s) URL", "validator": "ConfluenceRegistration"}
+        if self.url_check is not None:
+            try:
+                self.url_check(form["base_url"])
+            except ValueError as exc:
+                return False, {"source_name": self.source_data.source_name, "issue_type": "InvalidUrl",
+                               "message": f"baseUrl: {exc}", "validator": "ConfluenceRegistration"}
         return True, None
 
     def _build_metadata(self) -> ConfluenceMetadata:

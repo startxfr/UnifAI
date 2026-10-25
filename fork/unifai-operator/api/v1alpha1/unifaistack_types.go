@@ -189,6 +189,13 @@ type RAGSpec struct {
 // ConfluenceSpec holds the credentials the RAG service uses for Confluence sources: basic auth with an API
 // token, or a bearer token when only the token is set.
 type ConfluenceSpec struct {
+	// Site the credentials belong to, e.g. https://example.atlassian.net: they are sent only to its host
+	// (CONFLUENCE_ALLOWED_HOSTS), and a source on another host is fetched anonymously. The host may be private (a
+	// Data Center inside the network). Unset = the credentials go to the baseUrl of every source (a warning).
+	// +kubebuilder:validation:Pattern=`^https?://[^/?#@]+`
+	// +kubebuilder:validation:MaxLength=2048
+	// +optional
+	URL string `json:"url,omitempty"`
 	// +optional
 	Username *SecretKeySelector `json:"username,omitempty"`
 	Token    SecretKeySelector  `json:"token"`

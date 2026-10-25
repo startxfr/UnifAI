@@ -702,6 +702,14 @@ spec:
                         - key
                         - name
                         type: object
+                      url:
+                        description: |-
+                          Site the credentials belong to, e.g. https://example.atlassian.net: they are sent only to its host
+                          (CONFLUENCE_ALLOWED_HOSTS), and a source on another host is fetched anonymously. The host may be private (a
+                          Data Center inside the network). Unset = the credentials go to the baseUrl of every source (a warning).
+                        maxLength: 2048
+                        pattern: ^https?://[^/?#@]+
+                        type: string
                       username:
                         description: SecretKeySelector selects a key of a Secret in
                           the CR's namespace.

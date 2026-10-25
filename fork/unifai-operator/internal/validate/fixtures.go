@@ -119,6 +119,13 @@ func Fixtures() []Fixture {
 			s.RAG.Embedding.Dimension = -1
 		}), []string{"spec.backup.schedule", "spec.images", "spec.rag.embedding.dimension", "spec.resources", "spec.storage.sizes"}},
 
+		{"stack confluence site set", stackWith(func(s *unifaiv1.UnifaiStackSpec) {
+			s.RAG.Confluence = &unifaiv1.ConfluenceSpec{URL: "https://example.atlassian.net", Token: unifaiv1.SecretKeySelector{Name: "c", Key: "t"}}
+		}), nil},
+		{"stack confluence without site", stackWith(func(s *unifaiv1.UnifaiStackSpec) {
+			s.RAG.Confluence = &unifaiv1.ConfluenceSpec{Token: unifaiv1.SecretKeySelector{Name: "c", Key: "t"}}
+		}), []string{"spec.rag.confluence.url"}},
+
 		{"team (no common rule beyond its own)", &unifaiv1.UnifaiTeam{}, nil},
 	}
 }
