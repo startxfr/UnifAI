@@ -33,7 +33,9 @@ type Bundle struct {
 	UI map[string]string
 	// DelegationTargets are the agents this agent may delegate to over A2A (zuno.delegation.targets, ADR-0401).
 	DelegationTargets []DelegationTarget
-	Tasks             []Task
+	// MaxSteps bounds the reasoning/tool rounds of one turn of every task (zuno.limits.max_steps); 0 = not declared.
+	MaxSteps int
+	Tasks    []Task
 	// Unmapped lists OKF content with no UnifAI equivalent, reported in the CR status instead of being dropped.
 	Unmapped []string
 }
@@ -56,8 +58,41 @@ type Task struct {
 	PromptExamples   []string
 	// Skills are the instruction bodies of the task's skills (OKF v0.3, ADR-0579), in declaration order.
 	Skills []Skill
-	// Platform-enforced v0.3 settings, reported as unmapped.
+	// Platform-enforced v0.3 settings, reported as unmapped (except limits.max_steps).
 	Models, Limits map[string]any
+	// MaxSteps is the task's own zuno.limits.max_steps (0 = the agent's).
+	MaxSteps int
+}
+
+// Steps is the round bound of the task: its own max_steps, else the agent's (0 = none declared).
+func (b *Bundle) Steps(t Task) int {
+	if t.MaxSteps > 0 {
+		return t.MaxSteps
+	}
+	return b.MaxSteps
+}
+
+// maxSteps reads limits.max_steps: absent = 0, else a whole number of at least 1.
+func maxSteps(limits map[string]any, where string) (int, error) {
+	v, ok := limits["max_steps"]
+	if !ok {
+		return 0, nil
+	}
+	f, ok := v.(float64)
+	if !ok || f < 1 || f != float64(int(f)) {
+		return 0, fmt.Errorf("%s: zuno.limits.max_steps must be a whole number of at least 1, got %v", where, v)
+	}
+	return int(f), nil
+}
+
+// platformLimits are the limits the platform enforces itself: all but max_steps, which UnifAI applies.
+func platformLimits(limits map[string]any) bool {
+	for k := range limits {
+		if k != "max_steps" {
+			return true
+		}
+	}
+	return false
 }
 
 // Skill is one `skills/<name>.md` (or `skills/corp/<name>.md` for a corp skill) a task declares.
@@ -177,6 +212,9 @@ func Parse(files Files) (*Bundle, error) {
 		Maintainer: strings.TrimSpace(af.Provenance.Maintainer), UI: stringValues(af.Zuno.UI),
 		DelegationTargets: af.Zuno.Delegation.Targets,
 	}
+	if b.MaxSteps, err = maxSteps(af.Zuno.Limits, "agent.okf.md"); err != nil {
+		return nil, err
+	}
 	if len(af.Zuno.Tasks) == 0 {
 		return nil, fmt.Errorf("agent.okf.md: zuno.tasks is empty")
 	}
@@ -211,12 +249,12 @@ func Parse(files Files) (*Bundle, error) {
 		field string
 		v     map[string]any
 	}{{"zuno.models", af.Zuno.Models}, {"zuno.guardrails", af.Zuno.Guardrails}, {"zuno.limits", af.Zuno.Limits}} {
-		if len(kv.v) > 0 {
+		if len(kv.v) > 0 && (kv.field != "zuno.limits" || platformLimits(kv.v)) {
 			b.Unmapped = append(b.Unmapped, kv.field+": enforced platform-side (ai-gateway, quotas), not by UnifAI")
 		}
 	}
 	for _, t := range b.Tasks {
-		if len(t.Models) > 0 || len(t.Limits) > 0 {
+		if len(t.Models) > 0 || platformLimits(t.Limits) {
 			b.Unmapped = append(b.Unmapped, fmt.Sprintf("tasks/%s models/limits: enforced platform-side (ai-gateway, quotas), not by UnifAI", t.Name))
 		}
 		if len(t.AllowedTools) > 0 {
@@ -251,6 +289,9 @@ func parseTask(files Files, name string) (*Task, error) {
 		AllowedTools: tf.Zuno.AllowedTools, AllowedKnowledge: tf.Zuno.AllowedKnowledge,
 		LiveReadTool: tf.Zuno.LiveReadTool, PromptExamples: tf.Zuno.PromptExamples,
 		Models: tf.Zuno.Models, Limits: tf.Zuno.Limits,
+	}
+	if t.MaxSteps, err = maxSteps(tf.Zuno.Limits, p); err != nil {
+		return nil, err
 	}
 	for _, ref := range tf.Zuno.Skills {
 		sk, tools, knowledge, err := parseSkill(files, ref)

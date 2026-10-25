@@ -257,14 +257,14 @@
               "minLength": 1
             },
             "color": {
-              "description": "Hint for the tile's accent color. A CSS color keyword or #rrggbb hex value.",
+              "description": "Hint for the tile's accent color. A #rrggbb hex value or a CSS color keyword of 3 to 30 letters; the same shape unifai-operator checks before it emits the agent's display block (WP-167).",
               "type": "string",
-              "pattern": "^(#[0-9a-fA-F]{6}|[a-zA-Z]+)$"
+              "pattern": "^(#[0-9a-fA-F]{6}|[a-zA-Z]{3,30})$"
             },
             "icon": {
-              "description": "Hint for the tile's icon: a short keyword the frontend maps to a PatternFly/pf-icon glyph (e.g. \"code\", \"currency\", \"drafting-compass\", \"handshake\", \"calculator\"). Not a URL or file path.",
+              "description": "Hint for the tile's icon: a short keyword the frontend maps to a PatternFly/pf-icon glyph (e.g. \"code\", \"currency\", \"drafting-compass\", \"handshake\", \"calculator\"). Not a URL or file path. Lower-case letters, digits and hyphens, starting with a letter or digit, at most 40 characters; the same shape unifai-operator checks before it emits the agent's display block (WP-167).",
               "type": "string",
-              "minLength": 1
+              "pattern": "^[a-z0-9][a-z0-9-]{0,39}$"
             }
           }
         },
@@ -328,6 +328,11 @@
             },
             "max_concurrent_requests": {
               "description": "Concurrent requests one user may have open on this agent.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_steps": {
+              "description": "Maximum reasoning/tool rounds of one agent turn; the agent then gives a final answer from what it gathered. At most the corp ceiling max_steps (policies/limits/limits-policy.yaml). A task-level value overrides the agent's. Absent: the runtime default (unifai-operator: 15).",
               "type": "integer",
               "minimum": 1
             },

@@ -58,6 +58,8 @@ const (
 	// that keeps answering the same thing then ends in a final answer instead of a timeout. spec.agentConfig.max_rounds
 	// overrides it.
 	defaultMaxRounds = 15
+	// defaultMaxStepsCeiling bounds a bundle's zuno.limits.max_steps when spec.ceilings.maxSteps is unset.
+	defaultMaxStepsCeiling = 50
 )
 
 // Conditions of the ADR-0564 pipeline, in order.
@@ -222,7 +224,7 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 		cond(ConditionWithinCeilings, false, "Widening", err.Error())
 		return permanent("bundle exceeds spec.ceilings, nothing emitted: %v", err)
 	}
-	cond(ConditionWithinCeilings, true, "WithinCeilings", "declared tools, knowledge and classification are within spec.ceilings")
+	cond(ConditionWithinCeilings, true, "WithinCeilings", "declared tools, knowledge, classification and max_steps are within spec.ceilings")
 
 	// 5. Emit the owned children.
 	desired, tasks, err := renderBundle(cr, b)
@@ -284,6 +286,15 @@ func checkCeilings(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle) error {
 		problems = append(problems, "ceilings.minClassification: "+err.Error())
 	} else if b.Classification < floor {
 		problems = append(problems, fmt.Sprintf("classification %s is below minClassification %s", b.Classification, floor))
+	}
+	ceiling := int(cr.Spec.Ceilings.MaxSteps)
+	if ceiling == 0 {
+		ceiling = defaultMaxStepsCeiling
+	}
+	for _, t := range b.Tasks {
+		if steps := b.Steps(t); steps > ceiling {
+			problems = append(problems, fmt.Sprintf("task %s: max_steps %d is above maxSteps %d", t.Name, steps, ceiling))
+		}
 	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))
@@ -375,7 +386,11 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle) ([]client.Objec
 		if _, ok := agent["strategy_type"]; !ok {
 			agent["strategy_type"] = "react"
 		}
-		if _, ok := agent["max_rounds"]; !ok {
+		// The bundle's own bound (task, else agent) wins over spec.agentConfig.max_rounds, which is the default;
+		// checkCeilings already refused a bound above spec.ceilings.maxSteps.
+		if steps := b.Steps(t); steps > 0 {
+			agent["max_rounds"] = steps
+		} else if _, ok := agent["max_rounds"]; !ok {
 			agent["max_rounds"] = defaultMaxRounds
 		}
 		if len(t.AllowedTools) > 0 && (cr.Spec.MCP != nil || len(cr.Spec.Providers) > 0) {

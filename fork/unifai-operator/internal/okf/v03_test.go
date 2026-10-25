@@ -119,3 +119,46 @@ func TestParseDelegationTargets(t *testing.T) {
 		t.Fatalf("delegation targets: %v", b.DelegationTargets)
 	}
 }
+
+// zuno.limits.max_steps (agent and task) is applied by UnifAI: parsed, the task value wins, and it is no longer
+// reported as a platform-side limit.
+func TestParseMaxSteps(t *testing.T) {
+	files := v03Tekos(t)
+	files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "    max_tokens: 2048\n", "    max_tokens: 2048\n    max_steps: 12\n", 1))
+	files["tasks/write-code.md"] = []byte(strings.Replace(string(files["tasks/write-code.md"]), "zuno:\n", "zuno:\n  limits:\n    max_steps: 30\n", 1))
+	if err := ValidateSchemas(files); err != nil {
+		t.Fatalf("max_steps is part of the v0.3 schemas (zuno-demo-agents 2e4c62e): %v", err)
+	}
+	b, err := Parse(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.MaxSteps != 12 {
+		t.Errorf("agent max_steps = %d, want 12", b.MaxSteps)
+	}
+	for _, task := range b.Tasks {
+		want := 12
+		if task.Name == "write-code" {
+			want = 30
+		}
+		if got := b.Steps(task); got != want {
+			t.Errorf("task %s steps = %d, want %d", task.Name, got, want)
+		}
+	}
+	for _, u := range b.Unmapped {
+		if strings.HasPrefix(u, "tasks/write-code models/limits") {
+			t.Errorf("a task whose only limit is max_steps is reported unmapped: %s", u)
+		}
+	}
+	if !strings.Contains(strings.Join(b.Unmapped, "\n"), "zuno.limits") {
+		t.Error("the agent's other limits (max_tokens) are still enforced platform-side and reported")
+	}
+
+	for _, bad := range []string{"0", "2.5", "\"ten\""} {
+		f := v03Tekos(t)
+		f["agent.okf.md"] = []byte(strings.Replace(string(f["agent.okf.md"]), "    max_tokens: 2048\n", "    max_tokens: 2048\n    max_steps: "+bad+"\n", 1))
+		if _, err := Parse(f); err == nil || !strings.Contains(err.Error(), "max_steps") {
+			t.Errorf("max_steps %s accepted (err %v)", bad, err)
+		}
+	}
+}

@@ -480,6 +480,35 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(strings.Index(msg, "SKILL-TWO")).To(BeNumerically(">", strings.Index(msg, "SKILL-ONE")))
 	})
 
+	v03WithSteps := func(agentSteps, taskSteps string) okf.Files {
+		files := okf.Files{}
+		for k, v := range tekosFiles() {
+			files[k] = []byte(strings.ReplaceAll(string(v), "okf_version: v0.2", "okf_version: v0.3"))
+		}
+		files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "zuno:\n", "zuno:\n  limits:\n    max_steps: "+agentSteps+"\n", 1))
+		files["tasks/write-code.md"] = []byte(strings.Replace(string(files["tasks/write-code.md"]), "zuno:\n", "zuno:\n  limits:\n    max_steps: "+taskSteps+"\n", 1))
+		return files
+	}
+
+	It("applies zuno.limits.max_steps as the agents' max_rounds, the task value over the agent's", func() {
+		ns := setup("bundle-maxsteps")
+		files := v03WithSteps("8", "25")
+		Expect(k8sClient.Create(ctx, newBundle(ns, fakeBundles.put(files, sign(key, files)), nil))).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"), func() string { return status(ns)().Message })
+		for name, want := range map[string]int{"tekos-answer-technical-question": 8, "tekos-write-code": 25} {
+			var agent unifaiv1.UnifaiAgent
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &agent)).To(Succeed())
+			cfg := map[string]any{}
+			Expect(json.Unmarshal(agent.Spec.Config.Raw, &cfg)).To(Succeed())
+			Expect(cfg["max_rounds"]).To(BeNumerically("==", want), name)
+		}
+		Expect(strings.Join(status(ns)().Unmapped, "\n")).NotTo(ContainSubstring("zuno.limits"), "max_steps is mapped, not platform-side")
+	})
+
+	It("refuses a bundle whose max_steps is above the ceilings", func() {
+		refused(setup("bundle-maxsteps-ceiling"), func(*unifaiv1.UnifaiAgentBundle) {}, v03WithSteps("8", "51"), ConditionWithinCeilings, "Widening")
+	})
+
 	It("refuses a bundle declaring delegation targets until A2A delegation ships", func() {
 		files := okf.Files{}
 		for k, v := range tekosFiles() {

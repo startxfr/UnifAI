@@ -61,6 +61,12 @@ type BundleCeilings struct {
 	// level than this would allow model classes the CR's reviewers did not accept.
 	// +kubebuilder:validation:Enum=C1;C2;C3
 	MinClassification string `json:"minClassification"`
+	// Most reasoning/tool rounds a task may declare (zuno.limits.max_steps); unset = 50. A bundle declaring more is
+	// refused (WithinCeilings=False).
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=1000
+	// +optional
+	MaxSteps int32 `json:"maxSteps,omitempty"`
 }
 
 // BundleLLM is the template of the LLM emitted for every task: the bundle adds the Zuno headers
@@ -129,7 +135,8 @@ type UnifaiAgentBundleSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')",message="retriever is an UnifaiRetriever name (lower-case DNS label)"
 	// +optional
 	Retriever string `json:"retriever,omitempty"`
-	// Extra custom_agent_node settings merged under every emitted agent (e.g. hitl_mode, or max_rounds: 15 by default).
+	// Extra custom_agent_node settings merged under every emitted agent (e.g. hitl_mode). max_rounds here is the
+	// default round bound (15 when unset); a bundle's zuno.limits.max_steps replaces it, within ceilings.maxSteps.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Type=object
 	// +optional
