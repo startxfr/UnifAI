@@ -509,14 +509,104 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		refused(setup("bundle-maxsteps-ceiling"), func(*unifaiv1.UnifaiAgentBundle) {}, v03WithSteps("8", "51"), ConditionWithinCeilings, "Widening")
 	})
 
-	It("refuses a bundle declaring delegation targets until A2A delegation ships", func() {
+	v03Files := func(name, level, delegation string) okf.Files {
 		files := okf.Files{}
 		for k, v := range tekosFiles() {
 			files[k] = []byte(strings.ReplaceAll(string(v), "okf_version: v0.2", "okf_version: v0.3"))
 		}
-		files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "zuno:\n",
-			"zuno:\n  delegation:\n    targets:\n      - {agent: arkos, task: review-architecture}\n", 1))
-		refused(setup("bundle-delegation"), func(*unifaiv1.UnifaiAgentBundle) {}, files, ConditionValid, "DelegationUnsupported")
+		agent := strings.Replace(string(files["agent.okf.md"]), "  name: tekos\n", "  name: "+name+"\n", 1)
+		agent = strings.Replace(agent, "preferred_classification: C1", "preferred_classification: "+level, 1)
+		if delegation != "" {
+			agent = strings.Replace(agent, "zuno:\n", "zuno:\n  delegation:\n    targets:\n"+delegation, 1)
+		}
+		files["agent.okf.md"] = []byte(agent)
+		return files
+	}
+	toArkos := "      - {agent: arkos, task: answer-technical-question}\n"
+	delegating := func(b *unifaiv1.UnifaiAgentBundle) {
+		b.Spec.Delegation = &unifaiv1.BundleDelegation{GatewayURL: "http://a2a-gateway.zuno-ai-run.svc:8080"}
+		b.Spec.Ceilings.DelegationTargets = []string{"arkos/answer-technical-question"}
+	}
+	// arkos is served next to tekos: a C3 agent whose primary task is answer-technical-question.
+	serveArkos := func(ns string) {
+		files := v03Files("arkos", "C3", "")
+		a := newBundle(ns, fakeBundles.put(files, sign(key, files)), nil)
+		a.Name = "arkos"
+		a.Spec.Ceilings.MinClassification = "C3"
+		Expect(k8sClient.Create(ctx, a)).To(Succeed())
+		Eventually(func() string {
+			var got unifaiv1.UnifaiAgentBundle
+			_ = k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "arkos"}, &got)
+			return got.Status.Phase + "/" + got.Status.PrimaryTask
+		}, timeout, interval).Should(Equal("Ready/answer-technical-question"))
+	}
+
+	It("refuses a bundle declaring delegation targets when spec.delegation is unset", func() {
+		refused(setup("bundle-delegation"), func(*unifaiv1.UnifaiAgentBundle) {}, v03Files("tekos", "C1", toArkos), ConditionValid, "DelegationUnsupported")
+	})
+
+	It("refuses a delegation target outside spec.ceilings.delegationTargets", func() {
+		refused(setup("bundle-delegation-ceiling"), func(b *unifaiv1.UnifaiAgentBundle) {
+			delegating(b)
+			b.Spec.Ceilings.DelegationTargets = nil
+		}, v03Files("tekos", "C1", toArkos), ConditionWithinCeilings, "Widening")
+	})
+
+	It("refuses a target task that is not the target's primary task", func() {
+		ns := setup("bundle-delegation-primary")
+		serveArkos(ns)
+		files := v03Files("tekos", "C1", "      - {agent: arkos, task: write-code}\n")
+		b := newBundle(ns, fakeBundles.put(files, sign(key, files)), nil)
+		delegating(b)
+		b.Spec.Ceilings.DelegationTargets = []string{"arkos/write-code"}
+		Expect(k8sClient.Create(ctx, b)).To(Succeed())
+		Eventually(func() string {
+			c := meta.FindStatusCondition(status(ns)().Conditions, ConditionValid)
+			if c == nil || c.Status != metav1.ConditionFalse {
+				return ""
+			}
+			return c.Reason + ": " + c.Message
+		}, timeout, interval).Should(And(HavePrefix("DelegationTargetUnresolved"), ContainSubstring("only the primary task (answer-technical-question)")))
+		var agents unifaiv1.UnifaiAgentList
+		Expect(k8sClient.List(ctx, &agents, client.InNamespace(ns), client.MatchingLabels{unifaiv1.AgentBundleLabel: "tekos"})).To(Succeed())
+		Expect(agents.Items).To(BeEmpty(), "nothing is emitted for a refused delegation")
+	})
+
+	It("emits a delegating task as an orchestrator over its agent and the target's A2A node, raised to the target's level", func() {
+		ns := setup("bundle-delegation-ok")
+		serveArkos(ns)
+		files := v03Files("tekos", "C1", toArkos)
+		b := newBundle(ns, fakeBundles.put(files, sign(key, files)), nil)
+		delegating(b)
+		Expect(k8sClient.Create(ctx, b)).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"), func() string { return status(ns)().Message })
+		st := status(ns)()
+		for _, t := range st.Tasks {
+			Expect(t.Classification).To(Equal("C3"), "every task of a delegating agent runs at the target's level: "+t.Name)
+		}
+		Expect(st.Children).To(ContainElement("UnifaiAgent/tekos-answer-technical-question-orchestrator"))
+
+		var llm unifaiv1.UnifaiLLM
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos-answer-technical-question"}, &llm)).To(Succeed())
+		lcfg := map[string]any{}
+		Expect(json.Unmarshal(llm.Spec.Config.Raw, &lcfg)).To(Succeed())
+		Expect(lcfg["default_headers"]).To(HaveKeyWithValue("X-Zuno-Data-Classification", "C3"))
+
+		var orch unifaiv1.UnifaiAgent
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos-answer-technical-question-orchestrator"}, &orch)).To(Succeed())
+		Expect(orch.Spec.Type).To(Equal("orchestrator_node"))
+		ocfg := map[string]any{}
+		Expect(json.Unmarshal(orch.Spec.Config.Raw, &ocfg)).To(Succeed())
+		Expect(ocfg["max_rounds"]).To(BeNumerically("==", 5))
+		Expect(ocfg["system_message"]).To(ContainSubstring("arkos/answer-technical-question"))
+
+		var wf unifaiv1.UnifaiWorkflow
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos"}, &wf)).To(Succeed())
+		bp := string(wf.Spec.Blueprint.Raw)
+		Expect(bp).To(ContainSubstring(`"base_url":"http://a2a-gateway.zuno-ai-run.svc:8080/agents/arkos"`))
+		Expect(bp).To(ContainSubstring(`"auth_method":"forward_user_token"`))
+		Expect(bp).To(ContainSubstring(`"X-Zuno-Delegated-By":"tekos:answer-technical-question"`))
+		Expect(bp).To(ContainSubstring(`"X-Zuno-Delegation-Depth":"1"`))
 	})
 
 	It("refuses a bundle whose skill declares a tool outside the ceilings", func() {

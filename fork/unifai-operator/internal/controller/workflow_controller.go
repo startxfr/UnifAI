@@ -71,7 +71,16 @@ func (r *WorkflowReconciler) apply(ctx context.Context, api *unifai.Client, obj 
 		return err
 	}
 	if hasA2ANode(resolved) {
-		return a2aDisabled("the blueprint has an " + a2aNodeType + " node")
+		// Only the delegating workflow of a bundle that may delegate holds A2A nodes, and only towards its gateway.
+		prefix, ok := bundleMayDelegate(ctx, r.Client, obj)
+		if !ok {
+			return a2aDisabled("the blueprint has an " + a2aNodeType + " node")
+		}
+		for _, u := range a2aBaseURLs(resolved) {
+			if !strings.HasPrefix(u, prefix) || strings.Contains(strings.TrimPrefix(u, prefix), "/") {
+				return permanent("the A2A node %q is not an agent of the bundle's a2a-gateway %s", u, prefix)
+			}
+		}
 	}
 	h := hash(resolved)
 	if obj.Spec.Display != nil {

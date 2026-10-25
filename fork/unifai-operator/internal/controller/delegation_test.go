@@ -1,0 +1,68 @@
+package controller
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	unifaiv1 "github.com/startxfr/unifai-operator/api/v1alpha1"
+)
+
+func TestBundleMayDelegate(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = unifaiv1.AddToScheme(scheme)
+	cr := &unifaiv1.UnifaiAgentBundle{ObjectMeta: metav1.ObjectMeta{Name: "tekos", Namespace: "ns", UID: "u1"},
+		Spec:   unifaiv1.UnifaiAgentBundleSpec{Delegation: &unifaiv1.BundleDelegation{GatewayURL: "http://gw.zuno-ai-run.svc:8080/"}},
+		Status: unifaiv1.UnifaiAgentBundleStatus{Verified: true}}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
+	owned := func(uid string) *unifaiv1.UnifaiWorkflow {
+		return &unifaiv1.UnifaiWorkflow{ObjectMeta: metav1.ObjectMeta{Name: "tekos", Namespace: "ns", OwnerReferences: []metav1.OwnerReference{
+			{Kind: "UnifaiAgentBundle", Name: "tekos", UID: "u1", Controller: ptr.To(true)}}}}
+	}
+	ctx := context.Background()
+	if prefix, ok := bundleMayDelegate(ctx, c, owned("u1")); !ok || prefix != "http://gw.zuno-ai-run.svc:8080/agents/" {
+		t.Fatalf("owned by a delegating bundle: %q %v", prefix, ok)
+	}
+	forged := owned("u1")
+	forged.OwnerReferences[0].UID = "other"
+	if _, ok := bundleMayDelegate(ctx, c, forged); ok {
+		t.Error("an owner reference with another UID is accepted")
+	}
+	if _, ok := bundleMayDelegate(ctx, c, &unifaiv1.UnifaiWorkflow{ObjectMeta: metav1.ObjectMeta{Name: "free", Namespace: "ns"}}); ok {
+		t.Error("a free-form workflow may delegate")
+	}
+	cr.Spec.Delegation = nil
+	c = fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
+	if _, ok := bundleMayDelegate(ctx, c, owned("u1")); ok {
+		t.Error("a bundle without spec.delegation may delegate")
+	}
+}
+
+func TestA2ABaseURLs(t *testing.T) {
+	bp := delegatingBlueprint("c", "orch", "agent", a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "tekos", "answer",
+		[]delegationTarget{{Agent: "arkos", Task: "draft"}, {Agent: "comage", Task: "check"}}))
+	var v any = map[string]any(bp)
+	got := a2aBaseURLs(normalise(t, v))
+	if len(got) != 2 || got[0] != "http://gw:8080/agents/arkos" || got[1] != "http://gw:8080/agents/comage" {
+		t.Fatalf("base urls %v", got)
+	}
+}
+
+// normalise round-trips a value through JSON, as the controller sees a resolved blueprint.
+func normalise(t *testing.T, v any) any {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out any
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}

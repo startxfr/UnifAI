@@ -67,6 +67,26 @@ type BundleCeilings struct {
 	// +kubebuilder:validation:Maximum=1000
 	// +optional
 	MaxSteps int32 `json:"maxSteps,omitempty"`
+	// A2A targets the bundle may delegate to, as <agent>/<task> (zuno.delegation.targets). Empty = none.
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:items:Pattern=`^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$`
+	// +optional
+	DelegationTargets []string `json:"delegationTargets,omitempty"`
+}
+
+// BundleDelegation lets the bundle's tasks delegate over A2A, read-only, through the zuno a2a-gateway (ADR-0585).
+// Each task is then emitted as an orchestrator over its own agent and one A2A node per declared target, runs at
+// the highest classification of the task and its targets, and forwards the user's token to the gateway.
+type BundleDelegation struct {
+	// Base URL of the a2a-gateway; a target agent is called at <gatewayURL>/agents/<agent>.
+	// +kubebuilder:validation:Pattern=`^https?://[^/?#@]+$`
+	GatewayURL string `json:"gatewayURL"`
+	// Rounds of a delegating task's orchestrator (each target is called at most once per turn).
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=50
+	// +kubebuilder:default=5
+	// +optional
+	MaxRounds int32 `json:"maxRounds,omitempty"`
 }
 
 // BundleLLM is the template of the LLM emitted for every task: the bundle adds the Zuno headers
@@ -141,6 +161,10 @@ type UnifaiAgentBundleSpec struct {
 	// +kubebuilder:validation:Type=object
 	// +optional
 	AgentConfig *runtime.RawExtension `json:"agentConfig,omitempty"`
+	// Delegation over A2A through the zuno a2a-gateway. Unset = a bundle declaring zuno.delegation.targets is refused
+	// (DelegationUnsupported).
+	// +optional
+	Delegation *BundleDelegation `json:"delegation,omitempty"`
 	// Per-task classification override: C1, C2 or C3. It may only raise the bundle's level (ADR-0565).
 	// +kubebuilder:validation:XValidation:rule="self.all(k, self[k] in ['C1', 'C2', 'C3'])",message="classification overrides are C1, C2 or C3"
 	// +kubebuilder:validation:MaxProperties=256
@@ -183,6 +207,9 @@ type UnifaiAgentBundleStatus struct {
 	// zuno.name of the bundle.
 	// +optional
 	Agent string `json:"agent,omitempty"`
+	// zuno.primary_task of the bundle (the task an A2A call reaches when it names none).
+	// +optional
+	PrimaryTask string `json:"primaryTask,omitempty"`
 	// +optional
 	Tasks []BundleTaskStatus `json:"tasks,omitempty"`
 	// Emitted objects, as <Kind>/<name>.

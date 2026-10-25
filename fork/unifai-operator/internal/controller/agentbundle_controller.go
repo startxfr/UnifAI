@@ -195,10 +195,16 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 		cond(ConditionEmitted, false, "PlaceholderNotServed", "placeholder agent: not served (set spec.servePlaceholder to serve it)")
 		return &notServedError{msg: "placeholder agent: not served (set spec.servePlaceholder to serve it)"}
 	}
-	if len(b.DelegationTargets) > 0 {
-		// zuno WP-173: no A2A node is emitted before the delegation contract ships (identity, limits, approval).
-		msg := fmt.Sprintf("zuno.delegation.targets %v: A2A delegation is not supported by this operator yet, nothing emitted",
+	if len(b.DelegationTargets) > 0 && cr.Spec.Delegation == nil {
+		// zuno WP-173: A2A nodes are emitted only towards the gateway the CR names (reviewed in Git with it).
+		msg := fmt.Sprintf("zuno.delegation.targets %v: set spec.delegation (the zuno a2a-gateway) to delegate, nothing emitted",
 			b.DelegationTargets)
+		cond(ConditionValid, false, "DelegationUnsupported", msg)
+		return permanent("%s", msg)
+	}
+	if len(b.DelegationTargets) > 0 && b.GraphShape != okf.ShapeRetrieveReasonRespond {
+		msg := fmt.Sprintf("zuno.delegation.targets: delegation is emitted for graph shape %s only, not %s",
+			okf.ShapeRetrieveReasonRespond, b.GraphShape)
 		cond(ConditionValid, false, "DelegationUnsupported", msg)
 		return permanent("%s", msg)
 	}
@@ -224,10 +230,18 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 		cond(ConditionWithinCeilings, false, "Widening", err.Error())
 		return permanent("bundle exceeds spec.ceilings, nothing emitted: %v", err)
 	}
-	cond(ConditionWithinCeilings, true, "WithinCeilings", "declared tools, knowledge, classification and max_steps are within spec.ceilings")
+	cond(ConditionWithinCeilings, true, "WithinCeilings", "declared tools, knowledge, classification, max_steps and delegation targets are within spec.ceilings")
 
-	// 5. Emit the owned children.
-	desired, tasks, err := renderBundle(cr, b)
+	// 5. Resolve the delegation targets: Verified bundles of the namespace, primary task only (the gateway reads no
+	// task selector yet), each raising the delegating tasks to its classification (ADR-0401, monotone).
+	targets, err := r.resolveTargets(ctx, cr, b)
+	if err != nil {
+		cond(ConditionValid, false, "DelegationTargetUnresolved", err.Error())
+		return err
+	}
+
+	// 6. Emit the owned children.
+	desired, tasks, err := renderBundle(cr, b, targets...)
 	if err != nil {
 		return err
 	}
@@ -244,7 +258,7 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 	if len(b.AccessGroups) > 0 {
 		unmapped = append([]string{fmt.Sprintf("zuno.access.groups %v: enforced by the gateways only (spec.entitlement GatewayOnly)", b.AccessGroups)}, unmapped...)
 	}
-	st.Agent, st.Tasks, st.Unmapped = b.Name, tasks, unmapped
+	st.Agent, st.PrimaryTask, st.Tasks, st.Unmapped = b.Name, b.PrimaryTask, tasks, unmapped
 	st.Display = bundleDisplay(b)
 	st.Children = childNames(desired)
 	st.Message = fmt.Sprintf("%d tasks, %d objects emitted", len(tasks), len(desired))
@@ -287,6 +301,9 @@ func checkCeilings(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle) error {
 	} else if b.Classification < floor {
 		problems = append(problems, fmt.Sprintf("classification %s is below minClassification %s", b.Classification, floor))
 	}
+	if extra := delegationOutsideCeilings(cr, b); len(extra) > 0 {
+		problems = append(problems, fmt.Sprintf("delegation targets %v are not in delegationTargets", extra))
+	}
 	ceiling := int(cr.Spec.Ceilings.MaxSteps)
 	if ceiling == 0 {
 		ceiling = defaultMaxStepsCeiling
@@ -319,7 +336,7 @@ func outside(values, allowed []string) []string {
 // renderBundle maps the bundle onto UnifAI objects: one condition, and per task an LLM carrying the Zuno
 // headers, a custom agent and a linear workflow (question -> agent -> answer). The primary task's workflow
 // takes the bundle's own name.
-func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle) ([]client.Object, []unifaiv1.BundleTaskStatus, error) {
+func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...delegationTarget) ([]client.Object, []unifaiv1.BundleTaskStatus, error) {
 	common := unifaiv1.CommonSpec{Owner: cr.Spec.Owner, TeamID: cr.Spec.TeamID, TeamRef: cr.Spec.TeamRef}
 	objs := make([]client.Object, 0, 2+4*len(b.Tasks))
 	if cr.Spec.GroupTeam {
@@ -359,6 +376,11 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle) ([]client.Objec
 		level, err := okf.Effective(b.Classification, cr.Spec.ClassificationOverrides[t.Name])
 		if err != nil {
 			return nil, nil, permanent("task %s: %v", t.Name, err)
+		}
+		// A delegating task may receive its targets' answers: it runs at the highest of their levels from its first
+		// call (ADR-0401/0403 monotone classification, applied statically).
+		for _, tg := range targets {
+			level = max(level, tg.Level)
 		}
 		name := childName(cr.Name, t.Name)
 		wfName := name
@@ -452,6 +474,16 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle) ([]client.Objec
 			objs = append(objs, &unifaiv1.UnifaiAgent{ObjectMeta: childMeta(cr, name), Spec: unifaiv1.UnifaiAgentSpec{
 				CommonSpec: common, Type: "custom_agent_node", ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(agent)}}})
 		}
+		var blueprint map[string]any
+		if len(targets) > 0 {
+			orch := name + "-orchestrator"
+			objs = append(objs, &unifaiv1.UnifaiAgent{ObjectMeta: childMeta(cr, orch), Spec: unifaiv1.UnifaiAgentSpec{
+				CommonSpec: common, Type: "orchestrator_node",
+				ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(orchestratorConfig(cr, b, t, name, targets))}}})
+			blueprint = delegatingBlueprint(cond, orch, name, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, targets))
+		} else {
+			blueprint = stagedBlueprint(cond, stages)
+		}
 
 		title := t.Title
 		if title == "" {
@@ -461,7 +493,7 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle) ([]client.Objec
 			CommonSpec:  common,
 			Display:     bundleDisplay(b),
 			Description: fmt.Sprintf("%s - %s (OKF bundle %s, %s)", b.Title, title, b.Name, level),
-			Blueprint:   *rawJSON(stagedBlueprint(cond, stages)),
+			Blueprint:   *rawJSON(blueprint),
 		}})
 		tasks = append(tasks, unifaiv1.BundleTaskStatus{Name: t.Name, Classification: level.String(), Workflow: wfName})
 	}
