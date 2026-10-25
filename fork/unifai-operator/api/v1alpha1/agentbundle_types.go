@@ -129,7 +129,7 @@ type UnifaiAgentBundleSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')",message="retriever is an UnifaiRetriever name (lower-case DNS label)"
 	// +optional
 	Retriever string `json:"retriever,omitempty"`
-	// Extra custom_agent_node settings merged under every emitted agent (e.g. max_rounds, hitl_mode).
+	// Extra custom_agent_node settings merged under every emitted agent (e.g. hitl_mode, or max_rounds: 15 by default).
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Type=object
 	// +optional

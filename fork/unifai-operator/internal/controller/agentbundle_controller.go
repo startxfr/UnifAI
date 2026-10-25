@@ -53,6 +53,11 @@ const (
 	headerTask           = "X-Zuno-Task"
 	headerClassification = "X-Zuno-Data-Classification"
 	headerRunID          = "X-Zuno-Run-Id"
+
+	// defaultMaxRounds bounds an emitted agent's reasoning/tool loop (custom_agent_node's own default is 100): a tool
+	// that keeps answering the same thing then ends in a final answer instead of a timeout. spec.agentConfig.max_rounds
+	// overrides it.
+	defaultMaxRounds = 15
 )
 
 // Conditions of the ADR-0564 pipeline, in order.
@@ -369,6 +374,9 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle) ([]client.Objec
 		agent["system_message"] = b.SystemMessage(t)
 		if _, ok := agent["strategy_type"]; !ok {
 			agent["strategy_type"] = "react"
+		}
+		if _, ok := agent["max_rounds"]; !ok {
+			agent["max_rounds"] = defaultMaxRounds
 		}
 		if len(t.AllowedTools) > 0 && (cr.Spec.MCP != nil || len(cr.Spec.Providers) > 0) {
 			refs := []any{}

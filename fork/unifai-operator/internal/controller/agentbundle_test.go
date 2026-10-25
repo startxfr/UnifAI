@@ -193,6 +193,7 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(acfg["retriever"]).To(Equal("$ref:retriever/knowledge"))
 		Expect(acfg["system_message"]).To(HavePrefix("You are Tekos"))
 		Expect(acfg).NotTo(HaveKey("retrieve_first"), "retrieve_first is opt-in: an older multiagent image rejects it")
+		Expect(acfg["max_rounds"]).To(BeNumerically("==", defaultMaxRounds), "the tool loop is bounded below custom_agent_node's 100")
 	})
 
 	It("emits a per-task MCP provider carrying the Zuno headers when spec.mcp is set", func() {
