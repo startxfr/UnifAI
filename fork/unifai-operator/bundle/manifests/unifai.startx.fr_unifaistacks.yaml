@@ -477,9 +477,9 @@ spec:
               images:
                 additionalProperties:
                   type: string
-                description: 'Full image overrides by component: mongodb, qdrant,
-                  rabbitmq, redis, redisInsight, temporal, rag, multiagent, backend,
-                  identity, ui, docling, embedding.'
+                description: |-
+                  Full image overrides by component: mongodb, qdrant, rabbitmq, redis, redisInsight, temporal, rag, multiagent, backend, identity, ui, docling, embedding.
+                  A value is repo, repo:tag, repo@sha256:<digest> or repo:tag@sha256:<digest>; a digest pin is deployed as is.
                 maxProperties: 16
                 type: object
                 x-kubernetes-validations:
