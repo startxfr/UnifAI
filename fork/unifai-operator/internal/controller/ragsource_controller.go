@@ -32,7 +32,9 @@ type RAGSourceReconciler struct {
 // +kubebuilder:rbac:groups=unifai.startx.fr,resources=unifairagsources/finalizers,verbs=update
 
 const (
-	minSyncInterval      = 10 * time.Minute
+	minSyncInterval = 10 * time.Minute
+	// How long an empty pipeline status after a sync is queued counts as "not started yet".
+	pendingStatusGrace   = 10 * time.Minute
 	sourceTypeConfluence = "confluence"
 	sourceTypeWeb        = "web"
 )
@@ -236,7 +238,18 @@ func (r *RAGSourceReconciler) refresh(ctx context.Context, api *unifai.Client, o
 		return 0
 	}
 	st.Pages, st.PagesChanged, st.PagesDeleted = count("page_count"), count("pages_changed"), count("pages_deleted")
-	return st.PipelineStatus != "" && st.PipelineStatus != statusDone && st.PipelineStatus != statusFailed, nil
+	return syncRunning(st.PipelineStatus, st.LastSyncTime, r.now()), nil
+}
+
+// syncRunning reports whether the source's pipeline is still running. Right after a sync is queued the RAG service
+// may answer before its worker set a status: an empty status then means "not started yet", not "done" (it read 0
+// pages otherwise, and nothing would read the result again). Past pendingStatusGrace an empty status is taken as
+// final, so a source the RAG service lost does not stay Syncing forever.
+func syncRunning(status string, lastSync *metav1.Time, now time.Time) bool {
+	if status == "" {
+		return lastSync != nil && now.Sub(lastSync.Time) < pendingStatusGrace
+	}
+	return status != statusDone && status != statusFailed
 }
 
 // SetupWithManager registers the controller.

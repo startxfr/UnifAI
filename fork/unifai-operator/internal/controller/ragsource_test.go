@@ -53,6 +53,17 @@ var _ = Describe("UnifaiRAGSource controller", func() {
 		}
 	}
 
+	It("takes an empty pipeline status right after a sync is queued as not started yet", func() {
+		now := time.Now()
+		queued := &metav1.Time{Time: now.Add(-5 * time.Second)}
+		Expect(syncRunning("", queued, now)).To(BeTrue())
+		Expect(syncRunning("", &metav1.Time{Time: now.Add(-pendingStatusGrace)}, now)).To(BeFalse())
+		Expect(syncRunning("", nil, now)).To(BeFalse())
+		Expect(syncRunning("COLLECTING", queued, now)).To(BeTrue())
+		Expect(syncRunning(statusDone, queued, now)).To(BeFalse())
+		Expect(syncRunning(statusFailed, queued, now)).To(BeFalse())
+	})
+
 	It("says when a Confluence source is fetched without the stack credentials", func() {
 		src := newSource("ns", "SX", nil)
 		Expect(anonymousNote("", src)).To(BeEmpty())
