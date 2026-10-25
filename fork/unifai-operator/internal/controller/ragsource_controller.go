@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -60,7 +61,7 @@ func (r *RAGSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 			err := api.Call(ctx, http.MethodDelete, "/api/data_sources/data.source.delete", nil,
 				map[string]any{"pipeline_ids": []string{obj.Status.SourceID}}, nil)
-			if unifai.IsStatus(err, http.StatusNotFound) {
+			if unifai.IsStatus(err, http.StatusNotFound) || sourceAlreadyGone(err) {
 				return nil
 			}
 			return err
@@ -154,6 +155,27 @@ func (r *RAGSourceReconciler) apply(ctx context.Context, api *unifai.Client, obj
 		return max(time.Until(st.NextSyncTime.Time), time.Second), nil
 	}
 	return 0, nil
+}
+
+// sourceAlreadyGone recognises the RAG server's answer for a source it no longer has: it reports the id as
+// failed with "Source not found" in an HTTP 500, which would otherwise keep the finalizer forever.
+func sourceAlreadyGone(err error) bool {
+	var ae *unifai.APIError
+	if !errors.As(err, &ae) || ae.Status != http.StatusInternalServerError {
+		return false
+	}
+	var out struct {
+		Results struct {
+			Succeeded []any `json:"succeeded"`
+			Failed    []struct {
+				Error string `json:"error"`
+			} `json:"failed"`
+		} `json:"results"`
+	}
+	if json.Unmarshal([]byte(ae.Body), &out) != nil || len(out.Results.Failed) != 1 || len(out.Results.Succeeded) != 0 {
+		return false
+	}
+	return out.Results.Failed[0].Error == "Source not found"
 }
 
 // credentialsSite is the host the stack's Confluence credentials belong to ("" when unset or no stack).

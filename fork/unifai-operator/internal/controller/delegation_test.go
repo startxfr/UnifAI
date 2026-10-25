@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	unifaiv1 "github.com/startxfr/unifai-operator/api/v1alpha1"
+	"github.com/startxfr/unifai-operator/internal/unifai"
 )
 
 func TestBundleMayDelegate(t *testing.T) {
@@ -65,4 +66,20 @@ func normalise(t *testing.T, v any) any {
 		t.Fatal(err)
 	}
 	return out
+}
+
+func TestSourceAlreadyGone(t *testing.T) {
+	gone := &unifai.APIError{Status: 500, Body: `{"status":"error","results":{"succeeded":[],"failed":[{"pipeline_id":"x","error":"Source not found"}]}}`}
+	if !sourceAlreadyGone(gone) {
+		t.Error("a stale source id is not taken as deleted")
+	}
+	for _, err := range []error{
+		&unifai.APIError{Status: 500, Body: `{"results":{"succeeded":[],"failed":[{"error":"qdrant unreachable"}]}}`},
+		&unifai.APIError{Status: 502, Body: `{"results":{"failed":[{"error":"Source not found"}]}}`},
+		&unifai.APIError{Status: 500, Body: "Internal Server Error"},
+	} {
+		if sourceAlreadyGone(err) {
+			t.Errorf("%v taken as deleted", err)
+		}
+	}
 }
