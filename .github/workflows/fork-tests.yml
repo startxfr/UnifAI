@@ -1,0 +1,69 @@
+# Fork-only (fork/fork-only-paths): tests that need no cluster, on every change to the code they cover.
+# - outbound-guard: the platform's MCP and A2A clients against real local servers through the guarded transport
+#   (redirects, address pinning, rebinding), which the cluster e2e has no MCP/A2A fixture for;
+# - fork-ci: the signing and provenance scripts of the image and release workflows.
+name: fork-tests
+
+on:
+  push:
+    branches: [devel]
+    paths:
+      - multi-agent/**
+      - global_utils/**
+      - fork/ci/**
+      - .github/workflows/fork-tests.yml
+  pull_request:
+    branches: [devel]
+    paths:
+      - multi-agent/**
+      - global_utils/**
+      - fork/ci/**
+      - .github/workflows/fork-tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  outbound-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            multi-agent/pyproject.toml
+            global_utils/pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./multi-agent[all]" -e "./global_utils[multi-agent]" pytest
+      - name: Guarded MCP and A2A clients against real servers
+        working-directory: multi-agent
+        env:
+          PYTHONPATH: lib:adapters:../global_utils/src:.
+        run: python -m pytest -q tests/integration/external_servers
+      - name: Outbound guard unit tests
+        working-directory: global_utils
+        env:
+          PYTHONPATH: src
+        run: python -m pytest -q tests
+
+  fork-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - name: Signing and provenance scripts
+        run: python -m pytest -q fork/ci

@@ -26,6 +26,11 @@ verifies all of it before deploying
 
 - A push to `devel` that touches an image's code publishes `devel-<sha>` and `devel` (environment `quay-devel`, no approval,
   restricted to the `devel` branch). A `vX.Y.Z` tag publishes `vX.Y.Z` (environment `quay-release`, with its approval).
+- Only what changed is rebuilt: the five application images when their code changed, the operator image when its
+  code or Makefile changed, the operator image alone when only `fork/ci/` (signing scripts) changed, everything when
+  `publish-images.yml` itself changed. A manual run takes a `components` input (e.g. `rag,operator`; empty = all).
+- `.github/workflows/fork-tests.yml` runs, without a cluster, the guarded MCP and A2A clients against real local
+  servers (`multi-agent/tests/integration/external_servers`), the outbound guard unit tests and the `fork/ci` tests.
 - Both environments hold `QUAY_USERNAME` and `QUAY_TOKEN` of a quay robot with write access to `unifai-*`.
 - The identity zuno accepts is the workflow path and ref: do not rename the workflow file or change its triggers without changing
   zuno-demo's `platform/supply-chain/image-identities.yaml`.

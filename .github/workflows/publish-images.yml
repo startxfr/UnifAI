@@ -4,7 +4,7 @@
 # - push to devel (when an image's code changed): quay.io/zuno/unifai-<component>:devel-<sha> and :devel,
 #   environment `quay-devel` (no approval, branch devel only);
 # - tag vX.Y.Z: quay.io/zuno/unifai-<component>:vX.Y.Z, environment `quay-release` (requires an approval);
-# - manual run: from devel or a v* tag only.
+# - manual run: from devel or a v* tag only; the `components` input picks the images (empty = all).
 #
 # The operator image (quay.io/zuno/unifai-operator, fork/unifai-operator/Dockerfile) is built the same way on devel
 # only, when the operator's code or Makefile changed: devel-<sha> is the image the canary deploys by digest, and the
@@ -45,6 +45,11 @@ on:
       - fork/unifai-operator/Dockerfile
       - fork/unifai-operator/Makefile
   workflow_dispatch:
+    inputs:
+      components:
+        description: "Images to build, comma-separated (rag, multiagent, backend, identity, ui, operator); empty = all"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -73,11 +78,14 @@ jobs:
         id: select
         env:
           BEFORE: ${{ github.event.before }}
+          COMPONENTS: ${{ github.event.inputs.components }}
         run: |
           set -euo pipefail
-          common='^(\.github/workflows/publish-images\.yml|fork/ci/)'
-          apps="$common|^(rag|multi-agent|backend|shared-resources/identity|ui|global_utils)/"
-          operator="$common|^fork/unifai-operator/(cmd/|api/|internal/|go\.mod$|go\.sum$|Dockerfile$|Makefile$)"
+          # The workflow holds the build steps of every image: changing it rebuilds them all. fork/ci only holds the
+          # signing and provenance scripts (not image content): the operator image alone (a few minutes) exercises them.
+          workflow='^\.github/workflows/publish-images\.yml$'
+          apps="$workflow|^(rag|multi-agent|backend|shared-resources/identity|ui|global_utils)/"
+          operator="$workflow|^fork/ci/|^fork/unifai-operator/(cmd/|api/|internal/|go\.mod$|go\.sum$|Dockerfile$|Makefile$)"
           if [[ "$GITHUB_EVENT_NAME" == push && -n "$BEFORE" && ! "$BEFORE" =~ ^0+$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
           else
@@ -96,6 +104,19 @@ jobs:
           fi
           if [[ "$GITHUB_REF" == refs/heads/devel ]] && want "$operator"; then
             entries+=('{"component":"operator","dockerfile":"fork/unifai-operator/Dockerfile","context":"fork/unifai-operator","prepare":"","build_args":"--build-arg UNIFAI_VERSION=devel"}')
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && -n "${COMPONENTS// /}" ]]; then
+            # A manual run may name the images to build (operator still on devel only).
+            known="rag multiagent backend identity ui operator"
+            picked=()
+            for c in ${COMPONENTS//,/ }; do
+              [[ " $known " == *" $c "* ]] || { echo "::error::unknown component '$c' (one of: $known)"; exit 1; }
+              for e in "${entries[@]}"; do
+                [[ "$e" == *"\"component\":\"$c\""* ]] && picked+=("$e")
+              done
+            done
+            [ "${#picked[@]}" -gt 0 ] || { echo "::error::none of '$COMPONENTS' can be built from $GITHUB_REF"; exit 1; }
+            entries=("${picked[@]}")
           fi
           matrix="$(IFS=,; echo "[${entries[*]}]")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
