@@ -695,6 +695,11 @@ func (in *RAGSpec) DeepCopyInto(out *RAGSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.MinChunkChars != nil {
+		in, out := &in.MinChunkChars, &out.MinChunkChars
+		*out = new(int32)
+		**out = **in
+	}
 	if in.Confluence != nil {
 		in, out := &in.Confluence, &out.Confluence
 		*out = new(ConfluenceSpec)

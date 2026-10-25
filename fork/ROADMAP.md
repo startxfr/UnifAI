@@ -75,6 +75,7 @@ Order: smallest and least controversial first, each with `make contrib-check` / 
 | R-509 | zuno WP-176: the CI builds and signs the operator image (publish-images.yml, `make ci-image`/`canary-ci`), the CSV references it by digest, the release co-signs operator, bundle and catalog with provenance and SBOM (zuno-demo-a0 wrote the bundle/catalog part); demo333 pins the catalog digest | done (0.1.39) | operator |
 | R-510 | Agent tool loops bounded: bundle agents get `max_rounds` 15 (custom_agent_node defaults to 100), the multi-agent executes an identical tool call at most twice per run (zuno tekos scenario #11); keyless signature manifests past 32 layers read newest first | done (0.1.39, 0.1.40) | operator |
 | R-511 | Per-agent round bound: OKF `zuno.limits.max_steps` (agent and task, task wins; zuno-demo-agents 2e4c62e, corp ceiling 30) becomes the agents' `max_rounds`, over `spec.agentConfig.max_rounds`; `spec.ceilings.maxSteps` (default 50) refuses a bundle above it; embedded v0.3 schemas synced | done (0.1.41; schemas identical to zuno-demo-agents v0.7.0) | operator |
+| R-512 | RAG web ingestion quality (zuno tekos #11): chunks under `spec.rag.minChunkChars` characters (default 200, 0 = off) are not embedded, skipped count logged per sync; the redhat-docs crawl canonicalises docs.redhat.com links to /en/ | doing (0.1.42) | operator |
 
 ## Older TODO carried over from MEMORY.md
 - Slack tokens for the backend sidecar; scale `unifai-worker-a` down when idle.

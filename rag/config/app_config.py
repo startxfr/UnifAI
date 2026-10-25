@@ -58,6 +58,8 @@ class AppConfig(SharedConfig):
     web_request_interval_seconds: float = 0.2
     # Hosts (and their subdomains) a web source may fetch; empty = any host with a public address.
     web_allowed_hosts: list[str] = []
+    # Web chunks with less text than this (whitespace normalised) are not embedded; 0 = keep every chunk.
+    web_min_chunk_chars: int = 200
 
     # Slack Configuration
     default_slack_bot_token: str = ""

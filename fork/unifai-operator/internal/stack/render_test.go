@@ -271,6 +271,16 @@ func TestRAGSettings(t *testing.T) {
 			}
 		}
 	}
+	if strings.Contains(on["unifai-rag-celery"], "WEB_MIN_CHUNK_CHARS") {
+		t.Errorf("WEB_MIN_CHUNK_CHARS rendered without spec.rag.minChunkChars (it would roll existing stacks)")
+	}
+	zero := int32(0)
+	chunks := renderAll(t, testPlan(t, func(s *unifaiv1.UnifaiStackSpec) { s.RAG.MinChunkChars = &zero }))
+	for _, rel := range []string{"unifai-rag-server", "unifai-rag-celery"} {
+		if !regexp.MustCompile(`name: WEB_MIN_CHUNK_CHARS\s+value: "0"`).MatchString(chunks[rel]) {
+			t.Errorf("%s: spec.rag.minChunkChars 0 (keep every chunk) is not rendered", rel)
+		}
+	}
 	// Without confluence.url the credentials keep going to every baseUrl (no change for existing stacks).
 	if strings.Contains(on["unifai-rag-server"], "CONFLUENCE_ALLOWED_HOSTS") {
 		t.Errorf("CONFLUENCE_ALLOWED_HOSTS rendered without spec.rag.confluence.url")

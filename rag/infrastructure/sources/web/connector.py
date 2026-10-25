@@ -72,6 +72,14 @@ class _Links(HTMLParser):
                 self.hrefs.append(href)
 
 
+def canonical_redhat_docs(url: str) -> str:
+    """docs.redhat.com serves a book under /documentation/... and /en/documentation/...: keep the /en/ form only."""
+    parsed = urlparse(url)
+    if parsed.netloc == "docs.redhat.com" and parsed.path.startswith("/documentation/"):
+        return parsed._replace(path="/en" + parsed.path).geturl()
+    return url
+
+
 def discover_links(base_url: str, html: str, crawl: str, limit: int) -> list[str]:
     """In-scope links of a landing page. crawl: redhat-docs | generic | none."""
     if crawl == "none":
@@ -84,6 +92,8 @@ def discover_links(base_url: str, html: str, crawl: str, limit: int) -> list[str
     seen = {base_url}
     for href in parser.hrefs:
         url = urljoin(base_url, href).split("#", 1)[0]
+        if crawl == "redhat-docs":
+            url = canonical_redhat_docs(url)
         parsed = urlparse(url)
         if url in seen or parsed.scheme not in ("http", "https") or parsed.netloc != base.netloc:
             continue

@@ -160,13 +160,13 @@ def _web_page(url, body="<p>text</p>", etag=""):
                            etag=etag, last_modified="")
 
 
-def _handler(manifest, iterated, metadata=None):
+def _handler(manifest, iterated, metadata=None, min_chunk_chars=0):
     connector = MagicMock()
     connector.iter_pages.return_value = iter(iterated)
     sources = MagicMock()
     sources.get_by_id.return_value = SimpleNamespace(type_data={
         "urls": [SEED], "pages": manifest, "metadata": metadata or {"product": "Product", "version": "1.0"}})
-    return WebPipelineHandler(lambda: connector, _Chunker(), _Embedder(), sources)
+    return WebPipelineHandler(lambda: connector, _Chunker(), _Embedder(), sources, min_chunk_chars=min_chunk_chars)
 
 
 def _run(handler):
@@ -210,6 +210,46 @@ def test_point_ids_are_stable_per_page_chunk():
     a, _, _ = _run(_handler({}, [(SEED, _web_page(SEED, "<p>a</p>"))]))
     b, _, _ = _run(_handler({}, [(SEED, _web_page(SEED, "<p>b</p>"))]))
     assert a[0].id == b[0].id
+
+
+class _SplitChunker:
+    """One chunk per paragraph, as navigation fragments end up next to real passages."""
+    def chunk_content(self, docs):
+        return [{"text": part} for part in docs[0]["content"].split("\n\n")]
+
+
+def test_chunks_with_too_little_text_are_not_embedded(caplog):
+    real = "OpenShift network policies select pods by label and allow ingress or egress traffic. " * 3
+    connector = MagicMock()
+    connector.iter_pages.return_value = iter([(SEED, _web_page(SEED, "<p>x</p>"))])
+    sources = MagicMock()
+    sources.get_by_id.return_value = SimpleNamespace(type_data={"urls": [SEED], "pages": {}, "metadata": {}})
+    handler = WebPipelineHandler(lambda: connector, _SplitChunker(), _Embedder(), sources, min_chunk_chars=200)
+    processed = [{"content": f"Back to top    Legal Notice\n\n{real}\n\n   \n\n{real}", "filename": "p.html",
+                  "metadata": {"page_id": "p1", "url": SEED}}]
+    with caplog.at_level("INFO", logger="rag_pipeline"):
+        chunks = handler.chunk_and_embed(CTX, processed)
+    assert [c.metadata["chunk_index"] for c in chunks] == [1, 3], "indexes (and point ids) of kept chunks do not move"
+    assert "2 chunks under 200 characters skipped" in caplog.text
+
+
+def test_zero_keeps_every_chunk():
+    handler = WebPipelineHandler(MagicMock(), _SplitChunker(), _Embedder(), MagicMock(), min_chunk_chars=0)
+    processed = [{"content": "Back to top\n\nLegal", "filename": "p.html", "metadata": {"page_id": "p1"}}]
+    assert len(handler.chunk_and_embed(CTX, processed)) == 2
+
+
+def test_redhat_docs_links_are_canonicalised_to_the_en_form():
+    seed = "https://docs.redhat.com/en/documentation/openshift_container_platform/4.21/html/networking/index"
+    html = ('<a href="/documentation/openshift_container_platform/4.21/html/networking/ovn">no en</a>'
+            '<a href="/en/documentation/openshift_container_platform/4.21/html/networking/ovn">en</a>'
+            '<a href="https://docs.redhat.com/documentation/openshift_container_platform/4.21/html-single/security/index">x</a>')
+    assert discover_links(seed, html, "redhat-docs", 50) == [
+        "https://docs.redhat.com/en/documentation/openshift_container_platform/4.21/html/networking/ovn",
+        "https://docs.redhat.com/en/documentation/openshift_container_platform/4.21/html-single/security/index"]
+    # Other hosts and the generic crawl keep their URLs.
+    assert discover_links("https://docs.example.com/documentation/a/", '<a href="b">b</a>', "generic", 5) == [
+        "https://docs.example.com/documentation/a/b"]
 
 
 # ── registration ─────────────────────────────────────────────────────────────

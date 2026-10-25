@@ -175,6 +175,13 @@ type RAGSpec struct {
 	// every source stays private to its uploader. UnifaiRAGSource objects are published as their owner.
 	// +optional
 	SharedPublishers []string `json:"sharedPublishers,omitempty"`
+	// Web source chunks with fewer characters of text than this (whitespace normalised: navigation fragments, a lone
+	// heading) are not embedded (WEB_MIN_CHUNK_CHARS). Unset = the RAG default, 200; 0 = keep every chunk. Takes
+	// effect on the pages a sync re-ingests (new or changed).
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=10000
+	// +optional
+	MinChunkChars *int32 `json:"minChunkChars,omitempty"`
 	// Credentials of the Confluence source type.
 	// +optional
 	Confluence *ConfluenceSpec `json:"confluence,omitempty"`

@@ -42,8 +42,12 @@ def page_title(html: str, url: str) -> str:
 class WebPipelineHandler(SourcePipelinePort):
 
     def __init__(self, connector_factory: Callable[[], WebConnector], chunker: Any,
-                 embedder: EmbeddingGenerator, data_source_service: DataSourceService) -> None:
+                 embedder: EmbeddingGenerator, data_source_service: DataSourceService,
+                 min_chunk_chars: int = 200) -> None:
         self._connector_factory = connector_factory
+        # Chunks with less real text than this (navigation fragments, a lone heading) are not embedded: they would
+        # take search slots with nothing to say. 0 keeps every chunk.
+        self._min_chunk_chars = max(0, min_chunk_chars)
         self._chunker = chunker
         self._embedder = embedder
         self._sources = data_source_service
@@ -108,15 +112,23 @@ class WebPipelineHandler(SourcePipelinePort):
 
     def chunk_and_embed(self, context: PipelineContext, processed: list[dict[str, Any]]) -> list[VectorChunk]:
         chunk_dicts: list[dict[str, Any]] = []
+        skipped = 0
         for doc in processed:
             pieces = self._chunker.chunk_content([{"content": doc["content"], "filename": doc["filename"]}])
             for i, piece in enumerate(pieces):
+                text = piece.get("text") or piece.get("content", "")
+                if len(" ".join(text.split())) < self._min_chunk_chars:
+                    skipped += 1
+                    continue  # the index is kept, so the ids of the other chunks of the page do not move
                 chunk_dicts.append({
-                    "text": piece.get("text") or piece.get("content", ""),
+                    "text": text,
                     "id": str(uuid.uuid5(POINT_NAMESPACE, f"{context.source_id}:{doc['metadata']['page_id']}:{i}")),
                     "metadata": {**doc["metadata"], "chunk_index": i, "source_id": context.source_id,
                                  "source_type": self.source_type, "owner_id": context.owner_id},
                 })
+        if skipped:
+            logger.info("Web source %s: %d chunks under %d characters skipped", context.source_id, skipped,
+                        self._min_chunk_chars)
         if not chunk_dicts:
             return []
         embedded = self._embedder.generate_embeddings(chunk_dicts)
