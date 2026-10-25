@@ -63,8 +63,8 @@ spec:
               UnifAI objects.
             properties:
               agentConfig:
-                description: Extra custom_agent_node settings merged under every emitted
-                  agent (e.g. max_rounds, hitl_mode).
+                description: 'Extra custom_agent_node settings merged under every
+                  emitted agent (e.g. hitl_mode, or max_rounds: 15 by default).'
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
               ceilings:
