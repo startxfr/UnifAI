@@ -158,6 +158,7 @@ var Releases = []Release{
 const (
 	DoclingURL   = "http://docling-serve:5001" // fullnameOverride of the upstream chart
 	EmbeddingURL = "http://unifai-embedding:8080"
+	RerankerURL  = "http://unifai-reranker:8080"
 )
 
 func mapAt(m map[string]any, key string) map[string]any {
@@ -262,6 +263,34 @@ func ragValues(p *Plan, v map[string]any) map[string]any {
 	// Celery workers consume one queue per source type; web sources need no stack setting, so every source type is
 	// always consumed (an idle queue costs nothing).
 	set(v, "env.CELERY_QUEUES", "slack_queue,document_queue,slack_events_queue,confluence_queue,web_queue")
+	if r.Embedding.QueryPrefix != "" {
+		set(v, "env.EMBEDDING_QUERY_PREFIX", r.Embedding.QueryPrefix)
+	}
+	if s := r.Search; s != nil {
+		if s.Fusion != "" {
+			set(v, "env.QDRANT_FUSION", s.Fusion)
+		}
+		if s.SparseReadVersion > 0 {
+			set(v, "env.QDRANT_SPARSE_READ_VERSION", fmt.Sprint(s.SparseReadVersion))
+		}
+		if len(s.SparseWriteVersions) > 0 {
+			versions := make([]string, 0, len(s.SparseWriteVersions))
+			for _, w := range s.SparseWriteVersions {
+				versions = append(versions, fmt.Sprint(w))
+			}
+			set(v, "env.QDRANT_SPARSE_WRITE_VERSIONS", strings.Join(versions, ","))
+		}
+	}
+	if rr := r.Reranker; rr != nil {
+		endpoint := rr.URL
+		if p.DeployReranker() {
+			endpoint = RerankerURL
+		}
+		set(v, "env.RERANKER_URL", endpoint)
+		if rr.Candidates > 0 {
+			set(v, "env.RERANKER_CANDIDATES", fmt.Sprint(rr.Candidates))
+		}
+	}
 	if r.MinChunkChars != nil {
 		set(v, "env.WEB_MIN_CHUNK_CHARS", fmt.Sprint(*r.MinChunkChars))
 	}

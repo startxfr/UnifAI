@@ -116,6 +116,7 @@ var thirdPartyDefaults = map[string]string{
 	"temporal":     "docker.io/temporalio/temporal",
 	"docling":      "quay.io/docling-project/docling-serve-cpu:v1.37.0",
 	"embedding":    "ghcr.io/huggingface/text-embeddings-inference:cpu-1.9",
+	"reranker":     "ghcr.io/huggingface/text-embeddings-inference:cpu-1.9",
 }
 
 // imageValues returns {registry, repository[, tag]} for a third-party component.
@@ -252,6 +253,20 @@ func (p *Plan) DeployDocling() bool { return p.Spec.RAG.Docling.Mode != modeRemo
 func (p *Plan) DeployEmbedding() bool { return p.Spec.RAG.Embedding.Mode != modeRemote }
 
 // EmbeddingModel is the embedding model (default the upstream one).
+// DeployReranker is true when the stack runs its own reranker (spec.rag.reranker.mode deploy).
+func (p *Plan) DeployReranker() bool {
+	r := p.Spec.RAG.Reranker
+	return r != nil && r.Mode != modeRemote
+}
+
+// RerankerModel is the reranker model the stack deploys.
+func (p *Plan) RerankerModel() string {
+	if r := p.Spec.RAG.Reranker; r != nil && r.Model != "" {
+		return r.Model
+	}
+	return "BAAI/bge-reranker-base"
+}
+
 func (p *Plan) EmbeddingModel() string {
 	if m := p.Spec.RAG.Embedding.Model; m != "" {
 		return m

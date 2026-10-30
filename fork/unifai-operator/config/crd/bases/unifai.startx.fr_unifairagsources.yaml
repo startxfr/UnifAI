@@ -96,6 +96,12 @@ spec:
                 default: admin
                 description: UnifAI user owning the object (workspace identity).
                 type: string
+              resyncToken:
+                description: |-
+                  Any change of this value queues a sync now (e.g. after an index migration, where a source re-ingests every
+                  page at its next sync). Unset = no effect.
+                maxLength: 64
+                type: string
               suspend:
                 description: Stop scheduled syncs.
                 type: boolean

@@ -52,7 +52,7 @@ func (r Rule) Refused() string {
 
 // Allowed component keys of the UnifaiStack maps.
 var (
-	ImageKeys    = []string{"mongodb", "qdrant", "rabbitmq", "redis", "redisInsight", "temporal", "rag", "multiagent", "backend", "identity", "ui", "docling", "embedding"}
+	ImageKeys    = []string{"mongodb", "qdrant", "rabbitmq", "redis", "redisInsight", "temporal", "rag", "multiagent", "backend", "identity", "ui", "docling", "embedding", "reranker"}
 	ResourceKeys = append(slices.Clone(ImageKeys), "ragCelery", "multiagentWorker")
 	SizeKeys     = []string{"mongodb", "qdrant", "redis", "redisInsight", "temporal", "rabbitmq", "ragShared", "multiagentShared", "logging", "docling", "keycloakDb"}
 )
@@ -340,6 +340,18 @@ var Rules = map[string][]Rule{
 			}},
 		{Field: "spec.rag.embedding.dimension", Message: "embedding dimension is not negative",
 			check: func(obj client.Object) bool { return obj.(*unifaiv1.UnifaiStack).Spec.RAG.Embedding.Dimension >= 0 }},
+		{Field: "spec.rag.search", Message: "sparseWriteVersions must include the version searches read",
+			check: func(obj client.Object) bool {
+				s := obj.(*unifaiv1.UnifaiStack).Spec.RAG.Search
+				if s == nil || len(s.SparseWriteVersions) == 0 {
+					return true
+				}
+				read := s.SparseReadVersion
+				if read == 0 {
+					read = 1
+				}
+				return slices.Contains(s.SparseWriteVersions, read)
+			}},
 		{Field: "spec.rag.confluence.url", WarnOnly: true,
 			Message: "set confluence.url, the site the credentials belong to: without it they are sent to the baseUrl of every source",
 			check: func(obj client.Object) bool {

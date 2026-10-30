@@ -119,6 +119,12 @@ func Fixtures() []Fixture {
 			s.RAG.Embedding.Dimension = -1
 		}), []string{"spec.backup.schedule", "spec.images", "spec.rag.embedding.dimension", "spec.resources", "spec.storage.sizes"}},
 
+		{"stack index migration", stackWith(func(s *unifaiv1.UnifaiStackSpec) {
+			s.RAG.Search = &unifaiv1.RAGSearchSpec{SparseWriteVersions: []int32{1, 2}}
+		}), nil},
+		{"stack writes without the read version", stackWith(func(s *unifaiv1.UnifaiStackSpec) {
+			s.RAG.Search = &unifaiv1.RAGSearchSpec{SparseReadVersion: 1, SparseWriteVersions: []int32{2}}
+		}), []string{"spec.rag.search"}},
 		{"stack confluence site set", stackWith(func(s *unifaiv1.UnifaiStackSpec) {
 			s.RAG.Confluence = &unifaiv1.ConfluenceSpec{URL: "https://example.atlassian.net", Token: unifaiv1.SecretKeySelector{Name: "c", Key: "t"}}
 		}), nil},

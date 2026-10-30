@@ -271,6 +271,32 @@ func TestRAGSettings(t *testing.T) {
 			}
 		}
 	}
+	for _, absent := range []string{"EMBEDDING_QUERY_PREFIX", "QDRANT_FUSION", "QDRANT_SPARSE", "RERANKER_URL"} {
+		if strings.Contains(on["unifai-rag-server"], absent) {
+			t.Errorf("%s rendered without its spec field (it would roll existing stacks)", absent)
+		}
+	}
+	ranked := testPlan(t, func(s *unifaiv1.UnifaiStackSpec) {
+		s.RAG.Embedding.QueryPrefix = "Instruct: retrieve\nQuery: "
+		s.RAG.Search = &unifaiv1.RAGSearchSpec{Fusion: "rrf", SparseReadVersion: 1, SparseWriteVersions: []int32{1, 2}}
+		s.RAG.Reranker = &unifaiv1.RerankerSpec{Mode: "deploy", Candidates: 40}
+	})
+	rr := renderAll(t, ranked)
+	for _, want := range []string{"EMBEDDING_QUERY_PREFIX", "QDRANT_FUSION", "rrf", "QDRANT_SPARSE_READ_VERSION",
+		"QDRANT_SPARSE_WRITE_VERSIONS", "1,2", "RERANKER_URL", RerankerURL, "RERANKER_CANDIDATES"} {
+		if !strings.Contains(rr["unifai-rag-server"], want) {
+			t.Errorf("unifai-rag-server lacks %s", want)
+		}
+	}
+	if objs := RerankerObjects(ranked); len(objs) != 2 || objs[0].GetName() != RerankerName {
+		t.Errorf("a deployed reranker is a Deployment and a Service: %v", objs)
+	}
+	remote := testPlan(t, func(s *unifaiv1.UnifaiStackSpec) {
+		s.RAG.Reranker = &unifaiv1.RerankerSpec{Mode: "remote", URL: "http://reranker.zuno-ai-run.svc:8080"}
+	})
+	if RerankerObjects(remote) != nil || !strings.Contains(renderAll(t, remote)["unifai-rag-server"], "http://reranker.zuno-ai-run.svc:8080") {
+		t.Error("a remote reranker is called at its url and not deployed")
+	}
 	if strings.Contains(on["unifai-rag-celery"], "WEB_MIN_CHUNK_CHARS") {
 		t.Errorf("WEB_MIN_CHUNK_CHARS rendered without spec.rag.minChunkChars (it would roll existing stacks)")
 	}

@@ -86,6 +86,11 @@ type UnifaiRAGSourceSpec struct {
 	// Stop scheduled syncs.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
+	// Any change of this value queues a sync now (e.g. after an index migration, where a source re-ingests every
+	// page at its next sync). Unset = no effect.
+	// +kubebuilder:validation:MaxLength=64
+	// +optional
+	ResyncToken string `json:"resyncToken,omitempty"`
 }
 
 // UnifaiRAGSourceStatus reports the last sync.

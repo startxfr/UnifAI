@@ -156,6 +156,54 @@ type EmbeddingSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self >= 0",message="embedding dimension is not negative"
 	// +optional
 	Dimension int `json:"dimension,omitempty"`
+	// Text put before every search query, never before documents, for instruction-tuned models
+	// (EMBEDDING_QUERY_PREFIX), e.g. for Qwen3-Embedding "Instruct: Given a question, retrieve passages that answer
+	// it\nQuery: ". Unset = none.
+	// +kubebuilder:validation:MaxLength=512
+	// +optional
+	QueryPrefix string `json:"queryPrefix,omitempty"`
+}
+
+// RAGSearchSpec tunes hybrid search. Unset fields keep the RAG defaults.
+// +kubebuilder:validation:XValidation:rule="!has(self.sparseWriteVersions) || self.sparseWriteVersions.exists(v, v == (has(self.sparseReadVersion) ? self.sparseReadVersion : 1))",message="sparseWriteVersions must include the version searches read"
+type RAGSearchSpec struct {
+	// How dense and sparse candidates are fused (QDRANT_FUSION): dbsf (scores, the RAG default) or rrf (ranks).
+	// +kubebuilder:validation:Enum=dbsf;rrf
+	// +optional
+	Fusion string `json:"fusion,omitempty"`
+	// Sparse encoder version searches read (QDRANT_SPARSE_READ_VERSION; 1 by default): 2 drops stop words and
+	// normalises by length, in its own <collection>_hybrid_v2.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=2
+	// +optional
+	SparseReadVersion int32 `json:"sparseReadVersion,omitempty"`
+	// Sparse versions written (QDRANT_SPARSE_WRITE_VERSIONS; the read version by default). During a migration
+	// write [1, 2] and re-ingest every source (spec.resyncToken), then read 2 and write [2].
+	// +kubebuilder:validation:MaxItems=2
+	// +kubebuilder:validation:items:Minimum=1
+	// +kubebuilder:validation:items:Maximum=2
+	// +optional
+	SparseWriteVersions []int32 `json:"sparseWriteVersions,omitempty"`
+}
+
+// RerankerSpec configures the cross-encoder that re-orders search results (RERANKER_URL).
+type RerankerSpec struct {
+	// deploy = Text Embeddings Inference (CPU) serving Model in the stack namespace; remote = a service at url.
+	// +kubebuilder:validation:Enum=deploy;remote
+	// +kubebuilder:default=deploy
+	// +optional
+	Mode string `json:"mode,omitempty"`
+	// +optional
+	URL string `json:"url,omitempty"`
+	// Hugging Face model id of the reranker (deploy).
+	// +kubebuilder:default="BAAI/bge-reranker-base"
+	// +optional
+	Model string `json:"model,omitempty"`
+	// Fused candidates re-ordered per search (RERANKER_CANDIDATES; 30 by default).
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=200
+	// +optional
+	Candidates int32 `json:"candidates,omitempty"`
 }
 
 // RAGSpec configures the RAG data pipeline.
@@ -171,6 +219,12 @@ type RAGSpec struct {
 	// sources must be re-ingested.
 	// +optional
 	Hybrid bool `json:"hybrid,omitempty"`
+	// Fusion and index version of hybrid search.
+	// +optional
+	Search *RAGSearchSpec `json:"search,omitempty"`
+	// Cross-encoder re-ranking of search results; its 0-1 relevance replaces the fused score. Unset = none.
+	// +optional
+	Reranker *RerankerSpec `json:"reranker,omitempty"`
 	// Users allowed to publish shared sources (visible to members of the source's ACL groups). Empty =
 	// every source stays private to its uploader. UnifaiRAGSource objects are published as their owner.
 	// +optional
@@ -278,14 +332,14 @@ type UnifaiStackSpec struct {
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 	// Full image overrides by component: mongodb, qdrant, rabbitmq, redis, redisInsight, temporal, rag, multiagent, backend, identity, ui, docling, embedding.
 	// A value is repo, repo:tag, repo@sha256:<digest> or repo:tag@sha256:<digest>; a digest pin is deployed as is.
-	// +kubebuilder:validation:XValidation:rule="self.all(k, k in ['mongodb', 'qdrant', 'rabbitmq', 'redis', 'redisInsight', 'temporal', 'rag', 'multiagent', 'backend', 'identity', 'ui', 'docling', 'embedding'])",message="images keys: mongodb, qdrant, rabbitmq, redis, redisInsight, temporal, rag, multiagent, backend, identity, ui, docling, embedding"
+	// +kubebuilder:validation:XValidation:rule="self.all(k, k in ['mongodb', 'qdrant', 'rabbitmq', 'redis', 'redisInsight', 'temporal', 'rag', 'multiagent', 'backend', 'identity', 'ui', 'docling', 'embedding', 'reranker'])",message="images keys: mongodb, qdrant, rabbitmq, redis, redisInsight, temporal, rag, multiagent, backend, identity, ui, docling, embedding, reranker"
 	// +kubebuilder:validation:MaxProperties=16
 	// +optional
 	Images map[string]string `json:"images,omitempty"`
 	// +optional
 	Storage StorageSpec `json:"storage,omitempty"`
 	// Resource overrides by component (same keys as images, plus ragCelery, multiagentWorker).
-	// +kubebuilder:validation:XValidation:rule="self.all(k, k in ['mongodb', 'qdrant', 'rabbitmq', 'redis', 'redisInsight', 'temporal', 'rag', 'multiagent', 'backend', 'identity', 'ui', 'docling', 'embedding', 'ragCelery', 'multiagentWorker'])",message="resources keys: mongodb, qdrant, rabbitmq, redis, redisInsight, temporal, rag, multiagent, backend, identity, ui, docling, embedding, ragCelery, multiagentWorker"
+	// +kubebuilder:validation:XValidation:rule="self.all(k, k in ['mongodb', 'qdrant', 'rabbitmq', 'redis', 'redisInsight', 'temporal', 'rag', 'multiagent', 'backend', 'identity', 'ui', 'docling', 'embedding', 'reranker', 'ragCelery', 'multiagentWorker'])",message="resources keys: mongodb, qdrant, rabbitmq, redis, redisInsight, temporal, rag, multiagent, backend, identity, ui, docling, embedding, reranker, ragCelery, multiagentWorker"
 	// +kubebuilder:validation:MaxProperties=16
 	// +optional
 	Resources map[string]corev1.ResourceRequirements `json:"resources,omitempty"`

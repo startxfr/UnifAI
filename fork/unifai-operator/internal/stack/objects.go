@@ -306,18 +306,34 @@ func RAGTokenReviewBinding(p *Plan) *rbacv1.ClusterRoleBinding {
 // EmbeddingName is the Deployment/Service of the embedding service deployed by the stack.
 const EmbeddingName = "unifai-embedding"
 
+// RerankerName is the Deployment/Service of the reranker deployed by the stack.
+const RerankerName = "unifai-reranker"
+
 // EmbeddingObjects deploys Text Embeddings Inference (CPU), the OpenAI-compatible service the rag pods call.
 func EmbeddingObjects(p *Plan) []ctrlObject {
 	if !p.DeployEmbedding() {
 		return nil
 	}
-	labels := map[string]string{"app": EmbeddingName, LabelPartOf: "unifai", LabelManagedBy: "unifai-operator", LabelComponent: "embedding"}
+	return teiObjects(p, EmbeddingName, "embedding", p.EmbeddingModel())
+}
+
+// RerankerObjects deploys Text Embeddings Inference (CPU) serving the cross-encoder the rag server calls (/rerank).
+func RerankerObjects(p *Plan) []ctrlObject {
+	if !p.DeployReranker() {
+		return nil
+	}
+	return teiObjects(p, RerankerName, "reranker", p.RerankerModel())
+}
+
+// teiObjects is a Text Embeddings Inference Deployment and Service; component names the image and resources keys.
+func teiObjects(p *Plan, name, component, model string) []ctrlObject {
+	labels := map[string]string{"app": name, LabelPartOf: "unifai", LabelManagedBy: "unifai-operator", LabelComponent: component}
 	req := corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1"), corev1.ResourceMemory: resource.MustParse("2Gi")}
 	if p.Dev() {
 		req = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("512Mi")}
 	}
 	res := corev1.ResourceRequirements{Requests: req, Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("4Gi")}}
-	if o, ok := p.Spec.Resources["embedding"]; ok {
+	if o, ok := p.Spec.Resources[component]; ok {
 		res = o
 	}
 	one := int32(1)
@@ -326,17 +342,17 @@ func EmbeddingObjects(p *Plan) []ctrlObject {
 			InitialDelaySeconds: delay, PeriodSeconds: 10, FailureThreshold: 30}
 	}
 	dep := &appsv1.Deployment{
-		ObjectMeta: objMeta(p, EmbeddingName, "embedding"),
+		ObjectMeta: objMeta(p, name, component),
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &one,
-			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": EmbeddingName}},
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": name}},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					NodeSelector: p.Spec.NodeSelector, Tolerations: p.Spec.Tolerations, ImagePullSecrets: p.Spec.ImagePullSecrets,
 					Containers: []corev1.Container{{
-						Name: "tei", Image: p.fullImage("embedding"), ImagePullPolicy: p.Spec.ImagePullPolicy,
-						Args:           []string{"--model-id", p.EmbeddingModel(), "--port", "8080", "--hostname", "0.0.0.0"},
+						Name: "tei", Image: p.fullImage(component), ImagePullPolicy: p.Spec.ImagePullPolicy,
+						Args:           []string{"--model-id", model, "--port", "8080", "--hostname", "0.0.0.0"},
 						Env:            []corev1.EnvVar{{Name: "HF_HOME", Value: "/data"}, {Name: "HUGGINGFACE_HUB_CACHE", Value: "/data"}},
 						Ports:          []corev1.ContainerPort{{Name: "http", ContainerPort: 8080}},
 						Resources:      res,
@@ -349,10 +365,10 @@ func EmbeddingObjects(p *Plan) []ctrlObject {
 			},
 		},
 	}
-	dep.Labels["app"] = EmbeddingName
+	dep.Labels["app"] = name
 	svc := &corev1.Service{
-		ObjectMeta: objMeta(p, EmbeddingName, "embedding"),
-		Spec: corev1.ServiceSpec{Selector: map[string]string{"app": EmbeddingName},
+		ObjectMeta: objMeta(p, name, component),
+		Spec: corev1.ServiceSpec{Selector: map[string]string{"app": name},
 			Ports: []corev1.ServicePort{{Name: "http", Port: 8080, TargetPort: intstr.FromInt32(8080)}}},
 	}
 	return []ctrlObject{dep, svc}

@@ -363,26 +363,34 @@ func (r *StackReconciler) deploy(ctx context.Context, st *unifaiv1.UnifaiStack) 
 	}
 
 	waiting := []string{}
-	embedding := stack.EmbeddingObjects(p)
-	for _, o := range embedding {
-		if err := r.apply(ctx, st, o); err != nil {
-			return 0, fmt.Errorf("%T %s: %w", o, o.GetName(), err)
-		}
-	}
-	if len(embedding) == 0 {
-		for _, o := range []client.Object{
-			&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: st.Namespace, Name: stack.EmbeddingName}},
-			&corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: st.Namespace, Name: stack.EmbeddingName}},
-		} {
-			if err := r.Delete(ctx, o); client.IgnoreNotFound(err) != nil {
-				return 0, err
+	// The TEI services the stack may deploy: applied when wanted, removed otherwise.
+	for _, tei := range []struct {
+		name, label string
+		objs        []client.Object
+	}{
+		{stack.EmbeddingName, "embedding", stack.EmbeddingObjects(p)},
+		{stack.RerankerName, "reranker", stack.RerankerObjects(p)},
+	} {
+		for _, o := range tei.objs {
+			if err := r.apply(ctx, st, o); err != nil {
+				return 0, fmt.Errorf("%T %s: %w", o, o.GetName(), err)
 			}
 		}
-	} else if msg, err := stack.WorkloadsReady(ctx, r.Client, st.Namespace,
-		[]stack.ManifestObject{{Kind: "Deployment", Name: stack.EmbeddingName}}); err != nil {
-		return 0, err
-	} else if msg != "" {
-		waiting = append(waiting, "embedding: "+msg)
+		if len(tei.objs) == 0 {
+			for _, o := range []client.Object{
+				&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: st.Namespace, Name: tei.name}},
+				&corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: st.Namespace, Name: tei.name}},
+			} {
+				if err := r.Delete(ctx, o); client.IgnoreNotFound(err) != nil {
+					return 0, err
+				}
+			}
+		} else if msg, err := stack.WorkloadsReady(ctx, r.Client, st.Namespace,
+			[]stack.ManifestObject{{Kind: "Deployment", Name: tei.name}}); err != nil {
+			return 0, err
+		} else if msg != "" {
+			waiting = append(waiting, tei.label+": "+msg)
+		}
 	}
 	kcReady := true
 	if st.Spec.Identity.Keycloak != nil {
