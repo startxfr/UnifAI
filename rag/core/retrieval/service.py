@@ -54,11 +54,17 @@ class RetrievalService:
         vector_repo: VectorRepository,
         filter_resolver: SourceFilterResolver,
         source_type: str = "DOCUMENT",
+        reranker: Any = None,
+        rerank_candidates: int = 30,
     ):
         self._embedder = embedder
         self._vector_repo = vector_repo
         self._filter_resolver = filter_resolver
         self._source_type = source_type
+        # A cross-encoder re-orders the best fused candidates and gives each a 0-1 relevance score; without one
+        # (or when it fails) the fused order and scores are returned.
+        self._reranker = reranker
+        self._rerank_candidates = rerank_candidates
     
     def search(
         self,
@@ -142,15 +148,19 @@ class RetrievalService:
             query_embedding = self._embedder.generate_query_embedding(query)
         
         # 4. Execute vector search
+        candidates = max(limit, self._rerank_candidates) if self._reranker is not None else limit
         with start_span("rag.vector_search", {"rag.top_k": limit}, tracer_name=_TRACER):
             results = self._vector_repo.search(
                 query_embedding=query_embedding.tolist(),
-                top_k=limit,
+                top_k=candidates,
                 filters=filters if filters else None,
                 query_text=query,
                 access=AccessScope(owner_id=owner_id, groups=groups),
             )
         
+        if self._reranker is not None and results:
+            results = self._rerank(query, results, limit)
+        results = results[:limit]
         logger.info(f"Search returned {len(results)} results for query: {query[:50]}...")
         
         # Convert SearchResult objects to dicts for API response
@@ -163,6 +173,16 @@ class RetrievalService:
             }
             for r in results
         ]
+
+    def _rerank(self, query: str, results: List[SearchResult], limit: int) -> List[SearchResult]:
+        try:
+            with start_span("rag.rerank", {"rag.candidates": len(results)}, tracer_name=_TRACER):
+                scores = self._reranker.rerank(query, [r.content for r in results])
+        except Exception as exc:  # a reranker outage degrades the order, never the search
+            logger.warning("Reranker unavailable, returning the fused order: %s", exc)
+            return results
+        ranked = sorted(zip(scores, range(len(results)), results), key=lambda t: (-t[0], t[1]))
+        return [SearchResult(id=r.id, score=s, content=r.content, metadata=r.metadata) for s, _, r in ranked[:limit]]
 
     def search_with_query(self, query: SearchQuery) -> List[Dict[str, Any]]:
         """

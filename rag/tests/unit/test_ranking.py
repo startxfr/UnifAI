@@ -121,3 +121,56 @@ def test_a_source_at_an_older_index_version_re_ingests_every_page():
         previous_passed = connector.iter_pages.call_args.args[1]
         assert (previous_passed == {}) is expect_changed, "a re-ingestion fetches unconditionally"
         assert handler.get_summary(None, None)["index_version"] == 2
+
+
+# ── reranker ────────────────────────────────────────────────────────────────
+
+def _service(results, reranker):
+    from core.retrieval.service import RetrievalService
+    from core.vector.domain.model import SearchResult
+    embedder = MagicMock()
+    embedder.generate_query_embedding.return_value = np.zeros(2)
+    repo_ = MagicMock()
+    repo_.search.return_value = [SearchResult(id=i, score=s, content=c, metadata={}) for i, s, c in results]
+    resolver = MagicMock()
+    resolver.resolve.return_value = None
+    return RetrievalService(embedder, repo_, resolver, source_type="WEB", reranker=reranker, rerank_candidates=30), repo_
+
+
+def test_the_reranker_reorders_the_candidates_and_its_score_is_returned():
+    fused = [("install", 0.9, INSTALL), ("def", 0.4, DEFINITION), ("other", 0.3, "unrelated")]
+    reranker = MagicMock()
+    reranker.rerank.return_value = [0.12, 0.97, 0.01]
+    svc, repo_ = _service(fused, reranker)
+    out = svc.search(QUESTION, owner_id="u", limit=2)
+    assert [r["id"] for r in out] == ["def", "install"]
+    assert out[0]["score"] == 0.97
+    assert repo_.search.call_args.kwargs["top_k"] == 30, "more candidates are fetched for the reranker"
+    reranker.rerank.assert_called_once_with(QUESTION, [INSTALL, DEFINITION, "unrelated"])
+
+
+def test_a_reranker_outage_keeps_the_fused_order():
+    reranker = MagicMock()
+    reranker.rerank.side_effect = RuntimeError("down")
+    svc, _ = _service([("a", 0.9, "x"), ("b", 0.4, "y")], reranker)
+    out = svc.search(QUESTION, owner_id="u", limit=1)
+    assert [(r["id"], r["score"]) for r in out] == [("a", 0.9)]
+
+
+def test_without_a_reranker_the_search_is_unchanged():
+    svc, repo_ = _service([("a", 0.9, "x")], None)
+    assert [r["id"] for r in svc.search(QUESTION, owner_id="u", limit=5)] == ["a"]
+    assert repo_.search.call_args.kwargs["top_k"] == 5
+
+
+def test_tei_reranker_maps_scores_back_to_the_text_order():
+    from infrastructure.reranking.tei_reranker import RerankError, TEIReranker
+    session = MagicMock()
+    session.post.return_value = MagicMock(json=lambda: [{"index": 1, "score": 0.9}, {"index": 0, "score": 0.1}],
+                                          raise_for_status=lambda: None)
+    rr = TEIReranker("http://tei:8080/", session=session)
+    assert rr.rerank("q", ["a", "b"]) == [0.1, 0.9]
+    assert session.post.call_args.args[0] == "http://tei:8080/rerank"
+    session.post.return_value = MagicMock(json=lambda: [{"index": 0, "score": 0.5}], raise_for_status=lambda: None)
+    with pytest.raises(RerankError):
+        rr.rerank("q", ["a", "b"])

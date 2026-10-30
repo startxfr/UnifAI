@@ -82,6 +82,12 @@ class AppConfig(SharedConfig):
         """The newest index version written: a source synced at an older one re-ingests all its pages."""
         return max(self.sparse_write_versions())
 
+    # Cross-encoder reranker (a TEI server serving e.g. BAAI/bge-reranker-base): re-orders the best
+    # RERANKER_CANDIDATES fused results and returns its 0-1 relevance score. Empty URL = no re-ranking.
+    reranker_url: str = ""
+    reranker_candidates: int = 30
+    reranker_timeout_seconds: float = 10.0
+
     # Web chunks with less text than this (whitespace normalised) are not embedded; 0 = keep every chunk.
     web_min_chunk_chars: int = 200
 

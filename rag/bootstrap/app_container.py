@@ -517,12 +517,27 @@ def retrieval_service(source_type: str):
         RetrievalService configured for the specified source type
     """
     from core.retrieval.service import RetrievalService
+    from config.app_config import AppConfig
+    cfg = AppConfig.get_instance()
     return RetrievalService(
         embedder=embedding_generator(),
         vector_repo=vector_repository(f"{source_type.lower()}_data"),
         filter_resolver=source_filter_resolver(),
         source_type=source_type.upper(),
+        reranker=reranker(),
+        rerank_candidates=cfg.reranker_candidates,
     )
+
+
+@lru_cache(maxsize=1)
+def reranker():
+    """Cross-encoder reranker (RERANKER_URL, a TEI server); None when not configured."""
+    from config.app_config import AppConfig
+    cfg = AppConfig.get_instance()
+    if not cfg.reranker_url:
+        return None
+    from infrastructure.reranking.tei_reranker import TEIReranker
+    return TEIReranker(cfg.reranker_url, timeout=cfg.reranker_timeout_seconds)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
