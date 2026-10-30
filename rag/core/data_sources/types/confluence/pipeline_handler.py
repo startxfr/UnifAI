@@ -31,8 +31,10 @@ POINT_NAMESPACE = uuid.UUID("0b1d6f7e-3a5c-4d2b-9f4e-7c8a2e1d5b60")
 class ConfluencePipelineHandler(SourcePipelinePort):
 
     def __init__(self, connector_factory: Callable[[str], ConfluenceConnector], chunker: Any,
-                 embedder: EmbeddingGenerator, data_source_service: DataSourceService) -> None:
+                 embedder: EmbeddingGenerator, data_source_service: DataSourceService, index_version: int = 1) -> None:
         self._connector_factory = connector_factory
+        # A source synced at an older index version re-embeds every page (sparse encoder migration).
+        self._index_version = index_version
         self._chunker = chunker
         self._embedder = embedder
         self._sources = data_source_service
@@ -58,7 +60,8 @@ class ConfluencePipelineHandler(SourcePipelinePort):
         live = list(connector.iter_pages(settings["space_key"], settings.get("root_title", ""),
                                          settings.get("exclude_labels", [])))
         self._manifest = {p.page_id: {"version": p.version, "title": p.title} for p in live}
-        self._changed = [p for p in live if (previous.get(p.page_id) or {}).get("version") != p.version]
+        reingest = int(settings.get("index_version") or 1) < self._index_version
+        self._changed = [p for p in live if reingest or (previous.get(p.page_id) or {}).get("version") != p.version]
         self._deleted = sorted(set(previous) - set(self._manifest))
         self._unchanged = len(live) - len(self._changed)
         logger.info(f"Confluence {settings['space_key']}: {len(live)} pages, {len(self._changed)} new or changed, "
@@ -110,7 +113,8 @@ class ConfluencePipelineHandler(SourcePipelinePort):
 
     def get_summary(self, context: PipelineContext, collected: Any) -> dict[str, Any]:
         return {"pages": self._manifest, "page_count": len(self._manifest), "pages_changed": len(self._changed),
-                "pages_deleted": len(self._deleted), "pages_unchanged": self._unchanged}
+                "pages_deleted": len(self._deleted), "pages_unchanged": self._unchanged,
+                "index_version": self._index_version}
 
     def cleanup(self, context: PipelineContext) -> bool:
         return True

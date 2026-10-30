@@ -43,8 +43,10 @@ class WebPipelineHandler(SourcePipelinePort):
 
     def __init__(self, connector_factory: Callable[[], WebConnector], chunker: Any,
                  embedder: EmbeddingGenerator, data_source_service: DataSourceService,
-                 min_chunk_chars: int = 200) -> None:
+                 min_chunk_chars: int = 200, index_version: int = 1) -> None:
         self._connector_factory = connector_factory
+        # A source synced at an older index version re-embeds every page (sparse encoder migration).
+        self._index_version = index_version
         # Chunks with less real text than this (navigation fragments, a lone heading) are not embedded: they would
         # take search slots with nothing to say. 0 keeps every chunk.
         self._min_chunk_chars = max(0, min_chunk_chars)
@@ -69,10 +71,14 @@ class WebPipelineHandler(SourcePipelinePort):
     def collect(self, context: PipelineContext) -> list[WebPage]:
         settings = self._settings(context)
         previous: dict[str, dict[str, Any]] = dict(settings.get("pages") or {})
+        reingest = int(settings.get("index_version") or 1) < self._index_version
+        if reingest:
+            logger.info(f"Web source {context.source_name}: re-ingesting every page for index version {self._index_version}")
         connector = self._connector_factory()
         manifest: dict[str, dict[str, Any]] = {}
         changed: list[WebPage] = []
-        for url, page in connector.iter_pages(settings["urls"], previous, settings.get("include", []),
+        # Without the previous manifest the connector fetches every page unconditionally.
+        for url, page in connector.iter_pages(settings["urls"], {} if reingest else previous, settings.get("include", []),
                                               settings.get("exclude", []), settings.get("crawl", "redhat-docs"),
                                               int(settings.get("max_pages", 50))):
             old = previous.get(url)
@@ -84,7 +90,7 @@ class WebPipelineHandler(SourcePipelinePort):
                      "title": (old or {}).get("title") if old and old.get("content_hash") == page.content_hash
                      else page_title(page.html, url)}
             manifest[url] = entry
-            if old is None or old.get("content_hash") != page.content_hash:
+            if reingest or old is None or old.get("content_hash") != page.content_hash:
                 changed.append(page)
         self._manifest = manifest
         self._changed = [p.url for p in changed]
@@ -145,7 +151,8 @@ class WebPipelineHandler(SourcePipelinePort):
 
     def get_summary(self, context: PipelineContext, collected: Any) -> dict[str, Any]:
         return {"pages": self._manifest, "page_count": len(self._manifest), "pages_changed": len(self._changed),
-                "pages_deleted": len(self._deleted), "pages_unchanged": self._unchanged}
+                "pages_deleted": len(self._deleted), "pages_unchanged": self._unchanged,
+                "index_version": self._index_version}
 
     def cleanup(self, context: PipelineContext) -> bool:
         return True

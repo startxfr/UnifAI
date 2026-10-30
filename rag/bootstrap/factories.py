@@ -212,7 +212,8 @@ class EmbeddingGeneratorFactory:
         else:
             raise ValueError(f"Unknown generator type: {generator_type}")
         
-        return DefaultEmbeddingGenerator(port=port, batch_size=batch_size)
+        return DefaultEmbeddingGenerator(port=port, batch_size=batch_size,
+                                         query_prefix=config.get("query_prefix", ""))
 
 
     @classmethod
@@ -237,8 +238,9 @@ class EmbeddingGeneratorFactory:
                 "timeout": config.embedding_service_timeout,
                 "model_name": config.embedding_service_model,
                 "embedding_dim": config.embedding_dim,
+                "query_prefix": config.embedding_query_prefix,
             })
-        return cls.create({"type": "local"})
+        return cls.create({"type": "local", "query_prefix": config.embedding_query_prefix})
 
 
 class VectorRepositoryFactory:
@@ -254,17 +256,30 @@ class VectorRepositoryFactory:
         storage_type = config.get("type", "qdrant")
         
         if storage_type == "qdrant":
-            return QdrantVectorRepository(
-                collection_name=config.get("collection_name", "default_collection"),
-                embedding_dim=config.get("embedding_dim", 384),
-                url=app_config.qdrant_ip or config.get("url"),
-                port=int(app_config.qdrant_port) or config.get("port"),
-                grpc_port=config.get("grpc_port"),
-                api_key=config.get("api_key"),
-                on_disk=config.get("on_disk", True),
-                replication_factor=config.get("replication_factor", 1),
-                write_consistency_factor=config.get("write_consistency_factor", 1),
-                hybrid=config.get("hybrid", app_config.qdrant_hybrid_enabled),
-            )
+            hybrid = config.get("hybrid", app_config.qdrant_hybrid_enabled)
+
+            def qdrant(sparse_version: int) -> QdrantVectorRepository:
+                return QdrantVectorRepository(
+                    collection_name=config.get("collection_name", "default_collection"),
+                    embedding_dim=config.get("embedding_dim", 384),
+                    url=app_config.qdrant_ip or config.get("url"),
+                    port=int(app_config.qdrant_port) or config.get("port"),
+                    grpc_port=config.get("grpc_port"),
+                    api_key=config.get("api_key"),
+                    on_disk=config.get("on_disk", True),
+                    replication_factor=config.get("replication_factor", 1),
+                    write_consistency_factor=config.get("write_consistency_factor", 1),
+                    hybrid=hybrid,
+                    fusion=config.get("fusion", app_config.qdrant_fusion),
+                    sparse_version=sparse_version,
+                )
+
+            read, writes = app_config.qdrant_sparse_read_version, app_config.sparse_write_versions()
+            if not hybrid or writes == [read]:
+                return qdrant(read)
+            # Index migration: write every listed version, read one (MirroredVectorRepository).
+            from infrastructure.qdrant.mirrored_vector_repository import MirroredVectorRepository
+            repos = {v: qdrant(v) for v in writes}
+            return MirroredVectorRepository(read=repos[read], writes=list(repos.values()))
         else:
             raise ValueError(f"Unknown storage type: {storage_type}")

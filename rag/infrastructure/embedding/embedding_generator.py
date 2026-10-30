@@ -26,9 +26,12 @@ class DefaultEmbeddingGenerator(EmbeddingGenerator):
     are aware of the problem rather than silently receiving corrupted data.
     """
     
-    def __init__(self, port: EmbeddingPort, batch_size: int = 32):
+    def __init__(self, port: EmbeddingPort, batch_size: int = 32, query_prefix: str = ""):
         self._port = port
         self._batch_size = batch_size
+        # Instruction-tuned embedders (e.g. Qwen3-Embedding, E5, BGE) expect the query, and only the query, to
+        # carry an instruction; documents are embedded as they are.
+        self._query_prefix = query_prefix
         logger.info(
             f"DefaultEmbeddingGenerator initialized: "
             f"dim={self.embedding_dim}, batch_size={batch_size}"
@@ -72,7 +75,7 @@ class DefaultEmbeddingGenerator(EmbeddingGenerator):
     def generate_query_embedding(self, query: str) -> np.ndarray:
         if not query:
             raise ValueError("Query text is empty")
-        vector = self._port.encode_single(query)
+        vector = self._port.encode_single(self._query_prefix + query)
         self._check_dimension(vector)
         return vector
 

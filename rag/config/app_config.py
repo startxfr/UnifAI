@@ -58,6 +58,30 @@ class AppConfig(SharedConfig):
     web_request_interval_seconds: float = 0.2
     # Hosts (and their subdomains) a web source may fetch; empty = any host with a public address.
     web_allowed_hosts: list[str] = []
+    # Text put before a search query (never before documents) for instruction-tuned embedders, e.g. for
+    # Qwen3-Embedding "Instruct: Given a question, retrieve passages that answer it\nQuery: ". Empty = none.
+    embedding_query_prefix: str = ""
+    # How a hybrid collection fuses its dense and sparse candidates: "dbsf" (distribution-based, uses the scores)
+    # or "rrf" (reciprocal rank, ranks only).
+    qdrant_fusion: str = "dbsf"
+    # Sparse encoder version of hybrid collections. Searches read QDRANT_SPARSE_READ_VERSION; writes go to every
+    # version of QDRANT_SPARSE_WRITE_VERSIONS (comma-separated, default: the read version). A migration from 1 to
+    # 2: write "1,2" and re-ingest every source, then read 2 and write "2".
+    qdrant_sparse_read_version: int = 1
+    qdrant_sparse_write_versions: str = ""
+
+    def sparse_write_versions(self) -> list[int]:
+        versions = sorted({int(v) for v in self.qdrant_sparse_write_versions.split(",") if v.strip()})
+        if not versions:
+            return [self.qdrant_sparse_read_version]
+        if self.qdrant_sparse_read_version not in versions:
+            raise ValueError("QDRANT_SPARSE_WRITE_VERSIONS must include QDRANT_SPARSE_READ_VERSION")
+        return versions
+
+    def index_version(self) -> int:
+        """The newest index version written: a source synced at an older one re-ingests all its pages."""
+        return max(self.sparse_write_versions())
+
     # Web chunks with less text than this (whitespace normalised) are not embedded; 0 = keep every chunk.
     web_min_chunk_chars: int = 200
 

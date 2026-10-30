@@ -604,6 +604,7 @@ def confluence_pipeline_handler():
         chunker=pdf_chunker(),
         embedder=embedding_generator(),
         data_source_service=data_source_service(),
+        index_version=cfg.index_version(),
     )
 
 
@@ -627,6 +628,7 @@ def web_pipeline_handler():
         embedder=embedding_generator(),
         data_source_service=data_source_service(),
         min_chunk_chars=cfg.web_min_chunk_chars,
+        index_version=cfg.index_version(),
     )
 
 

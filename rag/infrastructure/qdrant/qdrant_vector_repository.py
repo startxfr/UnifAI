@@ -48,6 +48,8 @@ class QdrantVectorRepository(VectorRepository):
         write_consistency_factor: int = 1,
         hybrid: bool = False,
         client: Optional[qdrant_client.QdrantClient] = None,
+        fusion: str = "dbsf",
+        sparse_version: int = 1,
     ):
         """
         Initialize the Qdrant vector repository.
@@ -62,12 +64,19 @@ class QdrantVectorRepository(VectorRepository):
             on_disk: Whether to store vectors on disk (True) or in memory (False)
             replication_factor: Number of replicas for each segment
             write_consistency_factor: How many replicas should confirm write
-            hybrid: Use a dense + sparse (BM25) collection, named <collection_name>_hybrid
+            hybrid: Use a dense + sparse (BM25) collection, named <collection_name>_hybrid (sparse encoder
+                version 1) or <collection_name>_hybrid_v<N> (version N)
             client: Pre-built client (tests use QdrantClient(":memory:"))
         """
         self._hybrid = hybrid
-        self._collection_name = collection_name + (HYBRID_SUFFIX if hybrid else "")
-        self._sparse = HashingBM25Encoder() if hybrid else None
+        if fusion not in ("dbsf", "rrf"):
+            raise ValueError(f"fusion must be dbsf or rrf, got {fusion!r}")
+        self._fusion = qmodels.Fusion.DBSF if fusion == "dbsf" else qmodels.Fusion.RRF
+        suffix = ""
+        if hybrid:
+            suffix = HYBRID_SUFFIX if sparse_version == 1 else f"{HYBRID_SUFFIX}_v{sparse_version}"
+        self._collection_name = collection_name + suffix
+        self._sparse = HashingBM25Encoder(version=sparse_version) if hybrid else None
         self._embedding_dim = embedding_dim
         self._on_disk = on_disk
         self._replication_factor = replication_factor
@@ -264,8 +273,8 @@ class QdrantVectorRepository(VectorRepository):
             top_k: Number of results to return
             filters: Optional filters to apply to the search
             query_text: The query as text; in a hybrid collection it adds a sparse (BM25) candidate list
-                fused with the dense one by reciprocal rank fusion. Fused scores are rank-based (about
-                0.01-0.05), not cosine similarities.
+                fused with the dense one: DBSF (each list's scores normalised by their distribution, then summed;
+                0 to 2) or RRF (1/(rank+1) summed over the lists, ranks only).
             access: Restrict results to the caller's own points plus shared points whose
                 acl_groups intersect the caller's groups.
             
@@ -279,7 +288,7 @@ class QdrantVectorRepository(VectorRepository):
 
         if self._hybrid and query_text and query_text.strip():
             sparse = self._sparse.encode_query(query_text)
-            candidates = max(top_k * 4, 20)
+            candidates = max(top_k * 5, 50)
             search_results = self._client.query_points(
                 collection_name=self._collection_name,
                 prefetch=[
@@ -287,7 +296,7 @@ class QdrantVectorRepository(VectorRepository):
                     qmodels.Prefetch(query=qmodels.SparseVector(indices=sparse.indices, values=sparse.values),
                                      using=SPARSE_VECTOR, limit=candidates, filter=qdrant_filter),
                 ],
-                query=qmodels.FusionQuery(fusion=qmodels.Fusion.RRF),
+                query=qmodels.FusionQuery(fusion=self._fusion),
                 limit=top_k,
                 query_filter=qdrant_filter,
                 with_payload=True,
