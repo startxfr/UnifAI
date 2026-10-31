@@ -345,6 +345,13 @@ func TestUnifaiStack(t *testing.T) {
 		checkAgentBundleKeyless(t, ns)
 	})
 
+	t.Run("an agent bundle delegates to another agent through the a2a-gateway", func(t *testing.T) {
+		if os.Getenv("E2E_AGENTBUNDLE") == "0" {
+			t.Skip("E2E_AGENTBUNDLE=0: no access to quay.io/zuno/okf-tekos")
+		}
+		checkAgentBundleDelegation(t, ns)
+	})
+
 	t.Run("an UnifaiRestore brings back the MongoDB and Qdrant data of a backup", func(t *testing.T) {
 		if os.Getenv("E2E_RESTORE") == "0" {
 			t.Skip("E2E_RESTORE=0")

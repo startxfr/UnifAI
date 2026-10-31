@@ -653,7 +653,13 @@ func (r *AgentBundleReconciler) teamCoversGroups(ctx context.Context, cr *unifai
 func groupTeamName(cr *unifaiv1.UnifaiAgentBundle) string { return "agent-" + cr.Name }
 
 func childMeta(cr *unifaiv1.UnifaiAgentBundle, name string) metav1.ObjectMeta {
-	return metav1.ObjectMeta{Name: name, Namespace: cr.Namespace, Labels: map[string]string{unifaiv1.AgentBundleLabel: cr.Name}}
+	lbls := map[string]string{unifaiv1.AgentBundleLabel: cr.Name}
+	// A child belongs to the operator instance of its bundle: a canary instance only sees objects labelled for it,
+	// and the default instance only sees objects without the label.
+	if inst, ok := cr.Labels[InstanceLabel]; ok {
+		lbls[InstanceLabel] = inst
+	}
+	return metav1.ObjectMeta{Name: name, Namespace: cr.Namespace, Labels: lbls}
 }
 
 func childNames(objs []client.Object) []string {

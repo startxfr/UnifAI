@@ -83,3 +83,16 @@ func TestSourceAlreadyGone(t *testing.T) {
 		}
 	}
 }
+
+func TestChildrenBelongToTheInstanceOfTheirBundle(t *testing.T) {
+	cr := &unifaiv1.UnifaiAgentBundle{ObjectMeta: metav1.ObjectMeta{Name: "tekos", Namespace: "ns",
+		Labels: map[string]string{InstanceLabel: "canary"}}}
+	got := childMeta(cr, "tekos-llm").Labels
+	if got[InstanceLabel] != "canary" || got[unifaiv1.AgentBundleLabel] != "tekos" {
+		t.Errorf("child labels %v", got)
+	}
+	cr.Labels = nil
+	if _, ok := childMeta(cr, "tekos-llm").Labels[InstanceLabel]; ok {
+		t.Error("a bundle of the default instance gets children with an instance label")
+	}
+}
