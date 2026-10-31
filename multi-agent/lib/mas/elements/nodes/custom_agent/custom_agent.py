@@ -13,6 +13,7 @@ from mas.elements.nodes.common.capabilities.agent_capable import AgentCapableMix
 from mas.elements.nodes.common.capabilities.workload_capable import WorkloadCapableMixin
 from mas.elements.nodes.common.capabilities.hitl_capable import HITLCapableMixin
 from mas.elements.nodes.common.workload import Task, AgentResult, WorkspaceContext
+from mas.elements.nodes.common.workload.history_window import window_history
 from mas.elements.providers.mcp_server_client.mcp_provider import McpProvider
 from mas.core.hitl.models import HITLMode
 from mas.elements.nodes.common.agent import AgentConfig
@@ -62,6 +63,9 @@ class CustomAgentNode(
             strategy_type: str = StrategyType.REACT.value,
             include_builtin_tools: bool = True,
             retrieve_first: bool = False,
+            history_enabled: bool = True,
+            history_max_turns: Optional[int] = None,
+            history_token_budget: Optional[int] = None,
             hitl_mode: HITLMode = HITLMode.SKIP,
             execution_holder=None,
             **kwargs: Any
@@ -77,6 +81,9 @@ class CustomAgentNode(
         self.mcp_providers = mcp_providers or []
         self.retrieve_first = retrieve_first
         self.max_rounds = max_rounds
+        self.history_enabled = history_enabled
+        self.history_max_turns = history_max_turns
+        self.history_token_budget = history_token_budget
         self.strategy_type = strategy_type
 
         self._domain_tools = tools or []
@@ -211,7 +218,9 @@ class CustomAgentNode(
         # 1. Get workspace conversation history
         if task.thread_id:
             workspace_messages = self.workspaces.get_recent_messages(task.thread_id, 20)
-            context_messages.extend(deepcopy(workspace_messages))
+            context_messages.extend(deepcopy(window_history(
+                workspace_messages, enabled=self.history_enabled, max_turns=self.history_max_turns,
+                token_budget=self.history_token_budget)))
 
         # 2. Pop the user prompt from the end if it matches the task
         #    (we re-add it at the very end to guarantee ordering)

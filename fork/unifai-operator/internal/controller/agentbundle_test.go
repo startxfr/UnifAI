@@ -505,6 +505,26 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(strings.Join(status(ns)().Unmapped, "\n")).NotTo(ContainSubstring("zuno.limits"), "max_steps is mapped, not platform-side")
 	})
 
+	It("applies zuno.limits.memory.history as the agents' history window", func() {
+		ns := setup("bundle-history")
+		files := map[string][]byte{}
+		for k, v := range tekosFiles() {
+			files[k] = []byte(strings.ReplaceAll(string(v), "okf_version: v0.2", "okf_version: v0.3"))
+		}
+		files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "zuno:\n",
+			"zuno:\n  limits:\n    memory:\n      history:\n        enabled: true\n        max_turns: 6\n        token_budget: 6000\n", 1))
+		Expect(k8sClient.Create(ctx, newBundle(ns, fakeBundles.put(files, sign(key, files)), nil))).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"), func() string { return status(ns)().Message })
+		var agent unifaiv1.UnifaiAgent
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos-answer-technical-question"}, &agent)).To(Succeed())
+		cfg := map[string]any{}
+		Expect(json.Unmarshal(agent.Spec.Config.Raw, &cfg)).To(Succeed())
+		Expect(cfg["history_enabled"]).To(BeTrue())
+		Expect(cfg["history_max_turns"]).To(BeNumerically("==", 6))
+		Expect(cfg["history_token_budget"]).To(BeNumerically("==", 6000))
+		Expect(strings.Join(status(ns)().Unmapped, "\n")).NotTo(ContainSubstring("zuno.limits"), "memory.history is mapped, not platform-side")
+	})
+
 	It("refuses a bundle whose max_steps is above the ceilings", func() {
 		refused(setup("bundle-maxsteps-ceiling"), func(*unifaiv1.UnifaiAgentBundle) {}, v03WithSteps("8", "51"), ConditionWithinCeilings, "Widening")
 	})

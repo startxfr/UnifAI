@@ -399,6 +399,7 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...dele
 			agent["strategy_type"] = "react"
 		}
 		setRounds(agent, b.Steps(t))
+		setHistory(agent, b.History)
 		if len(t.AllowedTools) > 0 && (cr.Spec.MCP != nil || len(cr.Spec.Providers) > 0) {
 			refs := []any{}
 			if cr.Spec.MCP != nil {
@@ -640,6 +641,21 @@ func setRounds(agent map[string]any, steps int) {
 		agent["max_rounds"] = steps
 	} else if _, ok := agent["max_rounds"]; !ok {
 		agent["max_rounds"] = defaultMaxRounds
+	}
+}
+
+// setHistory applies the bundle's conversation-history window to an agent (custom_agent_node's history_* keys); a
+// window the bundle does not declare leaves spec.agentConfig as it is.
+func setHistory(agent map[string]any, h *okf.History) {
+	if h == nil {
+		return
+	}
+	agent["history_enabled"] = h.Enabled
+	if h.MaxTurns > 0 {
+		agent["history_max_turns"] = h.MaxTurns
+	}
+	if h.TokenBudget > 0 {
+		agent["history_token_budget"] = h.TokenBudget
 	}
 }
 

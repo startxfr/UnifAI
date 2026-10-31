@@ -35,7 +35,10 @@ type Bundle struct {
 	DelegationTargets []DelegationTarget
 	// MaxSteps bounds the reasoning/tool rounds of one turn of every task (zuno.limits.max_steps); 0 = not declared.
 	MaxSteps int
-	Tasks    []Task
+	// History is the agent's conversation-history window (zuno.limits.memory.history, or the zuno.memory.history
+	// alias); nil = not declared.
+	History *History
+	Tasks   []Task
 	// Unmapped lists OKF content with no UnifAI equivalent, reported in the CR status instead of being dropped.
 	Unmapped []string
 }
@@ -64,6 +67,41 @@ type Task struct {
 	MaxSteps int
 }
 
+// History is the window over the conversation an agent sends to its model (ADR-0215): Enabled false sends no
+// earlier turn, MaxTurns keeps that many recent turns, TokenBudget keeps the turns that fit (0 = not declared).
+type History struct {
+	Enabled     bool
+	MaxTurns    int
+	TokenBudget int
+}
+
+// historyWindow reads the agent's limits.memory.history, else the zuno.memory.history alias: absent = nil. The task
+// schema has no memory, so the window is the agent's.
+func historyWindow(limits, memory map[string]any, where string) (*History, error) {
+	raw, ok := limits["memory"].(map[string]any)
+	if !ok {
+		raw = memory
+	}
+	hist, ok := raw["history"].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	h := &History{Enabled: true}
+	if v, ok := hist["enabled"]; ok {
+		if h.Enabled, ok = v.(bool); !ok {
+			return nil, fmt.Errorf("%s: zuno.limits.memory.history.enabled must be a boolean, got %v", where, v)
+		}
+	}
+	var err error
+	if h.MaxTurns, err = historyInt(hist, "max_turns", 1, 50, where); err != nil {
+		return nil, err
+	}
+	if h.TokenBudget, err = historyInt(hist, "token_budget", 100, 32000, where); err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+
 // Steps is the round bound of the task: its own max_steps, else the agent's (0 = none declared).
 func (b *Bundle) Steps(t Task) int {
 	if t.MaxSteps > 0 {
@@ -85,10 +123,30 @@ func maxSteps(limits map[string]any, where string) (int, error) {
 	return int(f), nil
 }
 
-// platformLimits are the limits the platform enforces itself: all but max_steps, which UnifAI applies.
+// historyInt reads a whole number of history in [lo, hi]: absent = 0.
+func historyInt(hist map[string]any, key string, lo, hi int, where string) (int, error) {
+	v, ok := hist[key]
+	if !ok {
+		return 0, nil
+	}
+	f, ok := v.(float64)
+	if !ok || f != float64(int(f)) || int(f) < lo || int(f) > hi {
+		return 0, fmt.Errorf("%s: zuno.limits.memory.history.%s must be a whole number from %d to %d, got %v", where, key, lo, hi, v)
+	}
+	return int(f), nil
+}
+
+// platformLimits are the limits the platform enforces itself: all but max_steps and memory.history, which UnifAI
+// applies.
 func platformLimits(limits map[string]any) bool {
-	for k := range limits {
-		if k != "max_steps" {
+	for k, v := range limits {
+		switch k {
+		case "max_steps":
+		case "memory":
+			if m, ok := v.(map[string]any); !ok || len(m) > 1 || m["history"] == nil {
+				return true
+			}
+		default:
 			return true
 		}
 	}
@@ -132,6 +190,8 @@ type agentFrontmatter struct {
 		Models     map[string]any `json:"models"`
 		Guardrails map[string]any `json:"guardrails"`
 		Limits     map[string]any `json:"limits"`
+		// Memory is the alias of limits.memory (ADR-0579 clause 4).
+		Memory map[string]any `json:"memory"`
 	} `json:"zuno"`
 }
 
@@ -213,6 +273,9 @@ func Parse(files Files) (*Bundle, error) {
 		DelegationTargets: af.Zuno.Delegation.Targets,
 	}
 	if b.MaxSteps, err = maxSteps(af.Zuno.Limits, "agent.okf.md"); err != nil {
+		return nil, err
+	}
+	if b.History, err = historyWindow(af.Zuno.Limits, af.Zuno.Memory, "agent.okf.md"); err != nil {
 		return nil, err
 	}
 	if len(af.Zuno.Tasks) == 0 {

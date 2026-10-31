@@ -162,3 +162,33 @@ func TestParseMaxSteps(t *testing.T) {
 		}
 	}
 }
+
+// zuno.limits.memory.history (ADR-0215) is applied by UnifAI: parsed for the agent, and it is no longer reported as a platform-side limit.
+func TestParseHistoryWindow(t *testing.T) {
+	const hist = "    memory:\n      history:\n        enabled: true\n        max_turns: 6\n        token_budget: 6000\n"
+	files := v03Tekos(t)
+	files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "    max_tokens: 2048\n", "    max_tokens: 2048\n"+hist, 1))
+	if err := ValidateSchemas(files); err != nil {
+		t.Fatalf("limits.memory.history is part of the v0.3 schemas: %v", err)
+	}
+	b, err := Parse(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (History{Enabled: true, MaxTurns: 6, TokenBudget: 6000}); b.History == nil || *b.History != want {
+		t.Fatalf("agent history = %+v, want %+v", b.History, want)
+	}
+	joined := strings.Join(b.Unmapped, "\n")
+	if !strings.Contains(joined, "zuno.limits") {
+		t.Error("the agent's other limits (max_tokens) are still reported")
+	}
+
+	for _, bad := range []string{"max_turns: 0", "max_turns: 51", "token_budget: 99", "token_budget: 2.5", "enabled: \"yes\""} {
+		f := v03Tekos(t)
+		f["agent.okf.md"] = []byte(strings.Replace(string(f["agent.okf.md"]), "    max_tokens: 2048\n",
+			"    max_tokens: 2048\n    memory:\n      history:\n        "+bad+"\n", 1))
+		if _, err := Parse(f); err == nil || !strings.Contains(err.Error(), "memory.history") {
+			t.Errorf("history %s accepted (err %v)", bad, err)
+		}
+	}
+}

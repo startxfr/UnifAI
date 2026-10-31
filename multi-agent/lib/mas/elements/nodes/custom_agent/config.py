@@ -65,6 +65,14 @@ class CustomAgentNodeConfig(NodeBaseConfig):
                     "the result in the prompt (the retriever stays available as a tool for follow-up searches)",
     )
     max_rounds: Optional[int] = Field(default=100, description="Maximum number of agent execution rounds")
+    history_enabled: bool = Field(
+        default=True, description="Send earlier turns of the conversation to the model; false = the current prompt only")
+    history_max_turns: Optional[int] = Field(
+        default=None, ge=1, description="Keep at most this many recent turns (a user message and its answers)")
+    history_token_budget: Optional[int] = Field(
+        default=None, ge=1,
+        description="Keep the recent turns that fit this many tokens (estimated, 4 characters each); "
+                    "the oldest turns are dropped first and the newest is always kept")
     hitl_mode: HITLMode = Field(
         default=HITLMode.SKIP,
         description="HITL approval mode: ask (always), skip (never), dynamic (runtime flag)",
