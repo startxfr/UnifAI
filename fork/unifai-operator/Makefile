@@ -439,9 +439,10 @@ catalog: opm ## Render and validate the file-based catalog in catalog/.
 
 .PHONY: catalog-build
 catalog-build: catalog ## Build the catalog image.
-	$(CONTAINER_TOOL) build --platform linux/amd64 -f catalog.Dockerfile -t $(CATALOG_IMG) .
+	$(CONTAINER_TOOL) build --platform linux/amd64 -f catalog.Dockerfile -t $(CATALOG_IMG) -t $(IMAGE_TAG_BASE)-catalog:v$(VERSION) .
 
 # Push the catalog image.
 .PHONY: catalog-push
-catalog-push: ## Push a catalog image.
+catalog-push: ## Push a catalog image, and its v<VERSION> tag so quay keeps the digest once `latest` moves.
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+	$(MAKE) docker-push IMG=$(IMAGE_TAG_BASE)-catalog:v$(VERSION)
