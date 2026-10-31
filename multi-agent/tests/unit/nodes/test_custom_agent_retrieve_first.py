@@ -17,6 +17,7 @@ def _node(retrieve_first, retriever):
     node = _Node.__new__(_Node)
     node.retriever = retriever
     node.retrieve_first = retrieve_first
+    node.history_enabled, node.history_max_turns, node.history_token_budget = True, None, None
     node._build_agent_results_context = lambda thread_id: None
     return node
 

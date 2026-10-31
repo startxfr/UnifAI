@@ -7,6 +7,7 @@ from typing import (
 from mas.core.contracts import SupportsStreaming
 from mas.elements.llms.common.chat.message import ChatMessage, ToolCall, Role
 from mas.elements.tools.common.base_tool import BaseTool
+from mas.elements.nodes.common.agent.tool_result_context import tool_output_for_model
 from global_utils.utils.async_bridge import get_async_bridge
 
 # Tool execution framework
@@ -132,7 +133,7 @@ class ToolCapableMixin(Generic[T]):
             raise RuntimeError(f"No response received for tool call {tc.tool_call_id}")
 
         # Convert to ChatMessage
-        content = str(response.result) if response.success else f"Error: {response.error}"
+        content = tool_output_for_model(response.result) if response.success else f"Error: {response.error}"
         return ChatMessage(
             role=Role.TOOL,
             content=content,
@@ -170,7 +171,7 @@ class ToolCapableMixin(Generic[T]):
                 response = batch_response.get_response(request.tool_call_id)
 
                 if response:
-                    content = str(response.result) if response.success else f"Error: {response.error}"
+                    content = tool_output_for_model(response.result) if response.success else f"Error: {response.error}"
                     messages.append(ChatMessage(
                         role=Role.TOOL,
                         content=content,

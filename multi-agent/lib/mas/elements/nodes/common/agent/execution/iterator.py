@@ -15,6 +15,7 @@ from typing import Iterator, Optional, List, Callable, Dict, Any
 
 
 from mas.core.tracing import TracingService
+from ..tool_result_context import tool_output_for_model
 from ..primitives import (
     AgentAction,
     AgentObservation,
@@ -212,10 +213,8 @@ class AgentIterator:
                     if result_step.type == StepType.OBSERVATION:
                         from mas.elements.llms.common.chat.message import ChatMessage, Role
                         obs = result_step.data  # AgentObservation
-                        if obs.success:
-                            content = str(obs.output)
-                        elif obs.output:
-                            content = str(obs.output)
+                        if obs.success or obs.output:
+                            content = tool_output_for_model(obs.output)
                         elif obs.error:
                             content = f"Error: {obs.error}"
                         else:
