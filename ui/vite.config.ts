@@ -76,7 +76,20 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks(id) {
+        manualChunks(id, { getModuleInfo }) {
+          // A module reached only through a dynamic import() (mermaid and its dependencies) keeps its own lazy
+          // chunk: folding it into `vendor` would download it with the first page.
+          const onlyDynamic = (mod: string, seen = new Set<string>()): boolean => {
+            if (seen.has(mod)) return true;
+            seen.add(mod);
+            const info = getModuleInfo(mod);
+            if (!info || info.isEntry) return false;
+            if (info.importers.length === 0) return info.dynamicImporters.length > 0;
+            return info.importers.every((importer) => onlyDynamic(importer, seen));
+          };
+          if (id.includes('node_modules') && onlyDynamic(id)) {
+            return undefined;
+          }
           if (id.includes('node_modules') && id.includes('react')) {
             return 'react-vendor'; // Separate React/ReactDOM
           }

@@ -1,3 +1,5 @@
+import { MermaidBlock } from "./MermaidBlock";
+
 // Custom markdown components for styling
 export const MarkdownComponents = {
   // Headings
@@ -38,6 +40,10 @@ export const MarkdownComponents = {
   // attaches to <code> inside <pre>. Everything else is inline.
   code: ({ className, children, ...props }: any) => {
     const isBlock = /^language-/.test(className || '');
+
+    if (isBlock && /^language-mermaid$/.test(className)) {
+      return <MermaidBlock source={String(children).replace(/\n$/, "")} />;
+    }
 
     if (isBlock) {
       return (
