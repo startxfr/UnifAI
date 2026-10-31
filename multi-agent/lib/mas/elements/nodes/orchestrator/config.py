@@ -45,3 +45,11 @@ class OrchestratorNodeConfig(NodeBaseConfig):
         100,
         description="Maximum planning/execution rounds per orchestration cycle"
     )
+    history_enabled: bool = Field(
+        default=True, description="Send earlier turns of the conversation to the model; false = the current prompt only")
+    history_max_turns: Optional[int] = Field(
+        default=None, ge=1, description="Keep at most this many recent turns (a user message and its answers)")
+    history_token_budget: Optional[int] = Field(
+        default=None, ge=1,
+        description="Keep the recent turns that fit this many tokens (estimated, 4 characters each); "
+                    "the oldest turns are dropped first and the newest is always kept")

@@ -56,12 +56,34 @@ var _ = Describe("UnifaiRAGSource controller", func() {
 	It("takes an empty pipeline status right after a sync is queued as not started yet", func() {
 		now := time.Now()
 		queued := &metav1.Time{Time: now.Add(-5 * time.Second)}
-		Expect(syncRunning("", queued, now)).To(BeTrue())
-		Expect(syncRunning("", &metav1.Time{Time: now.Add(-pendingStatusGrace)}, now)).To(BeFalse())
-		Expect(syncRunning("", nil, now)).To(BeFalse())
-		Expect(syncRunning("COLLECTING", queued, now)).To(BeTrue())
-		Expect(syncRunning(statusDone, queued, now)).To(BeFalse())
-		Expect(syncRunning(statusFailed, queued, now)).To(BeFalse())
+		Expect(syncRunning("", queued, nil, now)).To(BeTrue())
+		Expect(syncRunning("", &metav1.Time{Time: now.Add(-pendingStatusGrace)}, nil, now)).To(BeFalse())
+		Expect(syncRunning("", nil, nil, now)).To(BeFalse())
+		Expect(syncRunning("COLLECTING", queued, nil, now)).To(BeTrue())
+		Expect(syncRunning(statusDone, queued, nil, now)).To(BeFalse())
+		Expect(syncRunning(statusFailed, queued, nil, now)).To(BeFalse())
+	})
+
+	It("does not take the previous run's DONE result for the queued sync", func() {
+		now := time.Now()
+		queued := &metav1.Time{Time: now.Add(-5 * time.Second)}
+		before, after := now.Add(-2*time.Minute), now.Add(-time.Second)
+		Expect(syncRunning(statusDone, queued, &before, now)).To(BeTrue(), "ended before the sync was queued")
+		Expect(syncRunning(statusFailed, queued, &before, now)).To(BeTrue())
+		Expect(syncRunning(statusDone, queued, &after, now)).To(BeFalse(), "ended after the sync was queued")
+		skewed := queued.Add(-syncClockSkew / 2)
+		Expect(syncRunning(statusDone, queued, &skewed, now)).To(BeFalse(), "within the clock skew")
+		Expect(syncRunning(statusDone, &metav1.Time{Time: now.Add(-pendingStatusGrace)}, &before, now)).To(BeFalse(), "past the grace")
+	})
+
+	It("reads the end of a run as an HTTP date or an RFC 3339 time", func() {
+		got := ragFinishedAt("Sat, 31 Oct 2026 10:00:00 GMT")
+		Expect(got).NotTo(BeNil())
+		Expect(got.Equal(time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC))).To(BeTrue())
+		Expect(ragFinishedAt("2026-10-31T10:00:00.5Z")).NotTo(BeNil())
+		Expect(ragFinishedAt("2026-10-31T10:00:00.123456")).NotTo(BeNil())
+		Expect(ragFinishedAt(nil)).To(BeNil())
+		Expect(ragFinishedAt("yesterday")).To(BeNil())
 	})
 
 	It("says when a Confluence source is fetched without the stack credentials", func() {

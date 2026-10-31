@@ -139,7 +139,9 @@ func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Tas
 		fmt.Fprintf(&msg, "- %s (%s): %s\n", tg.Title, tg.key(), strings.TrimSpace(tg.Description))
 	}
 	msg.WriteString("Then give a single final answer built from their results, keeping the sources they cite.")
-	return map[string]any{"llm": "$ref:llm/" + llmName, "system_message": msg.String(), "max_rounds": rounds}
+	cfg := map[string]any{"llm": "$ref:llm/" + llmName, "system_message": msg.String(), "max_rounds": rounds}
+	setHistory(cfg, b.History)
+	return cfg
 }
 
 func agentTitle(b *okf.Bundle) string {

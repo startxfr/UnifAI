@@ -35,7 +35,9 @@ type RAGSourceReconciler struct {
 const (
 	minSyncInterval = 10 * time.Minute
 	// How long an empty pipeline status after a sync is queued counts as "not started yet".
-	pendingStatusGrace   = 10 * time.Minute
+	pendingStatusGrace = 10 * time.Minute
+	// syncClockSkew is the tolerated difference between the operator's clock and the RAG service's.
+	syncClockSkew        = 30 * time.Second
 	sourceTypeConfluence = "confluence"
 	sourceTypeWeb        = "web"
 )
@@ -244,8 +246,9 @@ func (r *RAGSourceReconciler) refresh(ctx context.Context, api *unifai.Client, o
 	}
 	var out struct {
 		Source struct {
-			Status   string         `json:"status"`
-			TypeData map[string]any `json:"type_data"`
+			Status     string         `json:"status"`
+			TypeData   map[string]any `json:"type_data"`
+			LastSyncAt any            `json:"last_sync_at"`
 		} `json:"source"`
 	}
 	err := api.Call(ctx, http.MethodGet, "/api/data_sources/data.source.details.get", url.Values{"source_id": {st.SourceID}}, nil, &out)
@@ -263,18 +266,36 @@ func (r *RAGSourceReconciler) refresh(ctx context.Context, api *unifai.Client, o
 		return 0
 	}
 	st.Pages, st.PagesChanged, st.PagesDeleted = count("page_count"), count("pages_changed"), count("pages_deleted")
-	return syncRunning(st.PipelineStatus, st.LastSyncTime, r.now()), nil
+	return syncRunning(st.PipelineStatus, st.LastSyncTime, ragFinishedAt(out.Source.LastSyncAt), r.now()), nil
+}
+
+// ragFinishedAt reads the source's last_sync_at (the end of its last pipeline run), as an HTTP date or an RFC 3339
+// time; nil when absent or in another format.
+func ragFinishedAt(v any) *time.Time {
+	text, _ := v.(string)
+	for _, layout := range []string{http.TimeFormat, time.RFC3339Nano, "2006-01-02T15:04:05.999999"} {
+		if t, err := time.Parse(layout, text); err == nil {
+			return &t
+		}
+	}
+	return nil
 }
 
 // syncRunning reports whether the source's pipeline is still running. Right after a sync is queued the RAG service
 // may answer before its worker set a status: an empty status then means "not started yet", not "done" (it read 0
-// pages otherwise, and nothing would read the result again). Past pendingStatusGrace an empty status is taken as
-// final, so a source the RAG service lost does not stay Syncing forever.
-func syncRunning(status string, lastSync *metav1.Time, now time.Time) bool {
+// pages otherwise, and nothing would read the result again). A DONE or FAILED status that ended before the sync was
+// queued (finishedAt, the source's last_sync_at, is older than lastSync by more than syncClockSkew) is the previous
+// run's result: the queued run has not started yet. Past pendingStatusGrace either case is taken as final, so a
+// source the RAG service lost does not stay Syncing forever.
+func syncRunning(status string, lastSync *metav1.Time, finishedAt *time.Time, now time.Time) bool {
+	queuedRecently := lastSync != nil && now.Sub(lastSync.Time) < pendingStatusGrace
 	if status == "" {
-		return lastSync != nil && now.Sub(lastSync.Time) < pendingStatusGrace
+		return queuedRecently
 	}
-	return status != statusDone && status != statusFailed
+	if status == statusDone || status == statusFailed {
+		return queuedRecently && finishedAt != nil && finishedAt.Before(lastSync.Add(-syncClockSkew))
+	}
+	return true
 }
 
 // SetupWithManager registers the controller.

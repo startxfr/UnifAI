@@ -40,6 +40,9 @@ class OrchestratorNodeFactory(BaseFactory[OrchestratorNodeConfig, OrchestratorNo
                 tools=deps.pop("tools", []),
                 system_message=cfg.system_message,
                 max_rounds=cfg.max_rounds,
+                history_enabled=cfg.history_enabled,
+                history_max_turns=cfg.history_max_turns,
+                history_token_budget=cfg.history_token_budget,
                 retries=cfg.retries,
                 tracing_service=tracing_service,
             )

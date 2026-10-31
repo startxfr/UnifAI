@@ -668,6 +668,27 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(bp).To(ContainSubstring(`"X-Zuno-Delegation-Depth":"1"`))
 	})
 
+	It("gives a delegating task's orchestrator the bundle's history window", func() {
+		ns := setup("bundle-delegation-history")
+		serveArkos(ns)
+		files := v03Files("tekos", "C1", toArkos)
+		files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "zuno:\n",
+			"zuno:\n  limits:\n    memory:\n      history:\n        max_turns: 4\n        token_budget: 3000\n", 1))
+		b := newBundle(ns, fakeBundles.put(files, sign(key, files)), nil)
+		delegating(b)
+		Expect(k8sClient.Create(ctx, b)).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"), func() string { return status(ns)().Message })
+		for _, name := range []string{"tekos-answer-technical-question", "tekos-answer-technical-question-orchestrator"} {
+			var agent unifaiv1.UnifaiAgent
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &agent)).To(Succeed())
+			cfg := map[string]any{}
+			Expect(json.Unmarshal(agent.Spec.Config.Raw, &cfg)).To(Succeed())
+			Expect(cfg["history_enabled"]).To(BeTrue(), name)
+			Expect(cfg["history_max_turns"]).To(BeNumerically("==", 4), name)
+			Expect(cfg["history_token_budget"]).To(BeNumerically("==", 3000), name)
+		}
+	})
+
 	It("refuses a bundle whose skill declares a tool outside the ceilings", func() {
 		files := okf.Files{}
 		for k, v := range tekosFiles() {

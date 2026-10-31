@@ -24,6 +24,7 @@ from mas.elements.nodes.common.agent.constants import StrategyType
 from mas.elements.nodes.common.agent.delegation_policy import DelegationPolicy, PermissiveDelegationPolicy
 from mas.elements.tools.common.execution.models import ExecutorConfig
 from mas.elements.nodes.common.workload import Task, WorkItemStatus, WorkItemKind, AgentResult
+from mas.elements.nodes.common.workload.history_window import window_history
 from .orchestrator_phase_provider import OrchestratorPhaseProvider
 from .delegation_policy import OrchestratorDelegationPolicy
 from .context import PendingCycle, CycleTrigger, CycleTriggerReason, OrchestratorContextBuilder, OrchestratorCycle
@@ -74,6 +75,9 @@ class OrchestratorNode(
             tools: List[BaseTool] = None,
             system_message: str = "",
             max_rounds: int = 20,
+            history_enabled: bool = True,
+            history_max_turns: Optional[int] = None,
+            history_token_budget: Optional[int] = None,
             **kwargs: Any
     ):
         """
@@ -84,6 +88,7 @@ class OrchestratorNode(
             tools: Domain-specific tools (orchestration tools added automatically)
             system_message: Custom system message for the orchestrator
             max_rounds: Maximum planning/execution rounds
+            history_enabled / history_max_turns / history_token_budget: window over the conversation history
             **kwargs: Additional arguments for parent classes
         """
         # Store domain specialization separately for adjacency info
@@ -95,6 +100,9 @@ class OrchestratorNode(
             **kwargs
         )
         self.max_rounds = max_rounds
+        self.history_enabled = history_enabled
+        self.history_max_turns = history_max_turns
+        self.history_token_budget = history_token_budget
         self.base_tools = tools or []
         
         # Orchestration cycles (one per thread, accumulates triggers)
@@ -622,7 +630,9 @@ class OrchestratorNode(
         # Conversation history (public messages from graph state)
         conversation_history = self.workspaces.get_conversation_history(thread_id)
         if conversation_history:
-            messages.extend(conversation_history)
+            messages.extend(window_history(
+                conversation_history, enabled=self.history_enabled, max_turns=self.history_max_turns,
+                token_budget=self.history_token_budget))
 
         # Pop the user prompt from the end if it matches the content
         # (we re-add it at the very end to guarantee ordering)

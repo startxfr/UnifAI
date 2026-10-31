@@ -47,3 +47,19 @@ def test_both_limits_apply():
 def test_messages_before_the_first_user_message_form_a_turn():
     msgs = [ChatMessage(role=Role.ASSISTANT, content="hello")] + convo(1)
     assert len(window_history(msgs, max_turns=1)) == 2
+
+
+def test_the_orchestrator_applies_the_window_to_the_history_it_sends():
+    from types import SimpleNamespace
+
+    from mas.elements.nodes.orchestrator.orchestrator_node import OrchestratorNode
+
+    class Node(OrchestratorNode):
+        workspaces = SimpleNamespace(get_conversation_history=lambda _thread: convo(5))
+
+    node = object.__new__(Node)
+    node.history_enabled, node.history_max_turns, node.history_token_budget = True, 2, None
+    out = node._build_context_messages("t", "q5 now")
+    assert [m.content.split()[0] for m in out] == ["q3", "a3", "q4", "a4", "q5"], "two recent turns, then the prompt"
+    node.history_enabled = False
+    assert [m.content for m in node._build_context_messages("t", "q5 now")] == ["q5 now"]
