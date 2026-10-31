@@ -49,3 +49,24 @@ fi
 mkdir -p bin
 echo "$img" > bin/ci-image.ref
 echo "devel-$found $img (signed, operator $built)"
+
+# E2E_VERSION is the tag of the five application images, not the operator's: the newest commit of HEAD's history that
+# has all of them (the CI builds the operator image only when operator code changes, the application images on
+# their own paths).
+base="${repo%/*}"
+app_tags=""
+for n in rag multiagent backend identity ui; do
+  app_tags+="$(skopeo list-tags "docker://$base/unifai-$n" | python3 -c 'import json,sys; print(" ".join("%s|%s" % (t, "'"$n"'") for t in json.load(sys.stdin)["Tags"]))') "
+done
+for c in $(git rev-list --first-parent -n 200 HEAD); do
+  sha="$(git rev-parse --short=9 "$c")"
+  n_found=0
+  for n in rag multiagent backend identity ui; do
+    [[ " $app_tags " == *" devel-$sha|$n "* ]] && n_found=$((n_found + 1))
+  done
+  if [ "$n_found" -eq 5 ]; then
+    echo "application images for the canary: E2E_VERSION=devel-$sha"
+    exit 0
+  fi
+done
+echo "no commit with all five application images found in the last 200 commits" >&2
