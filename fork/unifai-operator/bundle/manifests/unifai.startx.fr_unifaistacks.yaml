@@ -484,10 +484,11 @@ spec:
                 type: object
                 x-kubernetes-validations:
                 - message: 'images keys: mongodb, qdrant, rabbitmq, redis, redisInsight,
-                    temporal, rag, multiagent, backend, identity, ui, docling, embedding'
+                    temporal, rag, multiagent, backend, identity, ui, docling, embedding,
+                    reranker'
                   rule: self.all(k, k in ['mongodb', 'qdrant', 'rabbitmq', 'redis',
                     'redisInsight', 'temporal', 'rag', 'multiagent', 'backend', 'identity',
-                    'ui', 'docling', 'embedding'])
+                    'ui', 'docling', 'embedding', 'reranker'])
               integrations:
                 description: IntegrationsSpec groups optional third-party integrations.
                 properties:
@@ -775,6 +776,13 @@ spec:
                         description: Hugging Face model id (deploy) or model name
                           sent to the remote service.
                         type: string
+                      queryPrefix:
+                        description: |-
+                          Text put before every search query, never before documents, for instruction-tuned models
+                          (EMBEDDING_QUERY_PREFIX), e.g. for Qwen3-Embedding "Instruct: Given a question, retrieve passages that answer
+                          it\nQuery: ". Unset = none.
+                        maxLength: 512
+                        type: string
                       url:
                         type: string
                     type: object
@@ -799,6 +807,68 @@ spec:
                     maximum: 10000
                     minimum: 0
                     type: integer
+                  reranker:
+                    description: Cross-encoder re-ranking of search results; its 0-1
+                      relevance replaces the fused score. Unset = none.
+                    properties:
+                      candidates:
+                        description: Fused candidates re-ordered per search (RERANKER_CANDIDATES;
+                          30 by default).
+                        format: int32
+                        maximum: 200
+                        minimum: 1
+                        type: integer
+                      mode:
+                        default: deploy
+                        description: deploy = Text Embeddings Inference (CPU) serving
+                          Model in the stack namespace; remote = a service at url.
+                        enum:
+                        - deploy
+                        - remote
+                        type: string
+                      model:
+                        default: BAAI/bge-reranker-base
+                        description: Hugging Face model id of the reranker (deploy).
+                        type: string
+                      url:
+                        type: string
+                    type: object
+                  search:
+                    description: Fusion and index version of hybrid search.
+                    properties:
+                      fusion:
+                        description: 'How dense and sparse candidates are fused (QDRANT_FUSION):
+                          dbsf (scores, the RAG default) or rrf (ranks).'
+                        enum:
+                        - dbsf
+                        - rrf
+                        type: string
+                      sparseReadVersion:
+                        description: |-
+                          Sparse encoder version searches read (QDRANT_SPARSE_READ_VERSION; 1 by default): 2 drops stop words and
+                          normalises by length, in its own <collection>_hybrid_v2.
+                        format: int32
+                        maximum: 2
+                        minimum: 1
+                        type: integer
+                      sparseWriteVersions:
+                        description: |-
+                          Sparse versions written (QDRANT_SPARSE_WRITE_VERSIONS; the read version by default). During a migration
+                          write [1, 2] and re-ingest every source (spec.resyncToken), then read 2 and write [2].
+                        items:
+                          format: int32
+                          maximum: 2
+                          minimum: 1
+                          type: integer
+                        maxItems: 2
+                        type: array
+                    type: object
+                    x-kubernetes-validations:
+                    - message: sparseWriteVersions must include the version searches
+                        read
+                      rule: '!has(self.sparseWriteVersions) || self.sparseWriteVersions.exists(v,
+                        v == (has(self.sparseReadVersion) ? self.sparseReadVersion
+                        : 1))'
                   sharedPublishers:
                     description: |-
                       Users allowed to publish shared sources (visible to members of the source's ACL groups). Empty =
@@ -882,10 +952,10 @@ spec:
                 x-kubernetes-validations:
                 - message: 'resources keys: mongodb, qdrant, rabbitmq, redis, redisInsight,
                     temporal, rag, multiagent, backend, identity, ui, docling, embedding,
-                    ragCelery, multiagentWorker'
+                    reranker, ragCelery, multiagentWorker'
                   rule: self.all(k, k in ['mongodb', 'qdrant', 'rabbitmq', 'redis',
                     'redisInsight', 'temporal', 'rag', 'multiagent', 'backend', 'identity',
-                    'ui', 'docling', 'embedding', 'ragCelery', 'multiagentWorker'])
+                    'ui', 'docling', 'embedding', 'reranker', 'ragCelery', 'multiagentWorker'])
               secretsRef:
                 description: Secret whose keys override the generated ones (SECRET_KEY,
                   CREDENTIAL_ENCRYPTION_KEY, OAUTH_STATE_SECRET, REDIS_PASSWORD, ...).

@@ -144,6 +144,11 @@ func checkRedHatSource(t *testing.T, ns string) {
 	waitSynced(t, src, start, 20*time.Minute)
 	if src.Status.Pages != 1 || src.Status.PagesChanged != 0 {
 		t.Errorf("resync of an unchanged page: %s, want 1 page and none changed (incremental sync)", src.Status.Message)
+		for _, line := range strings.Split(podLogs(t, ns, "unifai-rag-"), "\n") {
+			if strings.Contains(line, "Web source e2e-rh") || strings.Contains(line, "index version") {
+				t.Logf("rag: %s", line)
+			}
+		}
 	}
 }
 
