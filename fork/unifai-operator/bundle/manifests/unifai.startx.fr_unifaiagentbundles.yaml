@@ -73,6 +73,14 @@ spec:
                   BundleCeilings bound what a bundle may declare (ADR-0564 clause 3): a bundle can narrow, never widen.
                   They are reviewed in Git with the CR, independently of the bundle content.
                 properties:
+                  delegationTargets:
+                    description: A2A targets the bundle may delegate to, as <agent>/<task>
+                      (zuno.delegation.targets). Empty = none.
+                    items:
+                      pattern: ^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$
+                      type: string
+                    maxItems: 64
+                    type: array
                   knowledgeDomains:
                     description: Knowledge domains the bundle's tasks may declare
                       in allowed_knowledge.
@@ -114,6 +122,27 @@ spec:
                 x-kubernetes-validations:
                 - message: classification overrides are C1, C2 or C3
                   rule: self.all(k, self[k] in ['C1', 'C2', 'C3'])
+              delegation:
+                description: |-
+                  Delegation over A2A through the zuno a2a-gateway. Unset = a bundle declaring zuno.delegation.targets is refused
+                  (DelegationUnsupported).
+                properties:
+                  gatewayURL:
+                    description: Base URL of the a2a-gateway; a target agent is called
+                      at <gatewayURL>/agents/<agent>.
+                    pattern: ^https?://[^/?#@]+$
+                    type: string
+                  maxRounds:
+                    default: 5
+                    description: Rounds of a delegating task's orchestrator (each
+                      target is called at most once per turn).
+                    format: int32
+                    maximum: 50
+                    minimum: 1
+                    type: integer
+                required:
+                - gatewayURL
+                type: object
               entitlement:
                 default: Enforced
                 description: |-
@@ -483,6 +512,10 @@ spec:
                 type: string
               phase:
                 description: Ready, Error, Pending.
+                type: string
+              primaryTask:
+                description: zuno.primary_task of the bundle (the task an A2A call
+                  reaches when it names none).
                 type: string
               resolvedDigest:
                 description: Manifest digest that was pulled.
