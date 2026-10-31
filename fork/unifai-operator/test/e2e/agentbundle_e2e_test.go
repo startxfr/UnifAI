@@ -93,15 +93,15 @@ func checkAgentBundleKeyless(t *testing.T, ns string) {
 
 func getObj(o client.Object) error { return c.Get(ctx, client.ObjectKeyFromObject(o), o) }
 
-// Development artifacts of zuno-demo-agents (publish-dev.yml, devel), pulled anonymously and pinned by digest:
-// tekos declares zuno.delegation.targets [{arkos, draft-architecture-testimonial}] and runs at C1, arkos is C3 and
-// its primary task is draft-architecture-testimonial.
 // controllerInstanceLabel is the label that assigns an object to an operator instance.
 const controllerInstanceLabel = "unifai.startx.fr/operator-instance"
 
+// Development artifacts of zuno-demo-agents (publish-dev.yml, devel 10f1bd9), pulled anonymously and pinned by digest:
+// arkos (plan_draft_write, C3, primary task draft-architecture-testimonial) declares zuno.delegation.targets
+// [{tekos, answer-technical-question}]; tekos (retrieve_reason_respond, C1) declares none.
 const (
-	delegatingArtifact = "quay.io/zuno/okf-tekos@sha256:8e2238a51dad55dc02876b38116a7643ccae579303b805fb67ff6b73bd3271f9"
-	targetArtifact     = "quay.io/zuno/okf-arkos@sha256:343ca298bf125ce617be80028828dd4b2ec9fc19ba239722e9c10eb65ab839d8"
+	delegatingArtifact = "quay.io/zuno/okf-arkos@sha256:c54b80bd20b404d88f1817ddefd0450f191f93ed8dd579c802bcf72957e49c82"
+	targetArtifact     = "quay.io/zuno/okf-tekos@sha256:e6fb7962d245bbed1cfd5daa76fbab77051f7f916dfca611a069249f8fa474f5"
 	devSubject         = `^https://github\.com/startxfr/zuno-demo-agents/\.github/workflows/publish-dev\.yml@refs/heads/devel$`
 	gatewayURL         = "http://a2a-gateway.zuno-ai-run.svc:8080"
 )
@@ -131,8 +131,9 @@ func ensureMockLLM(t *testing.T, ns string) {
 }
 
 // checkAgentBundleDelegation: a bundle declaring a delegation target is refused without spec.delegation, and with it
-// is emitted as an orchestrator over its agent plus an A2A node towards the gateway, at the target's classification;
-// the real UnifAI accepts the resulting workflow, and a target that is not served (here: not created yet) is waited for.
+// is emitted as an orchestrator before its draft stage plus an A2A node towards the gateway, at the highest classification
+// of the task and its target; the real UnifAI accepts the resulting workflow, and a target that is not served (here: not
+// created yet) is waited for.
 func checkAgentBundleDelegation(t *testing.T, ns string) {
 	t.Helper()
 	ensureMockLLM(t, ns)
@@ -170,28 +171,34 @@ func checkAgentBundleDelegation(t *testing.T, ns string) {
 	must(t, c.Delete(ctx, closed))
 
 	// 2. With spec.delegation but the target not served yet: the bundle waits for it (and emits nothing).
-	tekos := delegationBundle(ns, "e2e-tekos", delegatingArtifact)
-	tekos.Spec.Delegation = &unifaiv1.BundleDelegation{GatewayURL: gatewayURL}
-	tekos.Spec.Ceilings.DelegationTargets = []string{"arkos/draft-architecture-testimonial"}
-	create(t, tekos)
-	condition(tekos, "Valid", "DelegationTargetUnresolved")
-	if len(tekos.Status.Children) > 0 {
-		t.Errorf("a delegation towards an unserved target emitted %v", tekos.Status.Children)
+	arkos := delegationBundle(ns, "e2e-arkos", delegatingArtifact)
+	arkos.Spec.Delegation = &unifaiv1.BundleDelegation{GatewayURL: gatewayURL}
+	arkos.Spec.Ceilings.DelegationTargets = []string{"tekos/answer-technical-question"}
+	create(t, arkos)
+	condition(arkos, "Valid", "DelegationTargetUnresolved")
+	if len(arkos.Status.Children) > 0 {
+		t.Errorf("a delegation towards an unserved target emitted %v", arkos.Status.Children)
 	}
 
-	// 3. The target is served: the delegating bundle emits.
-	arkos := delegationBundle(ns, "e2e-arkos", targetArtifact)
-	create(t, arkos)
-	phase(arkos, "Ready", 10*time.Minute)
+	// 3. The target is served: the delegating bundle emits. The target keeps its own level (C1).
+	tekos := delegationBundle(ns, "e2e-tekos", targetArtifact)
+	create(t, tekos)
 	phase(tekos, "Ready", 10*time.Minute)
-	for _, task := range tekos.Status.Tasks {
+	phase(arkos, "Ready", 10*time.Minute)
+	for _, task := range arkos.Status.Tasks {
 		if task.Classification != "C3" {
-			t.Errorf("task %s of a delegating agent runs at %s, want the target's C3", task.Name, task.Classification)
+			t.Errorf("task %s of the delegating agent runs at %s, want C3", task.Name, task.Classification)
 		}
 	}
-	orch := "e2e-tekos-answer-technical-question-orchestrator"
-	if !containsString(tekos.Status.Children, "UnifaiAgent/"+orch) {
-		t.Fatalf("no orchestrator among the children %v", tekos.Status.Children)
+	for _, task := range tekos.Status.Tasks {
+		if task.Classification != "C1" {
+			t.Errorf("task %s of the target runs at %s: a target is never raised by what delegates to it", task.Name, task.Classification)
+		}
+	}
+	orch := "e2e-arkos-draft-architecture-testimonial-orchestrator"
+	if !containsString(arkos.Status.Children, "UnifaiAgent/"+orch) ||
+		!containsString(arkos.Status.Children, "UnifaiAgent/e2e-arkos-draft-architecture-testimonial-draft") {
+		t.Fatalf("no orchestrator and draft stage among the children %v", arkos.Status.Children)
 	}
 	agent := &unifaiv1.UnifaiAgent{ObjectMeta: metav1.ObjectMeta{Name: orch, Namespace: ns}}
 	must(t, getObj(agent))
@@ -204,12 +211,12 @@ func checkAgentBundleDelegation(t *testing.T, ns string) {
 	}
 
 	// 4. The real UnifAI accepts the delegating workflow (the primary task's workflow is named after the bundle).
-	wf := &unifaiv1.UnifaiWorkflow{ObjectMeta: metav1.ObjectMeta{Name: "e2e-tekos", Namespace: ns}}
+	wf := &unifaiv1.UnifaiWorkflow{ObjectMeta: metav1.ObjectMeta{Name: "e2e-arkos", Namespace: ns}}
 	waitPhase(t, wf, "Ready", 10*time.Minute)
 	bp := string(wf.Spec.Blueprint.Raw)
-	for _, want := range []string{`"base_url":"` + gatewayURL + `/agents/arkos"`, `"auth_method":"forward_user_token"`,
-		`"X-Zuno-Delegated-By":"tekos:answer-technical-question"`, `"X-Zuno-Delegation-Depth":"1"`,
-		`"X-Zuno-Task":"draft-architecture-testimonial"`} {
+	for _, want := range []string{`"base_url":"` + gatewayURL + `/agents/tekos"`, `"auth_method":"forward_user_token"`,
+		`"X-Zuno-Delegated-By":"arkos:draft-architecture-testimonial"`, `"X-Zuno-Delegation-Depth":"1"`,
+		`"X-Zuno-Task":"answer-technical-question"`} {
 		if !strings.Contains(bp, want) {
 			t.Errorf("delegating workflow lacks %s", want)
 		}
@@ -217,7 +224,7 @@ func checkAgentBundleDelegation(t *testing.T, ns string) {
 
 	// 5. An A2A node towards another host than the bundle's gateway is refused, even in a workflow the bundle owns.
 	must(t, getObj(wf))
-	wf.Spec.Blueprint = *raw(mustJSON(t, strings.Replace(bp, gatewayURL+"/agents/arkos", "http://evil.example/agents/arkos", 1)))
+	wf.Spec.Blueprint = *raw(mustJSON(t, strings.Replace(bp, gatewayURL+"/agents/tekos", "http://evil.example/agents/tekos", 1)))
 	must(t, c.Update(ctx, wf))
 	eventually(t, "A2A node towards another host refused", 5*time.Minute, func() (bool, string) {
 		if err := getObj(wf); err != nil {

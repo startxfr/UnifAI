@@ -307,14 +307,16 @@ spec:
   A target missing from `ceilings.delegationTargets` is `WithinCeilings=False` (`Widening`).
 - Each target is resolved against its `Verified`, `Ready` `UnifaiAgentBundle` in the namespace. Only the target's primary
   task can be reached until the gateway reads `X-Zuno-Task`; other tasks are `DelegationTargetUnresolved`.
-- Every task of a delegating agent becomes an orchestrator (`<task>-orchestrator`) over the task's own agent and one
-  inline `a2a_agent_node` per target (`<gatewayURL>/agents/<agent>`). The A2A node forwards the user's token and the chain
+- Every task of a delegating agent becomes an orchestrator (`<task>-orchestrator`) over the task's work agent and one
+  inline `a2a_agent_node` per target (`<gatewayURL>/agents/<agent>`). The work agent is the only agent of
+  `retrieve_reason_respond` and the drafting stage of `plan_draft_write` (plan, then the orchestrator, then the draft
+  stage or an A2A node, then write). The A2A node forwards the user's token and the chain
   headers the gateway verifies: `X-Zuno-Delegated-By: <agent>:<task>` and `X-Zuno-Delegation-Depth: 1`. A worker runs only
   on the work the orchestrator sends it, so a target is not called on a turn that does not need it.
 - Classification is monotone and applied statically: every task of a delegating agent runs at the highest level of the
   task and its targets, from its first call (a C1 agent delegating to a C3 one is C3, local models only).
-- Only a workflow owned by such a bundle may hold A2A nodes, and only towards its own gateway. The `plan_draft_write`
-  shape does not delegate yet.
+- Only a workflow owned by such a bundle may hold A2A nodes, and only towards its own gateway. A target is never
+  raised by what delegates to it: its own tasks keep their classification.
 
 ### Spec rules (R-304)
 

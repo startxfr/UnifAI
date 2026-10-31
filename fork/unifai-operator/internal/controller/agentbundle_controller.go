@@ -202,12 +202,6 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 		cond(ConditionValid, false, "DelegationUnsupported", msg)
 		return permanent("%s", msg)
 	}
-	if len(b.DelegationTargets) > 0 && b.GraphShape != okf.ShapeRetrieveReasonRespond {
-		msg := fmt.Sprintf("zuno.delegation.targets: delegation is emitted for graph shape %s only, not %s",
-			okf.ShapeRetrieveReasonRespond, b.GraphShape)
-		cond(ConditionValid, false, "DelegationUnsupported", msg)
-		return permanent("%s", msg)
-	}
 	switch b.GraphShape {
 	case okf.ShapeRetrieveReasonRespond, okf.ShapePlanDraftWrite:
 	case "":
@@ -467,7 +461,7 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...dele
 		blueprint := stagedBlueprint(cond, stages)
 		if len(targets) > 0 {
 			var orch client.Object
-			orch, blueprint = delegatingTask(cr, b, t, common, cond, name, targets)
+			orch, blueprint = delegatingTask(cr, b, t, common, cond, name, stages, targets)
 			objs = append(objs, orch)
 		}
 

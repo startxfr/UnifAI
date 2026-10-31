@@ -45,7 +45,7 @@ func TestBundleMayDelegate(t *testing.T) {
 }
 
 func TestA2ABaseURLs(t *testing.T) {
-	bp := delegatingBlueprint("c", "orch", "agent", a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "tekos", "answer",
+	bp := delegatingBlueprint("c", "orch", []string{"agent"}, 0, a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "tekos", "answer",
 		[]delegationTarget{{Agent: "arkos", Task: "draft"}, {Agent: "comage", Task: "check"}}))
 	got := a2aBaseURLs(normalise(t, bp))
 	if len(got) != 2 || got[0] != "http://gw:8080/agents/arkos" || got[1] != "http://gw:8080/agents/comage" {
@@ -93,5 +93,47 @@ func TestChildrenBelongToTheInstanceOfTheirBundle(t *testing.T) {
 	cr.Labels = nil
 	if _, ok := childMeta(cr, "tekos-llm").Labels[InstanceLabel]; ok {
 		t.Error("a bundle of the default instance gets children with an instance label")
+	}
+}
+
+const (
+	stepOrchestrate = "orchestrate"
+	stepAgent       = "agent"
+)
+
+func TestDelegatingBlueprintShapes(t *testing.T) {
+	a2a := a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "arkos", "draft", []delegationTarget{{Agent: "tekos", Task: "answer"}})
+	stepsOf := func(bp map[string]any) map[string]map[string]any {
+		out := map[string]map[string]any{}
+		for _, s := range normalise(t, bp["plan"]).([]any) {
+			m := s.(map[string]any)
+			out[m["uid"].(string)] = m
+		}
+		return out
+	}
+
+	// retrieve_reason_respond: the single stage is coordinated by the orchestrator.
+	one := stepsOf(delegatingBlueprint("c", "orch", []string{"t"}, 0, a2a))
+	if one["ask"]["branches"].(map[string]any)[stepAgent] != stepOrchestrate || one[stepOrchestrate]["after"] != nil ||
+		one[stepAgent]["after"] != stepOrchestrate || one["a2a-tekos"]["after"] != stepOrchestrate {
+		t.Errorf("single stage plan: %v", one)
+	}
+	if got := one["finish"]["after"].([]any); len(got) != 2 || got[0] != stepAgent || got[1] != "a2a-tekos" {
+		t.Errorf("single stage finish waits for %v", got)
+	}
+
+	// plan_draft_write: plan -> orchestrator -> (draft | A2A) -> write -> answer.
+	three := stepsOf(delegatingBlueprint("c", "orch", []string{"t-plan", "t-draft", "t-write"}, 1, a2a))
+	if three["ask"]["branches"].(map[string]any)[stepAgent] != stepAgent || three[stepAgent]["after"] != nil {
+		t.Errorf("the question must lead to the plan stage: %v", three["ask"])
+	}
+	if three[stepOrchestrate]["after"] != stepAgent || three["agent-2"]["after"] != stepOrchestrate || three["a2a-tekos"]["after"] != stepOrchestrate {
+		t.Errorf("orchestrator and workers: %v", three)
+	}
+	if got := three["agent-3"]["after"].([]any); len(got) != 2 || got[0] != "agent-2" || got[1] != "a2a-tekos" {
+		t.Errorf("the write stage waits for %v", got)
+	}
+	if three["finish"]["after"] != "agent-3" {
+		t.Errorf("finish after %v", three["finish"]["after"])
 	}
 }

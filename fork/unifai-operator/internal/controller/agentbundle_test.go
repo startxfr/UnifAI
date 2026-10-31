@@ -545,6 +545,45 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		refused(setup("bundle-delegation"), func(*unifaiv1.UnifaiAgentBundle) {}, v03Files("tekos", "C1", toArkos), ConditionValid, "DelegationUnsupported")
 	})
 
+	It("emits a plan_draft_write agent delegating to a lower-level target: orchestrator before the draft stage", func() {
+		ns := setup("bundle-delegation-pdw")
+		// tekos (C1, primary answer-technical-question) is the target served next to the delegating arkos (C3).
+		tf := v03Files("tekos", "C1", "")
+		target := newBundle(ns, fakeBundles.put(tf, sign(key, tf)), nil)
+		Expect(k8sClient.Create(ctx, target)).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase + "/" + status(ns)().PrimaryTask }, timeout, interval).Should(Equal("Ready/answer-technical-question"))
+
+		af := v03Files("arkos", "C3", "      - {agent: tekos, task: answer-technical-question}\n")
+		af["agent.okf.md"] = []byte(strings.Replace(string(af["agent.okf.md"]), "graph_shape: retrieve_reason_respond", "graph_shape: plan_draft_write", 1))
+		b := newBundle(ns, fakeBundles.put(af, sign(key, af)), nil)
+		b.Name = "arkos"
+		b.Spec.Ceilings.MinClassification = "C3"
+		b.Spec.Delegation = &unifaiv1.BundleDelegation{GatewayURL: "http://a2a-gateway.zuno-ai-run.svc:8080"}
+		b.Spec.Ceilings.DelegationTargets = []string{"tekos/answer-technical-question"}
+		Expect(k8sClient.Create(ctx, b)).To(Succeed())
+		var got unifaiv1.UnifaiAgentBundle
+		Eventually(func() string {
+			_ = k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "arkos"}, &got)
+			return got.Status.Phase + " " + got.Status.Message
+		}, timeout, interval).Should(HavePrefix("Ready"))
+		for _, t := range got.Status.Tasks {
+			Expect(t.Classification).To(Equal("C3"), "a C3 agent delegating to a C1 target stays C3: "+t.Name)
+		}
+		Expect(got.Status.Children).To(ContainElements(
+			"UnifaiAgent/arkos-answer-technical-question-plan", "UnifaiAgent/arkos-answer-technical-question-draft",
+			"UnifaiAgent/arkos-answer-technical-question-write", "UnifaiAgent/arkos-answer-technical-question-orchestrator"))
+
+		var wf unifaiv1.UnifaiWorkflow
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "arkos"}, &wf)).To(Succeed())
+		bp := string(wf.Spec.Blueprint.Raw)
+		Expect(bp).To(ContainSubstring(`"base_url":"http://a2a-gateway.zuno-ai-run.svc:8080/agents/tekos"`))
+		Expect(bp).To(ContainSubstring(`"X-Zuno-Delegated-By":"arkos:answer-technical-question"`))
+		Expect(bp).To(ContainSubstring(`"X-Zuno-Task":"answer-technical-question"`))
+		// plan first, then the orchestrator, and the draft stage and the A2A node are its workers.
+		Expect(bp).To(MatchRegexp(`"after":"agent","node":"\$rid:agent/arkos-answer-technical-question-orchestrator","uid":"orchestrate"`))
+		Expect(bp).To(MatchRegexp(`"after":"orchestrate","node":"\$rid:agent/arkos-answer-technical-question-draft","uid":"agent-2"`))
+	})
+
 	It("refuses a delegation target outside spec.ceilings.delegationTargets", func() {
 		refused(setup("bundle-delegation-ceiling"), func(b *unifaiv1.UnifaiAgentBundle) {
 			delegating(b)

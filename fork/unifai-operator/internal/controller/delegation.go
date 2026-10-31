@@ -96,18 +96,33 @@ func raisedLevel(level okf.Level, targets []delegationTarget) okf.Level {
 	return level
 }
 
-// delegatingTask is the orchestrator of a delegating task and the blueprint of its workflow.
-func delegatingTask(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, common unifaiv1.CommonSpec, cond, agent string,
-	targets []delegationTarget) (client.Object, map[string]any) {
-	orch := agent + "-orchestrator"
+// workStage is the index of the stage of a task that does its work, the one the orchestrator coordinates: the only
+// stage of retrieve_reason_respond, the drafting stage (tools and knowledge) of plan_draft_write.
+func workStage(b *okf.Bundle) int {
+	if b.GraphShape == okf.ShapePlanDraftWrite {
+		for i, s := range planDraftWriteStages {
+			if s.name == "draft" {
+				return i
+			}
+		}
+	}
+	return 0
+}
+
+// delegatingTask is the orchestrator of a delegating task and the blueprint of its workflow. stages are the agents
+// of the task in order (taskName-plan, -draft, -write for plan_draft_write).
+func delegatingTask(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, common unifaiv1.CommonSpec, cond, taskName string,
+	stages []string, targets []delegationTarget) (client.Object, map[string]any) {
+	orch := taskName + "-orchestrator"
+	at := workStage(b)
 	obj := &unifaiv1.UnifaiAgent{ObjectMeta: childMeta(cr, orch), Spec: unifaiv1.UnifaiAgentSpec{
 		CommonSpec: common, Type: "orchestrator_node",
-		ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(orchestratorConfig(cr, b, t, agent, targets))}}}
-	return obj, delegatingBlueprint(cond, orch, agent, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, targets))
+		ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(orchestratorConfig(cr, b, t, taskName, stages[at], targets))}}}
+	return obj, delegatingBlueprint(cond, orch, stages, at, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, targets))
 }
 
 // orchestratorConfig coordinates a delegating task: its own agent first, a target only when asked for.
-func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, agentName string, targets []delegationTarget) map[string]any {
+func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, llmName, workAgent string, targets []delegationTarget) map[string]any {
 	rounds := int(cr.Spec.Delegation.MaxRounds)
 	if rounds == 0 {
 		rounds = defaultDelegationRounds
@@ -118,13 +133,13 @@ func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Tas
 	}
 	var msg strings.Builder
 	fmt.Fprintf(&msg, "You coordinate the answer of %s for the task %q.\n", agentTitle(b), title)
-	fmt.Fprintf(&msg, "Delegate the user's request to the agent %s first: it has this task's documents, tools and instructions.\n", agentName)
+	fmt.Fprintf(&msg, "Delegate the user's request to the agent %s first: it has this task's documents, tools and instructions.\n", workAgent)
 	msg.WriteString("Delegate to another agent below only when the user asks for what it provides, at most once per request:\n")
 	for _, tg := range targets {
 		fmt.Fprintf(&msg, "- %s (%s): %s\n", tg.Title, tg.key(), strings.TrimSpace(tg.Description))
 	}
 	msg.WriteString("Then give a single final answer built from their results, keeping the sources they cite.")
-	return map[string]any{"llm": "$ref:llm/" + agentName, "system_message": msg.String(), "max_rounds": rounds}
+	return map[string]any{"llm": "$ref:llm/" + llmName, "system_message": msg.String(), "max_rounds": rounds}
 }
 
 func agentTitle(b *okf.Bundle) string {
@@ -158,36 +173,71 @@ func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, targets []delega
 	return out
 }
 
-// delegatingBlueprint: question -> orchestrator -> (task agent | target A2A nodes) -> answer. The workers act only on
-// the work the orchestrator sends them, so a target is not called on a turn that does not need it.
-func delegatingBlueprint(cond, orchestrator, agent string, a2a []map[string]any) map[string]any {
+// delegatingBlueprint: question -> stages -> answer, where the stage at index `at` is replaced by an orchestrator
+// over that stage's agent and the target A2A nodes. The workers act only on the work the orchestrator sends them, so
+// a target is not called on a turn that does not need it; the next stage (or the answer) follows all of them.
+func delegatingBlueprint(cond, orchestrator string, stages []string, at int, a2a []map[string]any) map[string]any {
 	nodes := []any{
 		map[string]any{"name": "User Question Node", "rid": "user_question", "type": "user_question_node",
 			"config": map[string]any{"retries": 1, "type": "user_question_node"}},
 		map[string]any{"name": "Final Answer Node", "rid": "final_answer", "type": "final_answer_node",
 			"config": map[string]any{"retries": 1, "type": "final_answer_node"}},
 		map[string]any{"rid": "$ref:agent/" + orchestrator},
-		map[string]any{"rid": "$ref:agent/" + agent},
 	}
-	plan := []any{
-		map[string]any{"uid": "ask", "node": "user_question", "branches": map[string]any{"agent": "orchestrate"},
-			"exit_condition": "$rid:condition/" + cond},
-		map[string]any{"uid": "orchestrate", "node": "$rid:agent/" + orchestrator},
-		map[string]any{"uid": "agent", "node": "$rid:agent/" + agent, "after": "orchestrate"},
+	for _, stage := range stages {
+		nodes = append(nodes, map[string]any{"rid": "$ref:agent/" + stage})
 	}
-	workers := []any{"agent"}
 	for _, n := range a2a {
 		nodes = append(nodes, n)
-		uid := n["rid"].(string)
-		plan = append(plan, map[string]any{"uid": uid, "node": uid, "after": "orchestrate"})
-		workers = append(workers, uid)
 	}
-	plan = append(plan, map[string]any{"uid": "finish", "node": "final_answer", "after": workers})
+	first := stageUID(0)
+	if at == 0 {
+		first = "orchestrate"
+	}
+	plan := []any{map[string]any{"uid": "ask", "node": "user_question", "branches": map[string]any{"agent": first},
+		"exit_condition": "$rid:condition/" + cond}}
+	var prev []string
+	for i, stage := range stages {
+		uid := stageUID(i)
+		if i == at {
+			orch := map[string]any{"uid": "orchestrate", "node": "$rid:agent/" + orchestrator}
+			if len(prev) > 0 {
+				orch["after"] = afterOf(prev)
+			}
+			plan = append(plan, orch, map[string]any{"uid": uid, "node": "$rid:agent/" + stage, "after": "orchestrate"})
+			prev = []string{uid}
+			for _, n := range a2a {
+				a := n["rid"].(string)
+				plan = append(plan, map[string]any{"uid": a, "node": a, "after": "orchestrate"})
+				prev = append(prev, a)
+			}
+			continue
+		}
+		step := map[string]any{"uid": uid, "node": "$rid:agent/" + stage}
+		if len(prev) > 0 {
+			step["after"] = afterOf(prev)
+		}
+		plan = append(plan, step)
+		prev = []string{uid}
+	}
+	plan = append(plan, map[string]any{"uid": "finish", "node": "final_answer", "after": afterOf(prev)})
 	return map[string]any{
 		"conditions": []any{map[string]any{"rid": "$ref:condition/" + cond}},
 		"nodes":      nodes,
 		"plan":       plan,
 	}
+}
+
+// afterOf is a plan step's `after`: one uid, or the list of the steps it waits for.
+func afterOf(uids []string) any {
+	if len(uids) == 1 {
+		return uids[0]
+	}
+	out := make([]any, len(uids))
+	for i, u := range uids {
+		out[i] = u
+	}
+	return out
 }
 
 // delegationOutsideCeilings lists the declared targets missing from spec.ceilings.delegationTargets.
