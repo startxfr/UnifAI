@@ -217,10 +217,12 @@ class AgentCapableMixin(Generic[T]):
                             metadata={"success": False},
                         )
                     elif _result_looks_like_error(response.result):
+                        detail = str(response.result)[:500]
+                        logger.warning("Tool '%s' returned an error response: %s", response.tool_name, detail)
                         handle.update(
                             output=response.result,
                             level="ERROR",
-                            status_message=f"Tool '{response.tool_name}' returned error response",
+                            status_message=f"Tool '{response.tool_name}' returned error response: {detail}",
                             metadata={"success": False},
                         )
                     else:
