@@ -45,9 +45,10 @@ def first_hit(results: list[dict], expect: list[str]) -> int | None:
 
 def query(base: str, token: str, entry: dict, top_k: int) -> list[dict]:
     params = {"query": entry["query"], "sourceType": entry.get("sourceType", "WEB"), "top_k_results": top_k}
-    if entry.get("tags"):
-        params["tags"] = entry["tags"]
-    req = urllib.request.Request(f"{base.rstrip('/')}/api/sources/query.bearer?{urllib.parse.urlencode(params)}",
+    tags = entry.get("tags") or []
+    if tags:  # a repeated parameter: tags=a&tags=b
+        params["tags"] = [tags] if isinstance(tags, str) else list(tags)
+    req = urllib.request.Request(f"{base.rstrip('/')}/api/sources/query.bearer?{urllib.parse.urlencode(params, doseq=True)}",
                                  headers={"Authorization": f"Bearer {token}"})
     with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 (operator-given URL)
         body = json.load(resp)

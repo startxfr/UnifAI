@@ -32,3 +32,27 @@ def test_metrics():
     assert r["hit@1"] == 1 / 3 and r["hit@5"] == 2 / 3
     assert abs(r["mrr"] - (1 + 0.5) / 3) < 1e-9
     assert r["missed"] == [3] and r["expect_none_top_scores"] == [0.2]
+
+
+def test_tags_are_sent_as_repeated_parameters(monkeypatch):
+    seen = {}
+
+    class Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'{"matches": []}'
+
+    def fake_urlopen(req, timeout):
+        seen["url"] = req.full_url
+        return Resp()
+
+    monkeypatch.setattr(rag_eval.urllib.request, "urlopen", fake_urlopen)
+    rag_eval.query("http://rag:13456/", "tok", {"query": "q", "sourceType": "WEB", "tags": ["a", "b"]}, 7)
+    assert "tags=a&tags=b" in seen["url"] and "top_k_results=7" in seen["url"] and "sourceType=WEB" in seen["url"]
+    rag_eval.query("http://rag:13456", "tok", {"query": "q", "tags": "knowledge.tech"}, 3)
+    assert "tags=knowledge.tech" in seen["url"]
