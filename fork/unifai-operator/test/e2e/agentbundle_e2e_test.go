@@ -3,7 +3,6 @@
 package e2e
 
 import (
-	"encoding/json"
 	"os"
 	"regexp"
 	"strings"
@@ -222,22 +221,26 @@ func checkAgentBundleDelegation(t *testing.T, ns string) {
 		}
 	}
 
-	// 5. An A2A node towards another host than the bundle's gateway is refused, even in a workflow the bundle owns.
-	must(t, getObj(wf))
-	wf.Spec.Blueprint = *raw(mustJSON(t, strings.Replace(bp, gatewayURL+"/agents/tekos", "http://evil.example/agents/tekos", 1)))
-	must(t, c.Update(ctx, wf))
-	eventually(t, "A2A node towards another host refused", 5*time.Minute, func() (bool, string) {
-		if err := getObj(wf); err != nil {
+	// 5. A free-form workflow (not owned by a bundle) with an A2A node stays refused, towards the gateway too: only the
+	// bundle's own workflow may delegate. (A bundle-owned workflow is rewritten by its bundle, so it cannot hold a
+	// foreign host: that rule is covered by the unit tests.)
+	free := &unifaiv1.UnifaiWorkflow{ObjectMeta: metav1.ObjectMeta{Name: "e2e-free-a2a", Namespace: ns}, Spec: unifaiv1.UnifaiWorkflowSpec{
+		Blueprint: *raw(map[string]any{
+			"nodes": []any{
+				map[string]any{"rid": "user_question", "name": "User Question Node", "type": "user_question_node", "config": map[string]any{"type": "user_question_node"}},
+				map[string]any{"rid": "final_answer", "name": "Final Answer Node", "type": "final_answer_node", "config": map[string]any{"type": "final_answer_node"}},
+				map[string]any{"rid": "a2a-free", "name": "Free A2A", "type": "a2a_agent_node", "config": map[string]any{
+					"type": "a2a_agent_node", "base_url": gatewayURL + "/agents/tekos", "auth_method": "forward_user_token"}}},
+			"plan": []any{
+				map[string]any{"uid": "ask", "node": "user_question"},
+				map[string]any{"uid": "a2a", "node": "a2a-free", "after": "ask"},
+				map[string]any{"uid": "finish", "node": "final_answer", "after": "a2a"}},
+		})}}
+	create(t, free)
+	eventually(t, "a free-form A2A workflow is refused", 5*time.Minute, func() (bool, string) {
+		if err := getObj(free); err != nil {
 			return false, err.Error()
 		}
-		return strings.Contains(wf.Status.Message, "is not an agent of the bundle's a2a-gateway"), wf.Status.Phase + " " + wf.Status.Message
+		return free.Status.Phase == "Error" && strings.Contains(free.Status.Message, "A2A delegation is disabled"), free.Status.Phase + " " + free.Status.Message
 	})
-}
-
-// mustJSON decodes a JSON document into a value raw() can marshal back unchanged.
-func mustJSON(t *testing.T, doc string) any {
-	t.Helper()
-	var v any
-	must(t, json.Unmarshal([]byte(doc), &v))
-	return v
 }
