@@ -87,6 +87,25 @@ func (r *AgentBundleReconciler) resolveTargets(ctx context.Context, cr *unifaiv1
 	return out, nil
 }
 
+// raisedLevel is the classification a delegating task runs at: the highest of its own and its targets', from its
+// first call (ADR-0401/0403 monotone classification, applied statically).
+func raisedLevel(level okf.Level, targets []delegationTarget) okf.Level {
+	for _, tg := range targets {
+		level = max(level, tg.Level)
+	}
+	return level
+}
+
+// delegatingTask is the orchestrator of a delegating task and the blueprint of its workflow.
+func delegatingTask(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, common unifaiv1.CommonSpec, cond, agent string,
+	targets []delegationTarget) (client.Object, map[string]any) {
+	orch := agent + "-orchestrator"
+	obj := &unifaiv1.UnifaiAgent{ObjectMeta: childMeta(cr, orch), Spec: unifaiv1.UnifaiAgentSpec{
+		CommonSpec: common, Type: "orchestrator_node",
+		ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(orchestratorConfig(cr, b, t, agent, targets))}}}
+	return obj, delegatingBlueprint(cond, orch, agent, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, targets))
+}
+
 // orchestratorConfig coordinates a delegating task: its own agent first, a target only when asked for.
 func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, agentName string, targets []delegationTarget) map[string]any {
 	rounds := int(cr.Spec.Delegation.MaxRounds)

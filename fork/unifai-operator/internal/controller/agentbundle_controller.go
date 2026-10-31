@@ -377,11 +377,7 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...dele
 		if err != nil {
 			return nil, nil, permanent("task %s: %v", t.Name, err)
 		}
-		// A delegating task may receive its targets' answers: it runs at the highest of their levels from its first
-		// call (ADR-0401/0403 monotone classification, applied statically).
-		for _, tg := range targets {
-			level = max(level, tg.Level)
-		}
+		level = raisedLevel(level, targets)
 		name := childName(cr.Name, t.Name)
 		wfName := name
 		if t.Name == b.PrimaryTask {
@@ -408,13 +404,7 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...dele
 		if _, ok := agent["strategy_type"]; !ok {
 			agent["strategy_type"] = "react"
 		}
-		// The bundle's own bound (task, else agent) wins over spec.agentConfig.max_rounds, which is the default;
-		// checkCeilings already refused a bound above spec.ceilings.maxSteps.
-		if steps := b.Steps(t); steps > 0 {
-			agent["max_rounds"] = steps
-		} else if _, ok := agent["max_rounds"]; !ok {
-			agent["max_rounds"] = defaultMaxRounds
-		}
+		setRounds(agent, b.Steps(t))
 		if len(t.AllowedTools) > 0 && (cr.Spec.MCP != nil || len(cr.Spec.Providers) > 0) {
 			refs := []any{}
 			if cr.Spec.MCP != nil {
@@ -474,15 +464,11 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...dele
 			objs = append(objs, &unifaiv1.UnifaiAgent{ObjectMeta: childMeta(cr, name), Spec: unifaiv1.UnifaiAgentSpec{
 				CommonSpec: common, Type: "custom_agent_node", ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(agent)}}})
 		}
-		var blueprint map[string]any
+		blueprint := stagedBlueprint(cond, stages)
 		if len(targets) > 0 {
-			orch := name + "-orchestrator"
-			objs = append(objs, &unifaiv1.UnifaiAgent{ObjectMeta: childMeta(cr, orch), Spec: unifaiv1.UnifaiAgentSpec{
-				CommonSpec: common, Type: "orchestrator_node",
-				ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(orchestratorConfig(cr, b, t, name, targets))}}})
-			blueprint = delegatingBlueprint(cond, orch, name, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, targets))
-		} else {
-			blueprint = stagedBlueprint(cond, stages)
+			var orch client.Object
+			orch, blueprint = delegatingTask(cr, b, t, common, cond, name, targets)
+			objs = append(objs, orch)
 		}
 
 		title := t.Title
@@ -651,6 +637,17 @@ func (r *AgentBundleReconciler) teamCoversGroups(ctx context.Context, cr *unifai
 
 // groupTeamName is the name of the UnifaiTeam a bundle emits for spec.groupTeam.
 func groupTeamName(cr *unifaiv1.UnifaiAgentBundle) string { return "agent-" + cr.Name }
+
+// setRounds bounds an agent's reasoning/tool loop: the bundle's own bound (task, else agent) wins over
+// spec.agentConfig.max_rounds, which is the default, else defaultMaxRounds; checkCeilings already refused a bound
+// above spec.ceilings.maxSteps.
+func setRounds(agent map[string]any, steps int) {
+	if steps > 0 {
+		agent["max_rounds"] = steps
+	} else if _, ok := agent["max_rounds"]; !ok {
+		agent["max_rounds"] = defaultMaxRounds
+	}
+}
 
 func childMeta(cr *unifaiv1.UnifaiAgentBundle, name string) metav1.ObjectMeta {
 	lbls := map[string]string{unifaiv1.AgentBundleLabel: cr.Name}

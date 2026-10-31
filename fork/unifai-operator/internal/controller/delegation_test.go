@@ -21,15 +21,15 @@ func TestBundleMayDelegate(t *testing.T) {
 		Spec:   unifaiv1.UnifaiAgentBundleSpec{Delegation: &unifaiv1.BundleDelegation{GatewayURL: "http://gw.zuno-ai-run.svc:8080/"}},
 		Status: unifaiv1.UnifaiAgentBundleStatus{Verified: true}}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
-	owned := func(uid string) *unifaiv1.UnifaiWorkflow {
+	owned := func() *unifaiv1.UnifaiWorkflow {
 		return &unifaiv1.UnifaiWorkflow{ObjectMeta: metav1.ObjectMeta{Name: "tekos", Namespace: "ns", OwnerReferences: []metav1.OwnerReference{
 			{Kind: "UnifaiAgentBundle", Name: "tekos", UID: "u1", Controller: ptr.To(true)}}}}
 	}
 	ctx := context.Background()
-	if prefix, ok := bundleMayDelegate(ctx, c, owned("u1")); !ok || prefix != "http://gw.zuno-ai-run.svc:8080/agents/" {
+	if prefix, ok := bundleMayDelegate(ctx, c, owned()); !ok || prefix != "http://gw.zuno-ai-run.svc:8080/agents/" {
 		t.Fatalf("owned by a delegating bundle: %q %v", prefix, ok)
 	}
-	forged := owned("u1")
+	forged := owned()
 	forged.OwnerReferences[0].UID = "other"
 	if _, ok := bundleMayDelegate(ctx, c, forged); ok {
 		t.Error("an owner reference with another UID is accepted")
@@ -39,7 +39,7 @@ func TestBundleMayDelegate(t *testing.T) {
 	}
 	cr.Spec.Delegation = nil
 	c = fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
-	if _, ok := bundleMayDelegate(ctx, c, owned("u1")); ok {
+	if _, ok := bundleMayDelegate(ctx, c, owned()); ok {
 		t.Error("a bundle without spec.delegation may delegate")
 	}
 }
@@ -47,8 +47,7 @@ func TestBundleMayDelegate(t *testing.T) {
 func TestA2ABaseURLs(t *testing.T) {
 	bp := delegatingBlueprint("c", "orch", "agent", a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "tekos", "answer",
 		[]delegationTarget{{Agent: "arkos", Task: "draft"}, {Agent: "comage", Task: "check"}}))
-	var v any = map[string]any(bp)
-	got := a2aBaseURLs(normalise(t, v))
+	got := a2aBaseURLs(normalise(t, bp))
 	if len(got) != 2 || got[0] != "http://gw:8080/agents/arkos" || got[1] != "http://gw:8080/agents/comage" {
 		t.Fatalf("base urls %v", got)
 	}
