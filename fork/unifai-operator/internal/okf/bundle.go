@@ -35,6 +35,8 @@ type Bundle struct {
 	DelegationTargets []DelegationTarget
 	// MaxSteps bounds the reasoning/tool rounds of one turn of every task (zuno.limits.max_steps); 0 = not declared.
 	MaxSteps int
+	// MaxTokens is the agent's generation ceiling per model call (zuno.limits.max_tokens, ADR-0544); 0 = not declared.
+	MaxTokens int
 	// History is the agent's conversation-history window (zuno.limits.memory.history, or the zuno.memory.history
 	// alias); nil = not declared.
 	History *History
@@ -65,6 +67,9 @@ type Task struct {
 	Models, Limits map[string]any
 	// MaxSteps is the task's own zuno.limits.max_steps (0 = the agent's).
 	MaxSteps int
+	// MaxTokens is the task's own generation ceiling (zuno.limits.max_tokens or its alias zuno.max_tokens; 0 = the
+	// agent's).
+	MaxTokens int
 }
 
 // History is the window over the conversation an agent sends to its model (ADR-0215): Enabled false sends no
@@ -110,6 +115,30 @@ func (b *Bundle) Steps(t Task) int {
 	return b.MaxSteps
 }
 
+// Tokens is the generation ceiling of the task's model calls: its own, else the agent's (0 = none declared).
+func (b *Bundle) Tokens(t Task) int {
+	if t.MaxTokens > 0 {
+		return t.MaxTokens
+	}
+	return b.MaxTokens
+}
+
+// maxTokens reads limits.max_tokens, else the task-level alias: absent = 0, else a whole number from 1 to 8192.
+func maxTokens(limits map[string]any, alias any, where string) (int, error) {
+	v, ok := limits["max_tokens"]
+	if !ok {
+		if alias == nil {
+			return 0, nil
+		}
+		v = alias
+	}
+	f, ok := v.(float64)
+	if !ok || f < 1 || f > 8192 || f != float64(int(f)) {
+		return 0, fmt.Errorf("%s: zuno.limits.max_tokens must be a whole number from 1 to 8192, got %v", where, v)
+	}
+	return int(f), nil
+}
+
 // maxSteps reads limits.max_steps: absent = 0, else a whole number of at least 1.
 func maxSteps(limits map[string]any, where string) (int, error) {
 	v, ok := limits["max_steps"]
@@ -136,12 +165,12 @@ func historyInt(hist map[string]any, key string, lo, hi int, where string) (int,
 	return int(f), nil
 }
 
-// platformLimits are the limits the platform enforces itself: all but max_steps and memory.history, which UnifAI
-// applies.
+// platformLimits are the limits the platform enforces itself: all but max_steps, max_tokens and memory.history,
+// which UnifAI applies (max_tokens as the X-Zuno-Max-Tokens header and the client's generation cap).
 func platformLimits(limits map[string]any) bool {
 	for k, v := range limits {
 		switch k {
-		case "max_steps":
+		case "max_steps", "max_tokens":
 		case "memory":
 			if m, ok := v.(map[string]any); !ok || len(m) > 1 || m["history"] == nil {
 				return true
@@ -206,6 +235,8 @@ type taskFrontmatter struct {
 		Skills           []string       `json:"skills"`
 		Models           map[string]any `json:"models"`
 		Limits           map[string]any `json:"limits"`
+		// MaxTokens is the alias of limits.max_tokens.
+		MaxTokens any `json:"max_tokens"`
 	} `json:"zuno"`
 }
 
@@ -273,6 +304,9 @@ func Parse(files Files) (*Bundle, error) {
 		DelegationTargets: af.Zuno.Delegation.Targets,
 	}
 	if b.MaxSteps, err = maxSteps(af.Zuno.Limits, "agent.okf.md"); err != nil {
+		return nil, err
+	}
+	if b.MaxTokens, err = maxTokens(af.Zuno.Limits, nil, "agent.okf.md"); err != nil {
 		return nil, err
 	}
 	if b.History, err = historyWindow(af.Zuno.Limits, af.Zuno.Memory, "agent.okf.md"); err != nil {
@@ -354,6 +388,9 @@ func parseTask(files Files, name string) (*Task, error) {
 		Models: tf.Zuno.Models, Limits: tf.Zuno.Limits,
 	}
 	if t.MaxSteps, err = maxSteps(tf.Zuno.Limits, p); err != nil {
+		return nil, err
+	}
+	if t.MaxTokens, err = maxTokens(tf.Zuno.Limits, tf.Zuno.MaxTokens, p); err != nil {
 		return nil, err
 	}
 	for _, ref := range tf.Zuno.Skills {

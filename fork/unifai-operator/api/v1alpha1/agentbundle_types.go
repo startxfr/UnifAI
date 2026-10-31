@@ -97,6 +97,13 @@ type BundleLLM struct {
 	// +optional
 	Type       string `json:"type,omitempty"`
 	ConfigSpec `json:",inline"`
+	// Generation ceiling, in tokens per model call, of every task that declares none (zuno.limits.max_tokens). It is
+	// sent as the X-Zuno-Max-Tokens header (ADR-0544, enforced by the ai-gateway) and as the client's max_tokens. A
+	// task's own limit wins. Unset = the client default and no header.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=8192
+	// +optional
+	MaxTokens int32 `json:"maxTokens,omitempty"`
 }
 
 // BundleMCP is the template of the MCP provider emitted for every task that declares allowed_tools: the

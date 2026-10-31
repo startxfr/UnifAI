@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,6 +54,7 @@ const (
 	headerTask           = "X-Zuno-Task"
 	headerClassification = "X-Zuno-Data-Classification"
 	headerRunID          = "X-Zuno-Run-Id"
+	headerMaxTokens      = "X-Zuno-Max-Tokens"
 
 	// defaultMaxRounds bounds an emitted agent's reasoning/tool loop (custom_agent_node's own default is 100): a tool
 	// that keeps answering the same thing then ends in a final answer instead of a timeout. spec.agentConfig.max_rounds
@@ -387,6 +389,10 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...dele
 		headers[headerTask] = t.Name
 		headers[headerClassification] = level.String()
 		headers[headerRunID] = "{session_id}"
+		if tokens := generationCeiling(b.Tokens(t), cr.Spec.LLM.MaxTokens); tokens > 0 {
+			headers[headerMaxTokens] = strconv.Itoa(tokens)
+			llm["max_tokens"] = tokens
+		}
 		llm["default_headers"] = headers
 		objs = append(objs, &unifaiv1.UnifaiLLM{ObjectMeta: childMeta(cr, name), Spec: unifaiv1.UnifaiLLMSpec{
 			CommonSpec: common, Type: llmType,
@@ -642,6 +648,15 @@ func setRounds(agent map[string]any, steps int) {
 	} else if _, ok := agent["max_rounds"]; !ok {
 		agent["max_rounds"] = defaultMaxRounds
 	}
+}
+
+// generationCeiling is the cap on the tokens a task's model call generates: the task's own (OKF zuno.limits.max_tokens),
+// else spec.llm.maxTokens; 0 = none.
+func generationCeiling(task int, bundleDefault int32) int {
+	if task > 0 {
+		return task
+	}
+	return int(bundleDefault)
 }
 
 // setHistory applies the bundle's conversation-history window to an agent (custom_agent_node's history_* keys); a

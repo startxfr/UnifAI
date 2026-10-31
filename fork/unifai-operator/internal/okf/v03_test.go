@@ -15,7 +15,7 @@ func v03Tekos(t *testing.T) Files {
 		files[k] = []byte(strings.ReplaceAll(string(v), "okf_version: v0.2", "okf_version: v0.3"))
 	}
 	files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "zuno:\n",
-		"zuno:\n  models:\n    preferred: [reasoning]\n  guardrails:\n    mode: observe\n  limits:\n    max_tokens: 2048\n", 1))
+		"zuno:\n  models:\n    preferred: [reasoning]\n  guardrails:\n    mode: observe\n  limits:\n    max_tokens: 2048\n    max_concurrent_requests: 5\n", 1))
 	task := string(files["tasks/answer-technical-question.md"])
 	files["tasks/answer-technical-question.md"] = []byte(strings.Replace(task, "zuno:\n",
 		"zuno:\n  skills: [cite-sources, corp/safe-answers]\n", 1))
@@ -189,6 +189,46 @@ func TestParseHistoryWindow(t *testing.T) {
 			"    max_tokens: 2048\n    memory:\n      history:\n        "+bad+"\n", 1))
 		if _, err := Parse(f); err == nil || !strings.Contains(err.Error(), "memory.history") {
 			t.Errorf("history %s accepted (err %v)", bad, err)
+		}
+	}
+}
+
+// zuno.limits.max_tokens (agent, task, and the task-level alias zuno.max_tokens) is applied by UnifAI as the
+// X-Zuno-Max-Tokens header: parsed, the task value wins, and it is no longer reported as a platform-side limit.
+func TestParseMaxTokens(t *testing.T) {
+	files := v03Tekos(t)
+	files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "    max_tokens: 2048\n    max_concurrent_requests: 5\n", "    max_tokens: 4096\n", 1))
+	files["tasks/write-code.md"] = []byte(strings.Replace(string(files["tasks/write-code.md"]), "zuno:\n", "zuno:\n  max_tokens: 1536\n", 1))
+	files["tasks/find-relevant-docs.md"] = []byte(strings.Replace(string(files["tasks/find-relevant-docs.md"]), "zuno:\n", "zuno:\n  limits:\n    max_tokens: 900\n", 1))
+	if err := ValidateSchemas(files); err != nil {
+		t.Fatalf("max_tokens is part of the v0.3 schemas: %v", err)
+	}
+	b, err := Parse(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.MaxTokens != 4096 {
+		t.Errorf("agent max_tokens = %d, want 4096", b.MaxTokens)
+	}
+	want := map[string]int{"write-code": 1536, "find-relevant-docs": 900}
+	for _, task := range b.Tasks {
+		w, ok := want[task.Name]
+		if !ok {
+			w = 4096
+		}
+		if got := b.Tokens(task); got != w {
+			t.Errorf("task %s tokens = %d, want %d", task.Name, got, w)
+		}
+	}
+	joined := strings.Join(b.Unmapped, "\n")
+	if strings.Contains(joined, "zuno.limits") || strings.Contains(joined, "tasks/write-code models/limits") || strings.Contains(joined, "tasks/find-relevant-docs models/limits") {
+		t.Errorf("max_tokens is applied, not platform-side: %v", b.Unmapped)
+	}
+	for _, bad := range []string{"0", "9000", "2.5", "\"many\""} {
+		f := v03Tekos(t)
+		f["agent.okf.md"] = []byte(strings.Replace(string(f["agent.okf.md"]), "    max_tokens: 2048\n    max_concurrent_requests: 5\n", "    max_tokens: "+bad+"\n    max_concurrent_requests: 5\n", 1))
+		if _, err := Parse(f); err == nil || !strings.Contains(err.Error(), "max_tokens") {
+			t.Errorf("max_tokens %s accepted (err %v)", bad, err)
 		}
 	}
 }

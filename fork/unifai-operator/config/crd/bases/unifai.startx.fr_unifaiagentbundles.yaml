@@ -168,6 +168,15 @@ spec:
                   config:
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
+                  maxTokens:
+                    description: |-
+                      Generation ceiling, in tokens per model call, of every task that declares none (zuno.limits.max_tokens). It is
+                      sent as the X-Zuno-Max-Tokens header (ADR-0544, enforced by the ai-gateway) and as the client's max_tokens. A
+                      task's own limit wins. Unset = the client default and no header.
+                    format: int32
+                    maximum: 8192
+                    minimum: 1
+                    type: integer
                   secretRefs:
                     items:
                       description: SecretRef injects a Secret value at a dotted path

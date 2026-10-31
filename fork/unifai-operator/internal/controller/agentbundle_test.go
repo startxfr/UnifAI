@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -523,6 +524,39 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(cfg["history_max_turns"]).To(BeNumerically("==", 6))
 		Expect(cfg["history_token_budget"]).To(BeNumerically("==", 6000))
 		Expect(strings.Join(status(ns)().Unmapped, "\n")).NotTo(ContainSubstring("zuno.limits"), "memory.history is mapped, not platform-side")
+	})
+
+	It("sends the task's generation ceiling as X-Zuno-Max-Tokens, the bundle's default for the other tasks", func() {
+		ns := setup("bundle-maxtokens")
+		files := map[string][]byte{}
+		for k, v := range tekosFiles() {
+			files[k] = []byte(strings.ReplaceAll(string(v), "okf_version: v0.2", "okf_version: v0.3"))
+		}
+		files["tasks/write-code.md"] = []byte(strings.Replace(string(files["tasks/write-code.md"]), "zuno:\n", "zuno:\n  limits:\n    max_tokens: 1536\n", 1))
+		b := newBundle(ns, fakeBundles.put(files, sign(key, files)), nil)
+		b.Spec.LLM.MaxTokens = 4000
+		Expect(k8sClient.Create(ctx, b)).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"), func() string { return status(ns)().Message })
+		for name, want := range map[string]int{"tekos-write-code": 1536, "tekos-answer-technical-question": 4000} {
+			var llm unifaiv1.UnifaiLLM
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &llm)).To(Succeed())
+			cfg := map[string]any{}
+			Expect(json.Unmarshal(llm.Spec.Config.Raw, &cfg)).To(Succeed())
+			Expect(cfg["default_headers"]).To(HaveKeyWithValue("X-Zuno-Max-Tokens", strconv.Itoa(want)), name)
+			Expect(cfg["max_tokens"]).To(BeNumerically("==", want), name)
+		}
+	})
+
+	It("sends no generation ceiling when neither the task nor the bundle declares one", func() {
+		ns := setup("bundle-nomaxtokens")
+		Expect(k8sClient.Create(ctx, newBundle(ns, fakeBundles.put(tekosFiles(), sign(key, tekosFiles())), nil))).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"), func() string { return status(ns)().Message })
+		var llm unifaiv1.UnifaiLLM
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos-write-code"}, &llm)).To(Succeed())
+		cfg := map[string]any{}
+		Expect(json.Unmarshal(llm.Spec.Config.Raw, &cfg)).To(Succeed())
+		Expect(cfg["default_headers"]).NotTo(HaveKey("X-Zuno-Max-Tokens"))
+		Expect(cfg).NotTo(HaveKey("max_tokens"))
 	})
 
 	It("refuses a bundle whose max_steps is above the ceilings", func() {
