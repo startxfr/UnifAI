@@ -63,3 +63,34 @@ def test_the_orchestrator_applies_the_window_to_the_history_it_sends():
     assert [m.content.split()[0] for m in out] == ["q3", "a3", "q4", "a4", "q5"], "two recent turns, then the prompt"
     node.history_enabled = False
     assert [m.content for m in node._build_context_messages("t", "q5 now")] == ["q5 now"]
+
+
+def results(n, size=40):
+    from mas.elements.nodes.common.workload import AgentResult
+    return [AgentResult(content=f"r{i} " + "z" * size, agent_id="a", agent_name="A") for i in range(n)]
+
+
+def test_agent_results_are_bounded_by_the_token_budget_newest_first():
+    from mas.elements.nodes.common.workload.history_window import window_results
+
+    assert len(window_results(results(10))) == 10, "no budget, no bound"
+    kept = window_results(results(10), token_budget=25)  # a result is 43 chars = 11 tokens
+    assert [r.content.split()[0] for r in kept] == ["r8", "r9"]
+    assert [r.content.split()[0] for r in window_results(results(3, size=4000), token_budget=10)] == ["r2"], \
+        "the newest result is kept even over budget"
+
+
+def test_a_custom_agent_prompt_does_not_grow_with_the_results_of_earlier_turns():
+    from types import SimpleNamespace
+
+    from mas.elements.nodes.custom_agent.custom_agent import CustomAgentNode
+
+    class Node(CustomAgentNode):
+        workspaces = SimpleNamespace(get_results=lambda _thread: results(50, size=400))
+
+    node = object.__new__(Node)
+    node.history_token_budget = 1000
+    block = node._build_agent_results_context("t").content
+    assert block.count("A: r") <= 1000 // 101 + 1 and "r49" in block and "r0 " not in block
+    node.history_token_budget = None
+    assert "r0 " in node._build_agent_results_context("t").content

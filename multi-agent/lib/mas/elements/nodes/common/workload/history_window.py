@@ -48,3 +48,22 @@ def window_history(messages: List[ChatMessage], *, enabled: bool = True, max_tur
         kept.append(turn)
         used += cost
     return [m for turn in reversed(kept) for m in turn]
+
+
+def window_results(results: list, *, token_budget: Optional[int] = None) -> list:
+    """The most recent agent results that fit ``token_budget`` (estimated like the history); the newest is always kept.
+
+    The workspace keeps every result of a thread and an agent's prompt lists them all, so without a bound the prompt
+    grows with each turn. Results carry no turn marker: the budget is the only bound, ``max_turns`` does not apply.
+    """
+    if token_budget is None:
+        return list(results)
+    kept: list = []
+    used = 0
+    for result in reversed(results):
+        cost = len(result.content or "") // CHARS_PER_TOKEN + 1
+        if kept and used + cost > token_budget:
+            break
+        kept.append(result)
+        used += cost
+    return list(reversed(kept))

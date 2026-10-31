@@ -13,7 +13,7 @@ from mas.elements.nodes.common.capabilities.agent_capable import AgentCapableMix
 from mas.elements.nodes.common.capabilities.workload_capable import WorkloadCapableMixin
 from mas.elements.nodes.common.capabilities.hitl_capable import HITLCapableMixin
 from mas.elements.nodes.common.workload import Task, AgentResult, WorkspaceContext
-from mas.elements.nodes.common.workload.history_window import window_history
+from mas.elements.nodes.common.workload.history_window import window_history, window_results
 from mas.elements.providers.mcp_server_client.mcp_provider import McpProvider
 from mas.core.hitl.models import HITLMode
 from mas.elements.nodes.common.agent import AgentConfig
@@ -255,7 +255,8 @@ class CustomAgentNode(
         if not thread_id:
             return None
 
-        workspace_results = self.workspaces.get_results(thread_id)
+        workspace_results = window_results(self.workspaces.get_results(thread_id),
+                                           token_budget=self.history_token_budget)
 
         if not workspace_results:
             return None

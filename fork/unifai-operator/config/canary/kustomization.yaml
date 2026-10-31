@@ -18,6 +18,6 @@ patches:
     name: controller-manager
 # Matched by its full name: config/manager already rewrote the `controller` placeholder to the last release.
 images:
-- name: quay.io/zuno/unifai-operator
+- digest: sha256:48a4dd6282b5651f86926da68722ea41b80ca93464ae81ef0304f17ab500233e
+  name: quay.io/zuno/unifai-operator
   newName: quay.io/zuno/unifai-operator
-  newTag: v0.1.38
