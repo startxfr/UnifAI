@@ -33,6 +33,9 @@ type delegationTarget struct {
 
 func (t delegationTarget) key() string { return t.Agent + "/" + t.Task }
 
+// nodeUID is the uid of the target's A2A node in the delegating blueprint: what delegate_task takes as dst_uid.
+func (t delegationTarget) nodeUID() string { return "a2a-" + t.Agent }
+
 // resolveTargets finds each target's bundle (same namespace, Verified, served), refuses a task other than the
 // target's primary one (the gateway takes no task selector yet: another task would silently reach the primary)
 // and reads the target task's effective classification.
@@ -117,12 +120,12 @@ func delegatingTask(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, c
 	at := workStage(b)
 	obj := &unifaiv1.UnifaiAgent{ObjectMeta: childMeta(cr, orch), Spec: unifaiv1.UnifaiAgentSpec{
 		CommonSpec: common, Type: "orchestrator_node",
-		ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(orchestratorConfig(cr, b, t, taskName, stages[at], targets))}}}
+		ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(orchestratorConfig(cr, b, t, taskName, stageUID(at), targets))}}}
 	return obj, delegatingBlueprint(cond, orch, stages, at, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, targets))
 }
 
 // orchestratorConfig coordinates a delegating task: its own agent first, a target only when asked for.
-func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, llmName, workAgent string, targets []delegationTarget) map[string]any {
+func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, llmName, workUID string, targets []delegationTarget) map[string]any {
 	rounds := int(cr.Spec.Delegation.MaxRounds)
 	if rounds == 0 {
 		rounds = defaultDelegationRounds
@@ -133,10 +136,12 @@ func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Tas
 	}
 	var msg strings.Builder
 	fmt.Fprintf(&msg, "You coordinate the answer of %s for the task %q.\n", agentTitle(b), title)
-	fmt.Fprintf(&msg, "Delegate the user's request to the agent %s first: it has this task's documents, tools and instructions.\n", workAgent)
+	msg.WriteString("Delegate with the delegate_task tool. Its dst_uid is the node uid given below in backticks, exactly: never an agent name, a title or a task key. ")
+	msg.WriteString("Every piece of work you delegate is a REMOTE work item whose assigned_uid is that same uid.\n")
+	fmt.Fprintf(&msg, "Delegate the user's request to the agent `%s` first: it has this task's documents, tools and instructions.\n", workUID)
 	msg.WriteString("Delegate to another agent below only when the user asks for what it provides, at most once per request:\n")
 	for _, tg := range targets {
-		fmt.Fprintf(&msg, "- %s (%s): %s\n", tg.Title, tg.key(), strings.TrimSpace(tg.Description))
+		fmt.Fprintf(&msg, "- `%s` %s (%s): %s\n", tg.nodeUID(), tg.Title, tg.key(), strings.TrimSpace(tg.Description))
 	}
 	msg.WriteString("Then give a single final answer built from their results, keeping the sources they cite.")
 	cfg := map[string]any{"llm": "$ref:llm/" + llmName, "system_message": msg.String(), "max_rounds": rounds}
@@ -158,7 +163,7 @@ func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, targets []delega
 	out := make([]map[string]any, 0, len(targets))
 	for _, tg := range targets {
 		out = append(out, map[string]any{
-			"rid": "a2a-" + tg.Agent, "name": tg.Title, "type": a2aNodeType,
+			"rid": tg.nodeUID(), "name": tg.Title, "type": a2aNodeType,
 			"config": map[string]any{
 				"type":        a2aNodeType,
 				"base_url":    strings.TrimRight(d.GatewayURL, "/") + "/agents/" + tg.Agent,

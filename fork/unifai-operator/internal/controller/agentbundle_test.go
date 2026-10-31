@@ -692,6 +692,7 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(json.Unmarshal(orch.Spec.Config.Raw, &ocfg)).To(Succeed())
 		Expect(ocfg["max_rounds"]).To(BeNumerically("==", 5))
 		Expect(ocfg["system_message"]).To(ContainSubstring("arkos/answer-technical-question"))
+		Expect(ocfg["system_message"]).To(ContainSubstring("`a2a-arkos`"))
 
 		var wf unifaiv1.UnifaiWorkflow
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos"}, &wf)).To(Succeed())

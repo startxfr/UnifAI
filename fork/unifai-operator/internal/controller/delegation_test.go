@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -11,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	unifaiv1 "github.com/startxfr/unifai-operator/api/v1alpha1"
+	"github.com/startxfr/unifai-operator/internal/okf"
 	"github.com/startxfr/unifai-operator/internal/unifai"
 )
 
@@ -135,5 +137,22 @@ func TestDelegatingBlueprintShapes(t *testing.T) {
 	}
 	if three["finish"]["after"] != "agent-3" {
 		t.Errorf("finish after %v", three["finish"]["after"])
+	}
+}
+
+// The orchestrator calls delegate_task with a node uid of the blueprint: the prompt must give those uids, not the
+// agent names or task keys (0.1.48: "Node tekos is not adjacent, or the uid is wrong").
+func TestOrchestratorPromptNamesTheNodeUIDs(t *testing.T) {
+	cr := &unifaiv1.UnifaiAgentBundle{Spec: unifaiv1.UnifaiAgentBundleSpec{Delegation: &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}}}
+	targets := []delegationTarget{{Agent: "tekos", Task: "answer-technical-question", Title: "Tekos", Description: "Technical consultant"}}
+	cfg := orchestratorConfig(cr, &okf.Bundle{Name: "arkos"}, okf.Task{Name: "write-code"}, "arkos-write-code", stageUID(1), targets)
+	msg, _ := cfg["system_message"].(string)
+	for _, want := range []string{"dst_uid", "REMOTE work item", "`agent-2`", "`a2a-tekos` Tekos (tekos/answer-technical-question)"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("system message lacks %q:\n%s", want, msg)
+		}
+	}
+	if targets[0].nodeUID() != "a2a-tekos" {
+		t.Errorf("node uid %q", targets[0].nodeUID())
 	}
 }
