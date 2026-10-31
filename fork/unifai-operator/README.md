@@ -184,6 +184,16 @@ fields and prompt examples.
   source stays private to its uploader.
 - `confluence`: the credentials of the Confluence source type (Secret refs, added to `unifai-rag-secrets`).
 
+- `embedding.queryPrefix` (`EMBEDDING_QUERY_PREFIX`): an instruction put in front of search queries only, for
+  instruction-tuned embedders. On zuno's corpus with `qwen3-embedding-0.6b` it lowered hit@1/MRR (0.71 to 0.67 and
+  0.77 to 0.68), so it stays unset there; measure with `fork/ci/rag_eval.py` before using it.
+- `search` (`fusion` dbsf|rrf, `sparseReadVersion`, `sparseWriteVersions`): hybrid search tuning. dbsf is the RAG
+  default since the 0.1.45 images; sparse version 2 (stop words, length normalisation) lives in its own
+  `<collection>_hybrid_v2` and is migrated by writing [1, 2], re-ingesting every source
+  (`UnifaiRAGSource.spec.resyncToken`), then reading 2.
+- `reranker` (`mode` deploy|remote, `model` BAAI/bge-reranker-base, `candidates`): a cross-encoder served by TEI that
+  re-orders the best fused candidates and returns a 0-1 relevance score; unset = none.
+
 Every one of these renders only when set: a stack that does not use them keeps byte-identical RAG releases.
 
 `UnifaiRAGSource` ([`examples/rag/ragsource-confluence.yaml`](examples/rag/ragsource-confluence.yaml)) registers a
@@ -317,6 +327,23 @@ spec:
   task and its targets, from its first call (a C1 agent delegating to a C3 one is C3, local models only).
 - Only a workflow owned by such a bundle may hold A2A nodes, and only towards its own gateway. A target is never
   raised by what delegates to it: its own tasks keep their classification.
+
+### Limits of a bundle's agents
+
+Applied by UnifAI (no longer listed in `status.unmapped`):
+
+- `zuno.limits.max_steps` (task, else agent): the agent's `max_rounds`, at most `spec.ceilings.maxSteps` (default 50).
+- `zuno.limits.max_tokens` (task, alias `zuno.max_tokens`, else agent, else `spec.llm.maxTokens`; 1 to 8192): sent on
+  the task's LLM as the `X-Zuno-Max-Tokens` header and as the client's `max_tokens`. The ai-gateway reads the
+  header (ADR-0544); with none declared nothing is sent.
+- `zuno.limits.memory.history` (alias `zuno.memory.history`; `enabled`, `max_turns` 1-50, `token_budget` 100-32000),
+  per agent: the agents get `history_enabled`, `history_max_turns` and `history_token_budget`. The oldest turns are
+  dropped whole, the newest is always kept, and tokens are estimated at 4 characters each. `custom_agent_node` bounds
+  the conversation messages and, with `history_token_budget`, the "previous agent results" block (the workspace keeps
+  every result of a thread); `orchestrator_node` bounds the conversation messages.
+
+`spec.llm.config.timeout_seconds` is the client's request timeout (default 120 s): raise it above the slowest cold
+model start of the gateway path.
 
 ### Spec rules (R-304)
 
