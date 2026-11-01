@@ -8,7 +8,7 @@ function loadMermaid() {
   if (!mermaidReady) {
     mermaidReady = import("mermaid").then(({ default: mermaid }) => {
       // "strict": labels are sanitised, no click callbacks, no HTML in nodes.
-      mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "dark" });
+      mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "dark", suppressErrorRendering: true });
       return mermaid;
     });
   }
@@ -23,11 +23,18 @@ export function MermaidBlock({ source }: { source: string }) {
   useEffect(() => {
     let cancelled = false;
     const el = host.current;
-    const render = () =>
-      loadMermaid()
-        .then((mermaid) => mermaid.render(`mermaid-${++counter}`, source))
+    const render = () => {
+      const id = `mermaid-${++counter}`;
+      return loadMermaid()
+        .then((mermaid) => mermaid.render(id, source))
         .then((out) => !cancelled && setSvg(out.svg))
-        .catch(() => !cancelled && setSvg(null));
+        .catch(() => {
+          // mermaid leaves its error graphic (and a work element) in <body> when the source does not parse.
+          document.getElementById(id)?.remove();
+          document.getElementById(`d${id}`)?.remove();
+          if (!cancelled) setSvg(null);
+        });
+    };
     // Lazy: only when the block scrolls into view.
     if (el && typeof IntersectionObserver !== "undefined") {
       const io = new IntersectionObserver((entries) => {
