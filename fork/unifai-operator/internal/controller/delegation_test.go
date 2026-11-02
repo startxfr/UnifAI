@@ -122,9 +122,10 @@ func TestDelegatingBlueprintShapes(t *testing.T) {
 		one[stepAgent]["after"] != stepOrchestrate || one[tekosNode]["after"] != stepOrchestrate {
 		t.Errorf("single stage plan: %v", one)
 	}
-	if got := one["finish"]["after"].([]any); len(got) != 2 || got[0] != stepAgent || got[1] != tekosNode {
-		t.Errorf("single stage finish waits for %v", got)
+	if one["finish"]["after"] != stepOrchestrate {
+		t.Errorf("single stage finish follows the orchestrator, got %v", one["finish"]["after"])
 	}
+	assertWorkersAreLeaves(t, one, stepAgent, tekosNode)
 
 	// plan_draft_write: plan -> orchestrator -> (draft | A2A) -> write -> answer.
 	three := stepsOf(delegatingBlueprint("c", "orch", []string{"t-plan", "t-draft", "t-write"}, 1, a2a))
@@ -134,11 +135,34 @@ func TestDelegatingBlueprintShapes(t *testing.T) {
 	if three[stepOrchestrate]["after"] != stepAgent || three["agent-2"]["after"] != stepOrchestrate || three[tekosNode]["after"] != stepOrchestrate {
 		t.Errorf("orchestrator and workers: %v", three)
 	}
-	if got := three["agent-3"]["after"].([]any); len(got) != 2 || got[0] != "agent-2" || got[1] != tekosNode {
-		t.Errorf("the write stage waits for %v", got)
+	if three["agent-3"]["after"] != stepOrchestrate {
+		t.Errorf("the write stage follows the orchestrator, got %v", three["agent-3"]["after"])
 	}
+	assertWorkersAreLeaves(t, three, "agent-2", tekosNode)
 	if three["finish"]["after"] != "agent-3" {
 		t.Errorf("finish after %v", three["finish"]["after"])
+	}
+}
+
+// assertWorkersAreLeaves: the orchestrator refuses to delegate to a node that has a path to a node writing the output
+// (final_answer), so no step may wait for a worker (0.1.49: "Node a2a-tekos is not adjacent").
+func assertWorkersAreLeaves(t *testing.T, steps map[string]map[string]any, workers ...string) {
+	t.Helper()
+	for uid, step := range steps {
+		var after []any
+		switch a := step["after"].(type) {
+		case string:
+			after = []any{a}
+		case []any:
+			after = a
+		}
+		for _, a := range after {
+			for _, w := range workers {
+				if a == w {
+					t.Errorf("step %s waits for the worker %s, which would make it undelegable", uid, w)
+				}
+			}
+		}
 	}
 }
 

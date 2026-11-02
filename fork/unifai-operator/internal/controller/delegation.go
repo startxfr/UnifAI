@@ -182,7 +182,10 @@ func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, targets []delega
 
 // delegatingBlueprint: question -> stages -> answer, where the stage at index `at` is replaced by an orchestrator
 // over that stage's agent and the target A2A nodes. The workers act only on the work the orchestrator sends them, so
-// a target is not called on a turn that does not need it; the next stage (or the answer) follows all of them.
+// a target is not called on a turn that does not need it. The workers are leaves of the orchestrator and the next
+// stage (or the answer) follows the orchestrator itself: the orchestrator's delegation policy refuses every adjacent
+// node that has a path to a node writing the output, so workers feeding the next stage could never be delegated to
+// ("Node a2a-tekos is not adjacent").
 func delegatingBlueprint(cond, orchestrator string, stages []string, at int, a2a []map[string]any) map[string]any {
 	nodes := []any{
 		map[string]any{"name": "User Question Node", "rid": "user_question", "type": "user_question_node",
@@ -212,12 +215,11 @@ func delegatingBlueprint(cond, orchestrator string, stages []string, at int, a2a
 				orch["after"] = afterOf(prev)
 			}
 			plan = append(plan, orch, map[string]any{"uid": uid, "node": "$rid:agent/" + stage, "after": "orchestrate"})
-			prev = []string{uid}
 			for _, n := range a2a {
 				a := n["rid"].(string)
 				plan = append(plan, map[string]any{"uid": a, "node": a, "after": "orchestrate"})
-				prev = append(prev, a)
 			}
+			prev = []string{"orchestrate"}
 			continue
 		}
 		step := map[string]any{"uid": uid, "node": "$rid:agent/" + stage}
