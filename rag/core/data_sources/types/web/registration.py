@@ -5,6 +5,7 @@ import hashlib
 from functools import cached_property
 from typing import Any
 
+from core.data_sources.classification import classification_error, source_classification
 from core.data_sources.types.confluence.registration import ConfluenceRegistration
 from core.registration.domain.model import BaseSourceData
 
@@ -30,7 +31,8 @@ class WebRegistration(ConfluenceRegistration):
                                          "exclude": list(self.instance.get("exclude") or []),
                                          "crawl": self.instance.get("crawl") or "redhat-docs",
                                          "max_pages": int(self.instance.get("maxPages") or 50),
-                                         "metadata": dict(self.instance.get("metadata") or {})})
+                                         "metadata": dict(self.instance.get("metadata") or {}),
+                                         "classification": source_classification(self.instance)})
 
     def run_validator(self) -> tuple[bool, dict[str, Any] | None]:
         form = self.source_data.form_data
@@ -46,4 +48,6 @@ class WebRegistration(ConfluenceRegistration):
             return refuse("InvalidUrl", "every url must be an http(s) URL")
         if form["crawl"] not in CRAWL_MODES:
             return refuse("InvalidValue", f"crawl must be one of {', '.join(CRAWL_MODES)}")
+        if error := classification_error(form["classification"]):
+            return refuse("InvalidValue", error)
         return True, None

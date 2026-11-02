@@ -13,6 +13,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from core.data_sources.classification import chunk_classification, classification_changed
 from core.data_sources.service import DataSourceService
 from core.pipeline.domain.port import PipelineContext, SourcePipelinePort
 from core.vector.domain.embedder import EmbeddingGenerator
@@ -42,6 +43,7 @@ class ConfluencePipelineHandler(SourcePipelinePort):
         self._changed: list[ConfluencePage] = []
         self._deleted: list[str] = []
         self._unchanged = 0
+        self._classification = ""
 
     @property
     def source_type(self) -> str:
@@ -60,7 +62,8 @@ class ConfluencePipelineHandler(SourcePipelinePort):
         live = list(connector.iter_pages(settings["space_key"], settings.get("root_title", ""),
                                          settings.get("exclude_labels", [])))
         self._manifest = {p.page_id: {"version": p.version, "title": p.title} for p in live}
-        reingest = int(settings.get("index_version") or 1) < self._index_version
+        self._classification = str(settings.get("classification") or "")
+        reingest = int(settings.get("index_version") or 1) < self._index_version or classification_changed(settings)
         self._changed = [p for p in live if reingest or (previous.get(p.page_id) or {}).get("version") != p.version]
         self._deleted = sorted(set(previous) - set(self._manifest))
         self._unchanged = len(live) - len(self._changed)
@@ -70,6 +73,7 @@ class ConfluencePipelineHandler(SourcePipelinePort):
 
     def process(self, context: PipelineContext, raw_data: list[ConfluencePage]) -> list[dict[str, Any]]:
         settings = self._settings(context)
+        label = chunk_classification(settings)
         docs = []
         for page in raw_data:
             text = html_to_text(page.html)
@@ -80,7 +84,7 @@ class ConfluencePipelineHandler(SourcePipelinePort):
                 "content": f"# {page.title}\n\n{text}",
                 "filename": page.title,
                 "page": page,
-                "metadata": {"page_id": page.page_id, "title": page.title, "url": page.url,
+                "metadata": {**label, "page_id": page.page_id, "title": page.title, "url": page.url,
                              "space_key": settings.get("space_key", ""), "path": path,
                              "version": page.version, "last_modified": page.last_modified},
             })
@@ -114,7 +118,8 @@ class ConfluencePipelineHandler(SourcePipelinePort):
     def get_summary(self, context: PipelineContext, collected: Any) -> dict[str, Any]:
         return {"pages": self._manifest, "page_count": len(self._manifest), "pages_changed": len(self._changed),
                 "pages_deleted": len(self._deleted), "pages_unchanged": self._unchanged,
-                "index_version": self._index_version}
+                "index_version": self._index_version,
+                "ingested_classification": self._classification}
 
     def cleanup(self, context: PipelineContext) -> bool:
         return True

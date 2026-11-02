@@ -8,12 +8,14 @@ from datetime import UTC, datetime
 from functools import cached_property
 from typing import Any
 
+from core.data_sources.classification import classification_error, source_classification
 from core.data_sources.domain.model import DataSource
 from core.registration.base_registration import BaseRegistration
 from core.registration.domain.model import BaseSourceData
 
 # Keys of type_data the pipeline owns; re-registering a source keeps them.
-PIPELINE_STATE_KEYS = ("pages", "page_count", "pages_changed", "pages_deleted", "pages_unchanged", "index_version")
+PIPELINE_STATE_KEYS = ("pages", "page_count", "pages_changed", "pages_deleted", "pages_unchanged", "index_version",
+                       "ingested_classification")
 
 
 @dataclass
@@ -39,7 +41,8 @@ class ConfluenceRegistration(BaseRegistration):
         name = self.instance.get("name") or (f"{space}: {root}" if root else space)
         return BaseSourceData(source_id=source_id, source_name=name, pipeline_id=f"confluence_{source_id}",
                               form_data={"base_url": base_url, "space_key": space, "root_title": root,
-                                         "exclude_labels": list(self.instance.get("excludeLabels") or [])})
+                                         "exclude_labels": list(self.instance.get("excludeLabels") or []),
+                                         "classification": source_classification(self.instance)})
 
     def run_validator(self) -> tuple[bool, dict[str, Any] | None]:
         form = self.source_data.form_data
@@ -56,6 +59,9 @@ class ConfluenceRegistration(BaseRegistration):
             except ValueError as exc:
                 return False, {"source_name": self.source_data.source_name, "issue_type": "InvalidUrl",
                                "message": f"baseUrl: {exc}", "validator": "ConfluenceRegistration"}
+        if error := classification_error(form["classification"]):
+            return False, {"source_name": self.source_data.source_name, "issue_type": "InvalidValue",
+                           "message": error, "validator": "ConfluenceRegistration"}
         return True, None
 
     def _build_metadata(self) -> ConfluenceMetadata:

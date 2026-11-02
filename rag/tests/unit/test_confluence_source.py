@@ -93,10 +93,11 @@ class FakeEmbedder:
         return [{**c, "embedding": np.array([1.0, 0.0])} for c in chunks]
 
 
-def _handler(manifest, live):
+def _handler(manifest, live, **settings):
     sources = MagicMock()
     sources.get_by_id.return_value = SimpleNamespace(type_data={
-        "base_url": "https://c", "space_key": "SX", "root_title": "", "exclude_labels": [], "pages": manifest})
+        "base_url": "https://c", "space_key": "SX", "root_title": "", "exclude_labels": [], "pages": manifest,
+        **settings})
     connector = MagicMock()
     connector.iter_pages.return_value = live
     return ConfluencePipelineHandler(lambda _url: connector, FakeChunker(), FakeEmbedder(), sources)
@@ -227,3 +228,37 @@ def test_the_factory_hands_its_url_check_to_confluence_registrations():
     reg = factory.create("confluence", "u", {"baseUrl": "https://c", "spaceKey": "SX"})
     assert reg.run_validator() == (True, None)
     check.assert_called_once_with("https://c")
+
+
+# ── source classification ────────────────────────────────────────────────────
+
+def test_chunks_carry_the_classification_of_their_source():
+    chunks, _, summary = _run(_handler({}, [_page("1", 1)], classification="C2", ingested_classification="C2"))
+    assert chunks and all(c.metadata["classification"] == "C2" for c in chunks)
+    assert summary["ingested_classification"] == "C2"
+
+
+def test_a_source_without_classification_puts_none_on_its_chunks():
+    chunks, _, summary = _run(_handler({}, [_page("1", 1)]))
+    assert all("classification" not in c.metadata for c in chunks)
+    assert summary["ingested_classification"] == ""
+
+
+def test_a_new_classification_embeds_unchanged_pages_again():
+    manifest = {"1": {"version": 1, "title": "Page 1"}}
+    kept = _run(_handler(manifest, [_page("1", 1)], classification="C2", ingested_classification="C2"))[0]
+    again = _run(_handler(manifest, [_page("1", 1)], classification="C2", ingested_classification=""))[0]
+    assert kept == [] and {c.metadata["page_id"] for c in again} == {"1"}
+
+
+def test_registration_keeps_the_ingested_classification_and_refuses_an_unknown_one():
+    repo = MagicMock()
+    repo.find_by_pipeline_id.return_value = DataSource(
+        source_id="x", source_name="SX", source_type="CONFLUENCE", pipeline_id="p", upload_by="operator",
+        created_at=None, type_data={"pages": {}, "ingested_classification": "C1", "classification": "C1"})
+    _register(repo, classification="C2")
+    saved = repo.save.call_args.args[0].type_data
+    assert saved["classification"] == "C2" and saved["ingested_classification"] == "C1"
+    ok, problem = ConfluenceRegistration(MagicMock(), "u", {"baseUrl": "https://c", "spaceKey": "SX",
+                                                           "classification": "high"}).run_validator()
+    assert not ok and problem["issue_type"] == "InvalidValue"

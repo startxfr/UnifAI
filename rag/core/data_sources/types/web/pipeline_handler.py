@@ -15,6 +15,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from core.data_sources.classification import chunk_classification, classification_changed
 from core.data_sources.service import DataSourceService
 from core.pipeline.domain.port import PipelineContext, SourcePipelinePort
 from core.vector.domain.embedder import EmbeddingGenerator
@@ -57,6 +58,7 @@ class WebPipelineHandler(SourcePipelinePort):
         self._changed: list[str] = []
         self._deleted: list[str] = []
         self._unchanged = 0
+        self._classification = ""
 
     @property
     def source_type(self) -> str:
@@ -71,9 +73,11 @@ class WebPipelineHandler(SourcePipelinePort):
     def collect(self, context: PipelineContext) -> list[WebPage]:
         settings = self._settings(context)
         previous: dict[str, dict[str, Any]] = dict(settings.get("pages") or {})
-        reingest = int(settings.get("index_version") or 1) < self._index_version
+        self._classification = str(settings.get("classification") or "")
+        reingest = int(settings.get("index_version") or 1) < self._index_version or classification_changed(settings)
         if reingest:
-            logger.info(f"Web source {context.source_name}: re-ingesting every page for index version {self._index_version}")
+            logger.info(f"Web source {context.source_name}: re-ingesting every page (index version {self._index_version}, "
+                        f"classification {settings.get('classification') or 'none'})")
         connector = self._connector_factory()
         manifest: dict[str, dict[str, Any]] = {}
         changed: list[WebPage] = []
@@ -101,7 +105,8 @@ class WebPipelineHandler(SourcePipelinePort):
         return changed
 
     def process(self, context: PipelineContext, raw_data: list[WebPage]) -> list[dict[str, Any]]:
-        extra = dict(self._settings(context).get("metadata") or {})
+        settings = self._settings(context)
+        extra = {**dict(settings.get("metadata") or {}), **chunk_classification(settings)}
         docs = []
         for page in raw_data:
             text = html_to_text(page.html)
@@ -152,7 +157,8 @@ class WebPipelineHandler(SourcePipelinePort):
     def get_summary(self, context: PipelineContext, collected: Any) -> dict[str, Any]:
         return {"pages": self._manifest, "page_count": len(self._manifest), "pages_changed": len(self._changed),
                 "pages_deleted": len(self._deleted), "pages_unchanged": self._unchanged,
-                "index_version": self._index_version}
+                "index_version": self._index_version,
+                "ingested_classification": self._classification}
 
     def cleanup(self, context: PipelineContext) -> bool:
         return True

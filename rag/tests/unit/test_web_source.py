@@ -160,12 +160,13 @@ def _web_page(url, body="<p>text</p>", etag=""):
                            etag=etag, last_modified="")
 
 
-def _handler(manifest, iterated, metadata=None, min_chunk_chars=0):
+def _handler(manifest, iterated, metadata=None, min_chunk_chars=0, **settings):
     connector = MagicMock()
     connector.iter_pages.return_value = iter(iterated)
     sources = MagicMock()
     sources.get_by_id.return_value = SimpleNamespace(type_data={
-        "urls": [SEED], "pages": manifest, "metadata": metadata or {"product": "Product", "version": "1.0"}})
+        "urls": [SEED], "pages": manifest, "metadata": metadata or {"product": "Product", "version": "1.0"},
+        **settings})
     return WebPipelineHandler(lambda: connector, _Chunker(), _Embedder(), sources, min_chunk_chars=min_chunk_chars)
 
 
@@ -286,3 +287,36 @@ def test_same_seeds_give_the_same_source_id_in_any_order():
     a = WebRegistration(MagicMock(), "u", {"urls": [SEED, C1]})
     b = WebRegistration(MagicMock(), "u", {"urls": [C1, SEED]})
     assert a.source_data.source_id == b.source_data.source_id
+
+
+# ── source classification ────────────────────────────────────────────────────
+
+def test_chunks_carry_the_classification_of_their_source_which_user_metadata_cannot_override():
+    chunks, _, summary = _run(_handler({}, [(SEED, _web_page(SEED))], metadata={"classification": "C1"},
+                                       classification="C2", ingested_classification="C2"))
+    assert chunks and all(c.metadata["classification"] == "C2" for c in chunks)
+    assert summary["ingested_classification"] == "C2"
+
+
+def test_a_source_without_classification_puts_none_on_its_chunks():
+    chunks, _, summary = _run(_handler({}, [(SEED, _web_page(SEED))]))
+    assert all("classification" not in c.metadata for c in chunks)
+    assert summary["ingested_classification"] == ""
+
+
+def test_a_new_classification_embeds_the_unchanged_pages_again():
+    page = _web_page(SEED)
+    manifest = {SEED: {"etag": "", "last_modified": "", "content_hash": page.content_hash, "title": "T"}}
+    handler = _handler(manifest, [(SEED, page)], classification="C2", ingested_classification="")
+    handler.collect(CTX)
+    assert handler._connector_factory().iter_pages.call_args.args[1] == {}  # no previous manifest: refetch all
+
+
+def test_registration_stores_and_validates_the_classification():
+    repo = MagicMock()
+    repo.find_by_pipeline_id.return_value = None
+    _register(repo, classification=" C2 ")
+    assert repo.save.call_args.args[0].type_data["classification"] == "C2"
+    ok, problem = WebRegistration(MagicMock(), "u", {"urls": [SEED], "classification": "C9"}).run_validator()
+    assert not ok and problem["issue_type"] == "InvalidValue" and "C1, C2, C3, C4" in problem["message"]
+    assert WebRegistration(MagicMock(), "u", {"urls": [SEED]}).run_validator() == (True, None)
