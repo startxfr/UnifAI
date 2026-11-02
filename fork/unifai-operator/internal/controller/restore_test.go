@@ -189,13 +189,13 @@ var _ = Describe("UnifaiRestore", func() {
 		newStack(ns, true)
 		Expect(k8sClient.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "app-db", Namespace: ns}})).To(Succeed())
 		rs := &unifaiv1.UnifaiRestore{ObjectMeta: metav1.ObjectMeta{Name: "r5", Namespace: ns}, Spec: unifaiv1.UnifaiRestoreSpec{
-			Source: &unifaiv1.BackupS3Spec{Endpoint: "https://s3.example.com", Bucket: "other", CredentialsSecret: "app-db"}}}
+			Source: &unifaiv1.BackupS3Spec{Endpoint: "https://s3.example.com", Bucket: otherName, CredentialsSecret: "app-db"}}}
 		Expect(k8sClient.Create(ctx, rs)).To(Succeed())
 		Eventually(restorePhase(rs), timeout, interval).Should(Equal(PhaseFailed))
 		Expect(rs.Status.Message).To(ContainSubstring(BackupCredentialsLabel))
 
 		http := &unifaiv1.UnifaiRestore{ObjectMeta: metav1.ObjectMeta{Name: "r6", Namespace: ns}, Spec: unifaiv1.UnifaiRestoreSpec{
-			Source: &unifaiv1.BackupS3Spec{Endpoint: "http://attacker.example.com", Bucket: "other", CredentialsSecret: "s3"}}}
+			Source: &unifaiv1.BackupS3Spec{Endpoint: "http://attacker.example.com", Bucket: otherName, CredentialsSecret: "s3"}}}
 		Expect(k8sClient.Create(ctx, http)).NotTo(Succeed(), "an http source endpoint is refused by the CRD")
 		inject := &unifaiv1.UnifaiRestore{ObjectMeta: metav1.ObjectMeta{Name: "r7", Namespace: ns}, Spec: unifaiv1.UnifaiRestoreSpec{
 			Collections: []string{"docs --debug"}}}

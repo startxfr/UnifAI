@@ -32,7 +32,7 @@ func TestBundleMayDelegate(t *testing.T) {
 		t.Fatalf("owned by a delegating bundle: %q %v", prefix, ok)
 	}
 	forged := owned()
-	forged.OwnerReferences[0].UID = "other"
+	forged.OwnerReferences[0].UID = otherName
 	if _, ok := bundleMayDelegate(ctx, c, forged); ok {
 		t.Error("an owner reference with another UID is accepted")
 	}
@@ -101,6 +101,8 @@ func TestChildrenBelongToTheInstanceOfTheirBundle(t *testing.T) {
 const (
 	stepOrchestrate = "orchestrate"
 	stepAgent       = "agent"
+	otherName       = "other"
+	tekosNode       = "a2a-tekos"
 )
 
 func TestDelegatingBlueprintShapes(t *testing.T) {
@@ -117,10 +119,10 @@ func TestDelegatingBlueprintShapes(t *testing.T) {
 	// retrieve_reason_respond: the single stage is coordinated by the orchestrator.
 	one := stepsOf(delegatingBlueprint("c", "orch", []string{"t"}, 0, a2a))
 	if one["ask"]["branches"].(map[string]any)[stepAgent] != stepOrchestrate || one[stepOrchestrate]["after"] != nil ||
-		one[stepAgent]["after"] != stepOrchestrate || one["a2a-tekos"]["after"] != stepOrchestrate {
+		one[stepAgent]["after"] != stepOrchestrate || one[tekosNode]["after"] != stepOrchestrate {
 		t.Errorf("single stage plan: %v", one)
 	}
-	if got := one["finish"]["after"].([]any); len(got) != 2 || got[0] != stepAgent || got[1] != "a2a-tekos" {
+	if got := one["finish"]["after"].([]any); len(got) != 2 || got[0] != stepAgent || got[1] != tekosNode {
 		t.Errorf("single stage finish waits for %v", got)
 	}
 
@@ -129,10 +131,10 @@ func TestDelegatingBlueprintShapes(t *testing.T) {
 	if three["ask"]["branches"].(map[string]any)[stepAgent] != stepAgent || three[stepAgent]["after"] != nil {
 		t.Errorf("the question must lead to the plan stage: %v", three["ask"])
 	}
-	if three[stepOrchestrate]["after"] != stepAgent || three["agent-2"]["after"] != stepOrchestrate || three["a2a-tekos"]["after"] != stepOrchestrate {
+	if three[stepOrchestrate]["after"] != stepAgent || three["agent-2"]["after"] != stepOrchestrate || three[tekosNode]["after"] != stepOrchestrate {
 		t.Errorf("orchestrator and workers: %v", three)
 	}
-	if got := three["agent-3"]["after"].([]any); len(got) != 2 || got[0] != "agent-2" || got[1] != "a2a-tekos" {
+	if got := three["agent-3"]["after"].([]any); len(got) != 2 || got[0] != "agent-2" || got[1] != tekosNode {
 		t.Errorf("the write stage waits for %v", got)
 	}
 	if three["finish"]["after"] != "agent-3" {
@@ -152,7 +154,7 @@ func TestOrchestratorPromptNamesTheNodeUIDs(t *testing.T) {
 			t.Errorf("system message lacks %q:\n%s", want, msg)
 		}
 	}
-	if targets[0].nodeUID() != "a2a-tekos" {
+	if targets[0].nodeUID() != tekosNode {
 		t.Errorf("node uid %q", targets[0].nodeUID())
 	}
 }

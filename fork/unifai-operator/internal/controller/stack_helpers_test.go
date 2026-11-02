@@ -60,7 +60,7 @@ func TestSecretDataAndConfigHash(t *testing.T) {
 		t.Error("Data and StringData must hash alike")
 	}
 	cm2 := cm.DeepCopy()
-	cm2.Data["k"] = "other"
+	cm2.Data["k"] = otherName
 	if h == configHash([]client.Object{cm2, sc}) {
 		t.Error("a changed ConfigMap did not change the hash")
 	}
@@ -74,7 +74,7 @@ func TestLiveVolumes(t *testing.T) {
 	r := stackReconcilerWith(t,
 		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data", Namespace: "ns"},
 			Spec: corev1.PersistentVolumeClaimSpec{StorageClassName: ptr.To("fast")}},
-		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "elsewhere", Namespace: "other"}},
+		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "elsewhere", Namespace: otherName}},
 		&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "mongodb", Namespace: "ns"},
 			Spec: appsv1.StatefulSetSpec{VolumeClaimTemplates: []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "db"}}}}},
 	)

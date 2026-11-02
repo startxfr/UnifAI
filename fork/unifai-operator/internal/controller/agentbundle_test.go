@@ -336,7 +336,7 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 	It("refuses spec.groupTeam together with spec.teamRef at admission", func() {
 		b := newBundle(setup("bundle-groupteam-conflict"), "quay.io/x/b@sha256:"+strings.Repeat("0", 64), nil)
 		b.Spec.GroupTeam = true
-		b.Spec.TeamRef = "other"
+		b.Spec.TeamRef = otherName
 		Expect(k8sClient.Create(ctx, b)).To(MatchError(ContainSubstring("groupTeam is exclusive with teamId and teamRef")))
 	})
 
