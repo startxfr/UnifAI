@@ -106,10 +106,11 @@ feature-to-devel: ## Merge the current feature branch into devel (--no-ff, local
 	git switch devel && git merge --no-ff -m "Merge branch '$$b' into devel" $$b
 
 # --- images --------------------------------------------------------------------------------------
-ui-certs: ## Self-signed certs for the UI image (nginx expects unifai.crt/unifai.key)
+ui-certs: ## Self-signed certs for the UI image (nginx expects unifai_bundle.pem/unifai.key; unifai.crt kept)
 	mkdir -p ui/UnifAI-secrets/certificates
 	openssl req -x509 -nodes -newkey rsa:2048 -days 365 -subj "/CN=unifai" \
 	  -keyout ui/UnifAI-secrets/certificates/unifai.key -out ui/UnifAI-secrets/certificates/unifai.crt
+	cp ui/UnifAI-secrets/certificates/unifai.crt ui/UnifAI-secrets/certificates/unifai_bundle.pem
 	chmod 644 ui/UnifAI-secrets/certificates/*
 
 ui-perms: ## Make ui/ and README.md world-readable (the UI Dockerfile uses COPY, which keeps host modes; needed with a restrictive umask)

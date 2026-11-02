@@ -476,6 +476,7 @@ func mountUITLS(tpl map[string]any) {
 		"secretName": UITLSSecret,
 		"items": []any{
 			map[string]any{"key": "tls.crt", "path": "unifai.crt"},
+			map[string]any{"key": "tls.crt", "path": "unifai_bundle.pem"}, // read by nginx since upstream a97597978
 			map[string]any{"key": "tls.key", "path": "unifai.key"},
 		},
 	}})
