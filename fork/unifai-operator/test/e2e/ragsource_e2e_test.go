@@ -126,7 +126,7 @@ func podLogs(t *testing.T, ns, prefix string) string {
 // checkRedHatSource ingests one real Red Hat documentation page (needs Internet access from the cluster).
 func checkRedHatSource(t *testing.T, ns string) {
 	src := &unifaiv1.UnifaiRAGSource{ObjectMeta: metav1.ObjectMeta{Name: "e2e-rh", Namespace: ns}, Spec: unifaiv1.UnifaiRAGSourceSpec{
-		Type: "web", Tags: []string{"product:openshift-gitops"},
+		Type: "web", Tags: []string{"product:openshift-gitops"}, Classification: "C2",
 		Web: &unifaiv1.RAGWebSource{URLs: []string{env("E2E_RH_URL",
 			"https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.17/html-single/understanding_openshift_gitops/index")},
 			Crawl: "none", MaxPages: 1}}}
@@ -136,6 +136,7 @@ func checkRedHatSource(t *testing.T, ns string) {
 	if src.Status.Pages != 1 {
 		t.Fatalf("red hat page: %s, want 1 page", src.Status.Message)
 	}
+	checkSearchClassification(t, ns, "C2") // the classification of the source is on every chunk the search returns
 
 	must(t, getObj(src))
 	src.Spec.Tags = append(src.Spec.Tags, "e2e") // a spec change queues a sync of the same page
@@ -149,6 +150,42 @@ func checkRedHatSource(t *testing.T, ns string) {
 				t.Logf("rag: %s", line)
 			}
 		}
+	}
+
+	// A new classification embeds the unchanged page again (no resyncToken), so existing chunks get the new value.
+	must(t, getObj(src))
+	src.Spec.Classification = "C3"
+	start = time.Now()
+	must(t, c.Update(ctx, src))
+	waitSynced(t, src, start, 20*time.Minute)
+	if src.Status.PagesChanged != 1 {
+		t.Errorf("classification C2 to C3: %s, want the page embedded again", src.Status.Message)
+	}
+	checkSearchClassification(t, ns, "C3")
+}
+
+// searchClassificationProbe searches the WEB sources of the owner (admin) through the RAG server as the apps do (internal
+// secret + X-Authenticated-User) and succeeds only when there are matches and every one carries EXPECT as classification.
+const searchClassificationProbe = `
+import json, os, sys, urllib.parse, urllib.request
+expect = os.environ["EXPECT"]
+q = urllib.parse.urlencode({"query": "OpenShift GitOps", "sourceType": "WEB", "top_k_results": 5, "tags": "product:openshift-gitops"})
+req = urllib.request.Request("http://unifai-rag-server:13456/api/sources/query.match?" + q,
+                             headers={"X-Authenticated-User": "admin", "X-Internal-Auth": os.environ["INTERNAL_AUTH_SECRET"]})
+matches = json.load(urllib.request.urlopen(req, timeout=60)).get("matches", [])
+found = [(m.get("metadata") or {}).get("classification") for m in matches]
+open("/dev/termination-log", "w").write("expect %s, matches carry %s" % (expect, found))
+sys.exit(0 if matches and all(f == expect for f in found) else 1)
+`
+
+// checkSearchClassification fails unless the search returns the classification of the source in every match.
+func checkSearchClassification(t *testing.T, ns, want string) {
+	t.Helper()
+	env := []corev1.EnvVar{{Name: "EXPECT", Value: want}, {Name: "INTERNAL_AUTH_SECRET", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{Name: "unifai-internal-auth"}, Key: "INTERNAL_AUTH_SECRET"}}}}
+	if ok, msg := runProbe(t, ns, "e2e-classification-"+strings.ToLower(want), searchClassificationProbe,
+		map[string]string{"unifai.startx.fr/internal-client": "true"}, env...); !ok {
+		t.Errorf("search results must carry classification %s: %s", want, msg)
 	}
 }
 
