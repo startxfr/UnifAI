@@ -14,8 +14,8 @@ collection (see QdrantVectorRepository).
 
 Version 3 is version 2 with a light French suffix stemmer on both sides ("procédures", "procédure", "configurer" and
 "configuration" meet their stem), for questions asked in French. It is opt-in and lives in its own collection (_hybrid_v3): nothing
-reads or writes it unless QDRANT_SPARSE_READ_VERSION / QDRANT_SPARSE_WRITE_VERSIONS say so. The stemmer is also applied
-to English words; both sides use it, so a term still matches itself, but unrelated words may share a stem.
+reads or writes it unless QDRANT_SPARSE_READ_VERSION / QDRANT_SPARSE_WRITE_VERSIONS say so. The stemmer applies
+to English words too; both sides use it, so a term still matches itself, but unrelated words may share a stem.
 
 Tokens are Unicode word characters, lower-cased with accents folded
 ("Procédure" and "procedure" match), so identifiers and product names that
