@@ -83,6 +83,9 @@ func ragSourceInstance(obj *unifaiv1.UnifaiRAGSource) (string, map[string]any, e
 	if len(obj.Spec.Tags) > 0 { // absent when unset, so a source without tags keeps its hash (no resync)
 		instance["tags"] = append([]string{}, obj.Spec.Tags...)
 	}
+	if obj.Spec.Classification != "" { // absent when unset, so a source without one keeps its hash (no resync)
+		instance["classification"] = obj.Spec.Classification
+	}
 	if obj.Spec.ResyncToken != "" { // only changes the hash: a new value queues a sync
 		instance["resyncToken"] = obj.Spec.ResyncToken
 	}

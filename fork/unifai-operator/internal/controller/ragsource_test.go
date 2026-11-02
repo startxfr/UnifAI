@@ -107,6 +107,16 @@ var _ = Describe("UnifaiRAGSource controller", func() {
 		Expect(hash(with)).NotTo(Equal(hash(without)))
 	})
 
+	It("registers the source classification only when set, so existing sources keep their hash", func() {
+		_, without, err := ragSourceInstance(newSource("ns", "SX9", nil))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(without).NotTo(HaveKey("classification"))
+		_, with, err := ragSourceInstance(newSource("ns", "SX9", func(s *unifaiv1.UnifaiRAGSource) { s.Spec.Classification = "C2" }))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(with["classification"]).To(Equal("C2"))
+		Expect(hash(with)).NotTo(Equal(hash(without)))
+	})
+
 	It("registers a public web source with its seeds, crawl scope and metadata", func() {
 		s := newSource("ns", "unused", func(s *unifaiv1.UnifaiRAGSource) {
 			s.Spec.Type, s.Spec.Confluence = sourceTypeWeb, nil

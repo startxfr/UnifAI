@@ -203,6 +203,11 @@ the page counts of the last sync. The RAG service syncs incrementally (unchanged
 Deleting the resource deletes the source and its vectors. A shared source needs `aclGroups` (admission rule) and
 an owner listed in `sharedPublishers` (otherwise phase `Error`, `ACCESS_DENIED`).
 
+`spec.classification` (C1 to C4, optional) is the data classification of the content: the RAG service writes it on
+every chunk and returns it in the search results, so a consumer can raise the level of a turn (a chunk without one is
+for the consumer to treat as C2). Changing it embeds every page again at the next sync, so existing chunks get the new
+value without a `resyncToken`.
+
 ### Backups (spec.backup)
 
 `spec.backup` renders two CronJobs (default schedule `0 2 * * *`, `concurrencyPolicy: Forbid`) that write to an

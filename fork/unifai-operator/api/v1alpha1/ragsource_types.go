@@ -79,6 +79,12 @@ type UnifaiRAGSourceSpec struct {
 	// source the caller can see". Changing them registers the source again (no page is re-embedded).
 	// +optional
 	Tags []string `json:"tags,omitempty"`
+	// Classification (C1 to C4) of the content the source brings in. The RAG service writes it on every chunk and returns
+	// it in the search results, so a consumer can raise the data level of a turn. Unset = chunks carry none (a consumer
+	// that fails closed treats them as C2). Changing it embeds every page again at the next sync.
+	// +kubebuilder:validation:Enum=C1;C2;C3;C4
+	// +optional
+	Classification string `json:"classification,omitempty"`
 	// Time between incremental syncs (minimum 10m). Unset = sync only when the spec changes.
 	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('10m')",message="syncInterval is at least 10m"
 	// +optional
