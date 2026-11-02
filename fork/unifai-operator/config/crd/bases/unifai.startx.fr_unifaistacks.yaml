@@ -846,18 +846,19 @@ spec:
                       sparseReadVersion:
                         description: |-
                           Sparse encoder version searches read (QDRANT_SPARSE_READ_VERSION; 1 by default): 2 drops stop words and
-                          normalises by length, in its own <collection>_hybrid_v2.
+                          normalises by length, in its own <collection>_hybrid_v2; 3 is 2 plus a light French suffix stemmer, in
+                          <collection>_hybrid_v3 (opt-in, to be measured on French questions before it is read).
                         format: int32
-                        maximum: 2
+                        maximum: 3
                         minimum: 1
                         type: integer
                       sparseWriteVersions:
                         description: |-
                           Sparse versions written (QDRANT_SPARSE_WRITE_VERSIONS; the read version by default). During a migration
-                          write [1, 2] and re-ingest every source (spec.resyncToken), then read 2 and write [2].
+                          write [1, 2] and re-ingest every source (spec.resyncToken), then read 2 and write [2]; the same from 2 to 3.
                         items:
                           format: int32
-                          maximum: 2
+                          maximum: 3
                           minimum: 1
                           type: integer
                         maxItems: 2

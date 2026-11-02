@@ -291,6 +291,14 @@ func TestRAGSettings(t *testing.T) {
 	if objs := RerankerObjects(ranked); len(objs) != 2 || objs[0].GetName() != RerankerName {
 		t.Errorf("a deployed reranker is a Deployment and a Service: %v", objs)
 	}
+	stemmer := renderAll(t, testPlan(t, func(s *unifaiv1.UnifaiStackSpec) {
+		s.RAG.Search = &unifaiv1.RAGSearchSpec{SparseReadVersion: 2, SparseWriteVersions: []int32{2, 3}}
+	}))
+	for _, want := range []string{"QDRANT_SPARSE_READ_VERSION", "QDRANT_SPARSE_WRITE_VERSIONS", "2,3"} {
+		if !strings.Contains(stemmer["unifai-rag-server"], want) {
+			t.Errorf("a migration to sparse version 3: unifai-rag-server lacks %s", want)
+		}
+	}
 	remote := testPlan(t, func(s *unifaiv1.UnifaiStackSpec) {
 		s.RAG.Reranker = &unifaiv1.RerankerSpec{Mode: "remote", URL: "http://reranker.zuno-ai-run.svc:8080"}
 	})

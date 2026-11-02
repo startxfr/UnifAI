@@ -10,7 +10,7 @@ from core.vector.domain.model import VectorChunk
 from infrastructure.embedding.embedding_generator import DefaultEmbeddingGenerator
 from infrastructure.qdrant.mirrored_vector_repository import MirroredVectorRepository
 from infrastructure.qdrant.qdrant_vector_repository import QdrantVectorRepository
-from infrastructure.qdrant.sparse_encoder import HashingBM25Encoder
+from infrastructure.qdrant.sparse_encoder import HashingBM25Encoder, stem_fr
 
 pytestmark = pytest.mark.unit
 
@@ -174,3 +174,34 @@ def test_tei_reranker_maps_scores_back_to_the_text_order():
     session.post.return_value = MagicMock(json=lambda: [{"index": 0, "score": 0.5}], raise_for_status=lambda: None)
     with pytest.raises(RerankError):
         rr.rerank("q", ["a", "b"])
+
+
+# ── sparse encoder version 3: light French stemmer (opt-in, WP-186) ───────────────────────────────────────
+
+@pytest.mark.parametrize("group", [
+    ("procédure", "procédures"), ("configuration", "configurations", "configurer"),
+    ("déploiement", "déploiements"), ("installation", "installer"), ("utilisateur", "utilisateurs", "utilisation"),
+    ("journal", "journaux"), ("bateau", "bateaux"), ("sécurité", "sécurités"),
+])
+def test_v3_stems_french_variants_to_one_term(group):
+    enc = HashingBM25Encoder(version=3)
+    assert len({tuple(enc.encode_query(w).indices) for w in group}) == 1, group
+
+
+def test_v3_leaves_short_words_and_identifiers_alone():
+    for word in ("oc", "pod", "tls", "etcd", "ERR_TLS_CERT", "rhel9", "v1beta1"):
+        assert stem_fr(word.lower()) == word.lower()
+    assert stem_fr("namespaces") != "namespaces"  # the stemmer also applies to English: both sides agree
+    enc = HashingBM25Encoder(version=3)
+    assert enc.encode_document("namespaces").indices == enc.encode_query("namespaces").indices
+
+
+def test_v3_keeps_versions_1_and_2_unchanged_and_in_their_own_collection(client):
+    for version in (1, 2):
+        enc = HashingBM25Encoder(version=version)
+        assert enc.encode_query("procédures").indices != enc.encode_query("procédure").indices
+    assert HashingBM25Encoder(version=3).encode_query("procédures").indices == \
+        HashingBM25Encoder(version=3).encode_query("procédure").indices
+    assert repo(client, 3)._collection_name == "web_hybrid_v3"
+    with pytest.raises(ValueError):
+        HashingBM25Encoder(version=4)

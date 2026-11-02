@@ -172,16 +172,17 @@ type RAGSearchSpec struct {
 	// +optional
 	Fusion string `json:"fusion,omitempty"`
 	// Sparse encoder version searches read (QDRANT_SPARSE_READ_VERSION; 1 by default): 2 drops stop words and
-	// normalises by length, in its own <collection>_hybrid_v2.
+	// normalises by length, in its own <collection>_hybrid_v2; 3 is 2 plus a light French suffix stemmer, in
+	// <collection>_hybrid_v3 (opt-in, to be measured on French questions before it is read).
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=2
+	// +kubebuilder:validation:Maximum=3
 	// +optional
 	SparseReadVersion int32 `json:"sparseReadVersion,omitempty"`
 	// Sparse versions written (QDRANT_SPARSE_WRITE_VERSIONS; the read version by default). During a migration
-	// write [1, 2] and re-ingest every source (spec.resyncToken), then read 2 and write [2].
+	// write [1, 2] and re-ingest every source (spec.resyncToken), then read 2 and write [2]; the same from 2 to 3.
 	// +kubebuilder:validation:MaxItems=2
 	// +kubebuilder:validation:items:Minimum=1
-	// +kubebuilder:validation:items:Maximum=2
+	// +kubebuilder:validation:items:Maximum=3
 	// +optional
 	SparseWriteVersions []int32 `json:"sparseWriteVersions,omitempty"`
 }

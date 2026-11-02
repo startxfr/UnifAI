@@ -191,6 +191,9 @@ fields and prompt examples.
   default since the 0.1.45 images; sparse version 2 (stop words, length normalisation) lives in its own
   `<collection>_hybrid_v2` and is migrated by writing [1, 2], re-ingesting every source
   (`UnifaiRAGSource.spec.resyncToken`), then reading 2.
+  Version 3 is version 2 plus a light French suffix stemmer (`<collection>_hybrid_v3`), migrated the same way
+  (write [2, 3], re-ingest, read 3). It is opt-in and unmeasured on French questions: enable it only if the French
+  hit@1 of the ranking set is below 0.7.
 - `reranker` (`mode` deploy|remote, `model` BAAI/bge-reranker-base, `candidates`): a cross-encoder served by TEI that
   re-orders the best fused candidates and returns a 0-1 relevance score; unset = none.
 

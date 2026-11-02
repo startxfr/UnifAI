@@ -12,6 +12,11 @@ frequencies by its length (b, against a fixed average length): a long chunk that
 outranks a short chunk that defines it. Its vectors are not comparable with version 1, so it lives in its own
 collection (see QdrantVectorRepository).
 
+Version 3 is version 2 with a light French suffix stemmer on both sides ("procédures", "procédure", "configurer" and
+"configuration" meet their stem), for questions asked in French. It is opt-in and lives in its own collection (_hybrid_v3): nothing
+reads or writes it unless QDRANT_SPARSE_READ_VERSION / QDRANT_SPARSE_WRITE_VERSIONS say so. The stemmer is also applied
+to English words; both sides use it, so a term still matches itself, but unrelated words may share a stem.
+
 Tokens are Unicode word characters, lower-cased with accents folded
 ("Procédure" and "procedure" match), so identifiers and product names that
 dense embeddings blur (e.g. ``ERR_TLS_CERT``, ``oc adm``) still match exactly.
@@ -56,20 +61,47 @@ ne nos notre nous on ou par pas pour qu que qui sa se ses son sont sur ta te tes
 """.split())
 
 
+# Longest first: the first suffix that leaves a stem of at least three letters is cut, once. Tokens arrive lower-cased
+# with accents folded, so "é" endings are written without their accent.
+_FR_SUFFIXES = tuple(sorted((
+    "issements", "issement", "ements", "ement", "ations", "ation", "ateurs", "ateur", "ments", "ment", "ances", "ance",
+    "ences", "ence", "euses", "euse", "iques", "ique", "ites", "ite", "ives", "ive", "ees", "ee", "ers", "er", "ez",
+    "es", "e", "s", "x",
+), key=len, reverse=True))
+_MIN_STEM = 3
+
+
+def stem_fr(token: str) -> str:
+    """Light French stemmer (plural, feminine, and the common noun/verb endings). Identifiers with digits are kept."""
+    if len(token) <= 4 or any(c.isdigit() for c in token):
+        return token
+    if token.endswith("eaux"):  # bateaux -> bateau
+        return token[:-1]
+    if token.endswith("aux"):  # journaux -> journal
+        return token[:-3] + "al"
+    for suffix in _FR_SUFFIXES:
+        if token.endswith(suffix) and len(token) - len(suffix) >= _MIN_STEM:
+            return token[: -len(suffix)]
+    return token
+
+
 class HashingBM25Encoder:
     """BM25-style sparse encoder over hashed tokens (version 1: no stop words, no length normalisation)."""
 
     def __init__(self, k1: float = 1.2, version: int = 1, b: float = 0.75, avg_doc_tokens: float = 150.0) -> None:
-        if version not in (1, 2):
-            raise ValueError(f"sparse encoder version must be 1 or 2, got {version}")
+        if version not in (1, 2, 3):
+            raise ValueError(f"sparse encoder version must be 1, 2 or 3, got {version}")
         self._k1 = k1
         self.version = version
-        self._b = b if version == 2 else 0.0
+        self._b = b if version >= 2 else 0.0
         self._avg = avg_doc_tokens
 
     def _tokens(self, text: str) -> list[str]:
         tokens = tokenize(text)
-        return [t for t in tokens if t not in STOP_WORDS] if self.version == 2 else tokens
+        if self.version == 1:
+            return tokens
+        tokens = [t for t in tokens if t not in STOP_WORDS]
+        return [stem_fr(t) for t in tokens] if self.version == 3 else tokens
 
     def encode_document(self, text: str) -> SparseVector:
         tokens = self._tokens(text)
