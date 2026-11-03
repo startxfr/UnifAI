@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Resolves the operator image the CI (publish-images.yml) built and signed for the operator code of HEAD, checks its
-# signature and VERSION, and writes its digest reference to bin/ci-image.ref (used by canary-ci and release-files).
+# signature and VERSION, and writes its digest reference to bin/ci-image.ref (used by canary-ci).
 #
 # The CI tags only the head of each push to devel (devel-<sha>), so the image is not necessarily the one of the commit
 # that changed the operator: this walks HEAD's first-parent history back to the newest commit that has an image and

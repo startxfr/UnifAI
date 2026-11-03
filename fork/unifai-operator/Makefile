@@ -6,7 +6,7 @@
 VERSION ?= 0.1.56
 # Tag of the UnifAI images a stack deploys by default (spec.version overrides it).
 UNIFAI_VERSION ?= devel
-CHANNELS ?= alpha,stable
+CHANNELS ?= alpha
 DEFAULT_CHANNEL ?= alpha
 
 # CHANNELS define the bundle channels used in the bundle.
@@ -359,8 +359,8 @@ endif
 # channels; `make catalog-add` records the current VERSION, `make catalog` renders catalog/ from the template.
 CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:latest
 
-# Release flow: `make release` (tests, image, canary e2e, bundle, catalog on alpha) then `make promote` (stable).
-# demo333 subscribes to stable: production changes only on promotion.
+# Releases go through GitHub (fork/RELEASING.md: cut-release.yml, release.yml, promote.yml); the canary targets below
+# are the manual step before a manual release or a promotion. `make release` is a local flow for development only.
 CANARY_NS ?= unifai-operator-canary
 
 # The operator image the canary tests and the release ships is built and signed by the CI (publish-images.yml, on a
@@ -406,16 +406,6 @@ release: test canary-ci canary-e2e canary-delete ## Test, canary e2e of the CI i
 	$(MAKE) bundle IMG=$$(cat bin/ci-image.ref)
 	$(MAKE) bundle-build bundle-push
 	$(MAKE) catalog-add CHANNELS=alpha
-	$(MAKE) catalog-build catalog-push
-
-.PHONY: release-files
-release-files: ci-image ## Write the release files of VERSION (bundle on the CI image's digest, catalog template on alpha and stable): commit them, then tag operator-vVERSION (GitHub publishes after approval).
-	$(MAKE) bundle IMG=$$(cat bin/ci-image.ref)
-	$(MAKE) catalog-add CHANNELS=alpha,stable
-
-.PHONY: promote
-promote: ## Publish VERSION on stable (production).
-	$(MAKE) catalog-add CHANNELS=stable
 	$(MAKE) catalog-build catalog-push
 
 .PHONY: charts

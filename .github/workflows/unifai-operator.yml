@@ -1,5 +1,5 @@
 # Fork-only (fork/fork-only-paths): checks of the UnifAI operator (fork/unifai-operator) on every change.
-# No cluster, no registry, no secret: e2e tests and releases run from the workstation (make release / make promote).
+# No cluster, no registry, no secret: the canary e2e runs from the workstation, releases through cut-release.yml.
 name: unifai-operator
 
 on:

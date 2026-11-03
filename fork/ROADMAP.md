@@ -15,7 +15,7 @@ are referenced, not duplicated. No secrets, no unpublished vulnerability details
   | v0.11 plan (WP-146..157) | zuno-demo-59 (coordination) |
 - **Commits**: explicit pathspec only (the tree is shared); run `make generate manifests test` before committing
   operator changes; Conventional Commits (`feat(fork): ...`).
-- **Operator releases**: only through `make release` (canary instance + e2e incl. upgrade) then `make promote`;
+- **Releases**: only through cut-release.yml / release.yml / promote.yml (fork/RELEASING.md), after the canary instance e2e (upgrade included);
   one session cuts releases and folds in the other sessions' committed changes.
 - **App images**: immutable tags `devel-<sha>` for pinned stacks; `:devel` moves only on purpose.
 - **Push**: `devel` and upstream PRs only on the user's decision.

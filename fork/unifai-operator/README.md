@@ -385,17 +385,16 @@ operator's code or `Makefile` runs `.github/workflows/publish-images.yml`, which
 (with the `VERSION` of that commit), pushes `quay.io/zuno/unifai-operator:devel-<sha>` and signs the digest keyless,
 with a provenance attestation and a signed SBOM (the same identity as the UnifAI images). `make ci-image`
 (`hack/ci-image.sh`) finds the newest `devel-<sha>` image built from the same operator code as HEAD (the CI tags
-only the head of each push), checks it is signed by that workflow on `devel` and built for `VERSION`, and writes its digest to `bin/ci-image.ref`; `canary-ci` deploys that digest, `release-files` writes
-it into the bundle. `docker-build-local` stays for quick local experiments only.
+only the head of each push), checks it is signed by that workflow on `devel` and built for `VERSION`, and writes its digest to `bin/ci-image.ref`; `canary-ci` deploys that digest. `docker-build-local` stays for quick local experiments only.
 
 `make release` runs, in order: `test`, `canary-ci` (the CI image as a second operator instance, namespace
 `unifai-operator-canary`, after applying its CRDs), `canary-e2e`, `canary-delete`, `bundle bundle-build bundle-push`
-on that digest, then `catalog-add CHANNELS=alpha catalog-build catalog-push`. Production is not touched before
-`make promote`.
+on that digest, then `catalog-add CHANNELS=alpha catalog-build catalog-push` (local development only: it needs quay
+write access and signs nothing).
 
 Release through GitHub (no quay credentials on the workstation) — since v0.1.54 the operator ships with the five
 application images under one product version `vX.Y.Z` ([../RELEASING.md](../RELEASING.md)); the `operator-vX.Y.Z` tags
-and `make release-files` belong to the transition flow (0.1.29 → 0.1.53) and are no longer used:
+and `make release-files` (removed) belonged to the transition flow (0.1.29 → 0.1.53) and are no longer used:
 
 ```bash
 # devel head built and signed by publish-images (VERSION is moved on by the release bot, never by hand)
