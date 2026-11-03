@@ -426,6 +426,10 @@ charts: ## Copy the upstream UnifAI charts and values into internal/stack/assets
 charts-check: ## Fail when the embedded charts differ from the upstream helm/ directory.
 	./hack/sync-charts.sh --check ../../helm
 
+.PHONY: fork-check
+fork-check: ## Fail when a deliberate fork divergence from upstream (UI nginx certificate name) was lost by a sync.
+	./hack/fork-divergence-check.sh ../..
+
 .PHONY: catalog-add
 catalog-add: ## Add bundle VERSION to catalog-template.yaml in CHANNELS (comma-separated), replacing each channel head.
 	python3 hack/catalog_add.py catalog-template.yaml unifai-operator $(VERSION) $(BUNDLE_IMG) $(CHANNELS)

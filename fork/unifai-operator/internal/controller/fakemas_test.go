@@ -283,7 +283,7 @@ func (f *fakeMAS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			f.ragSources[id] = map[string]any{"source_id": id, "source_name": d["name"], "source_type": strings.ToUpper(st), "status": "DONE",
-				"type_data": map[string]any{"page_count": 3, "pages_changed": 1, "pages_deleted": 0}}
+				"type_data": map[string]any{"page_count": 3, "pages_changed": 1, "pages_deleted": 0, "ingested_classification": "C2"}}
 			reply(w, 200, map[string]any{"registration": map[string]any{
 				// Same shape as rag core/registration/service.py.
 				"registered_sources": []any{map[string]any{"metadata": map[string]any{"source_id": id}}}, "issues": []any{}}})

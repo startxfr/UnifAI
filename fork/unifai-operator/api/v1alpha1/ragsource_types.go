@@ -118,6 +118,11 @@ type UnifaiRAGSourceStatus struct {
 	PagesChanged int `json:"pagesChanged,omitempty"`
 	// +optional
 	PagesDeleted int `json:"pagesDeleted,omitempty"`
+	// Classification the RAG service stamped on the chunks of the last run (C1-C4). Empty while no run reported one:
+	// a RAG image older than the classification field never reports it, so a set spec.classification with an empty
+	// value here means the field is ignored.
+	// +optional
+	IngestedClassification string `json:"ingestedClassification,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -126,6 +131,7 @@ type UnifaiRAGSourceStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="Pages",type=integer,JSONPath=`.status.pages`
+// +kubebuilder:printcolumn:name="Classification",type=string,JSONPath=`.status.ingestedClassification`,priority=1
 // +kubebuilder:printcolumn:name="LastSync",type=date,JSONPath=`.status.lastSyncTime`
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.message`,priority=1
 

@@ -269,6 +269,7 @@ func (r *RAGSourceReconciler) refresh(ctx context.Context, api *unifai.Client, o
 		return 0
 	}
 	st.Pages, st.PagesChanged, st.PagesDeleted = count("page_count"), count("pages_changed"), count("pages_deleted")
+	st.IngestedClassification, _ = out.Source.TypeData["ingested_classification"].(string)
 	return syncRunning(st.PipelineStatus, st.LastSyncTime, ragFinishedAt(out.Source.LastSyncAt), r.now()), nil
 }
 

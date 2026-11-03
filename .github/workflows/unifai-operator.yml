@@ -45,6 +45,9 @@ jobs:
       - name: Embedded charts match helm/
         run: make charts-check
 
+      - name: Fork divergences from upstream are kept
+        run: make fork-check
+
       - name: Unit and envtest tests
         run: make test
 

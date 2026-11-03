@@ -151,6 +151,7 @@ var _ = Describe("UnifaiRAGSource controller", func() {
 		Expect(k8sClient.Create(ctx, s)).To(Succeed())
 		Eventually(func() string { return get(s)().Phase }, timeout, interval).Should(Equal("Ready"))
 		Expect(get(s)().Pages).To(Equal(3))
+		Expect(get(s)().IngestedClassification).To(Equal("C2"))
 
 		denied := newSource(newNamespace("ragsrc-web-denied"), "unused", func(s *unifaiv1.UnifaiRAGSource) {
 			s.Spec.Type, s.Spec.Confluence = sourceTypeWeb, nil
