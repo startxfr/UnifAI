@@ -36,6 +36,16 @@ class FindTag(unittest.TestCase):
         self.assertNotIn("fork/ci", ri.COMPONENTS["rag"])
 
 
+class Expected(unittest.TestCase):
+    IMAGES = {"operator": {"ref": "quay.io/zuno/unifai-operator@sha256:aa", "tag": "devel-1"}}
+
+    def test_the_tested_digest_passes(self):
+        self.assertEqual(ri.check_expected(self.IMAGES, ["operator=sha256:aa"]), [])
+
+    def test_another_digest_or_component_fails(self):
+        self.assertEqual(len(ri.check_expected(self.IMAGES, ["operator=sha256:bb", "rag=sha256:aa", "bad"])), 3)
+
+
 class Notes(unittest.TestCase):
     def test_grouped_by_type_without_release_and_chore(self):
         text = rn.render("0.1.52", [

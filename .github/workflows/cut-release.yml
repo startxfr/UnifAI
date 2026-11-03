@@ -19,11 +19,18 @@ on:
         type: choice
         options: [manual, weekly, rc]
         default: manual
+      operator:
+        description: "optional: the operator digest the canary tested (sha256:…); the cut fails if devel resolves another one"
+        type: string
+        default: ""
   workflow_call:
     inputs:
       kind:
         type: string
         required: true
+      operator:
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -86,7 +93,13 @@ jobs:
 
       - name: Resolve the six signed images of the devel head
         if: env.SKIP != '1'
-        run: python3 fork/ci/release_images.py --version "$BASE" --out "$RUNNER_TEMP/images.json"
+        env:
+          EXPECT_OPERATOR: ${{ inputs.operator }}
+        run: |
+          set -euo pipefail
+          expect=()
+          [ -z "$EXPECT_OPERATOR" ] || expect=(--expect "operator=$EXPECT_OPERATOR")
+          python3 fork/ci/release_images.py --version "$BASE" --out "$RUNNER_TEMP/images.json" "${expect[@]}"
 
       - name: Fast-forward stable and push the tag
         if: env.SKIP != '1'

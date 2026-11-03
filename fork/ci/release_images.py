@@ -113,6 +113,21 @@ def resolve(version: str, commit: str, registry: str, verify: bool) -> dict:
     return {"commit": head, "version": version, "images": images}
 
 
+def check_expected(images: dict, expected: list[str]) -> list[str]:
+    """Errors for each `component=digest` the resolved images do not match (the digest the canary tested)."""
+    errors = []
+    for item in expected:
+        component, _, digest = item.strip().partition("=")
+        if not digest:
+            errors.append(f"--expect '{item}': want COMPONENT=sha256:<hex>")
+            continue
+        got = images.get(component, {}).get("ref", "").rpartition("@")[2]
+        if got != digest:
+            errors.append(f"{component}: resolved {got or 'nothing'}, expected {digest} "
+                          "(a later commit changed its code since it was tested)")
+    return errors
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--version", help="the release version without its pre-release part (X.Y.Z)")
@@ -122,6 +137,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--registry", default="quay.io/zuno")
     p.add_argument("--no-verify", action="store_true", help="skip the cosign check (local inspection only)")
     p.add_argument("--out")
+    p.add_argument("--expect", action="append", default=[], metavar="COMPONENT=sha256:…",
+                   help="fail unless COMPONENT resolves to this digest, e.g. the operator the canary tested (repeatable)")
     a = p.parse_args(argv)
     if a.missing:
         print("\n".join(missing(a.commit, a.registry)))
@@ -129,6 +146,12 @@ def main(argv: list[str] | None = None) -> None:
     if not a.version:
         p.error("--version is required")
     result = resolve(a.version, a.commit, a.registry, not a.no_verify)
+    errors = check_expected(result["images"], a.expect)
+    if errors:
+        if os.environ.get("GITHUB_ACTIONS"):
+            for e in errors:
+                print(f"::error::{e}", file=sys.stderr)
+        raise SystemExit("\n".join(errors))
     text = json.dumps(result, indent=2)
     if a.out:
         with open(a.out, "w") as f:
