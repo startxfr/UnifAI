@@ -219,7 +219,7 @@ func TestReconcileTokenReview(t *testing.T) {
 
 func TestReconcileBackupsRemovesTheCronJobsWhenUnset(t *testing.T) {
 	ctx := context.Background()
-	var objs []client.Object
+	objs := make([]client.Object, 0, len(stack.BackupNames)+1)
 	for _, n := range stack.BackupNames {
 		objs = append(objs, &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Name: n, Namespace: stackNS}})
 	}
