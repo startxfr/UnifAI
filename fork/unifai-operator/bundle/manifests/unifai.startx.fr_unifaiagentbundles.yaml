@@ -140,6 +140,14 @@ spec:
                     maximum: 50
                     minimum: 1
                     type: integer
+                  timeoutSeconds:
+                    description: |-
+                      Seconds the A2A node waits for a target's answer; past it the remote task is cancelled (ADR-0406). Unset: the
+                      engine's own 30 s.
+                    format: int32
+                    maximum: 900
+                    minimum: 1
+                    type: integer
                 required:
                 - gatewayURL
                 type: object
