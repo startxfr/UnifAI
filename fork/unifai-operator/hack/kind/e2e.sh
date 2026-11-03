@@ -8,6 +8,7 @@
 # - the Route API: a bare CRD (route-crd.yaml), no router, so the test skips what goes through a Route
 #   (E2E_EXTERNAL=0);
 # - the cluster apps domain: E2E_DOMAIN gives the stack its hosts;
+# - a non-root UID assigned by the platform: the backup/restore test is skipped (E2E_RESTORE=0);
 # - ReadWriteMany storage: static hostPath volumes of a class `e2e-shared` (one node, so they are shared);
 # - Prometheus: the operator's ServiceMonitor is left out;
 # - the OpenShift service CA: a background loop gives every Service annotated
@@ -106,7 +107,9 @@ service_ca_pid=$!
 
 # What `make test-e2e` runs, with the kind values (E2E_DOMAIN and E2E_EXTERNAL are read by the tests only).
 # E2E_KEEP: the namespace stays for the failure report below (the cluster is thrown away anyway).
-E2E_KEEP=1 E2E_VERSION="$version" E2E_DOMAIN=apps.kind.invalid E2E_EXTERNAL=0 \
+# E2E_RESTORE=0: the backup Job runs the mongo image, root by default, under runAsNonRoot; OpenShift assigns a
+# non-root UID, kind does not (the restore is proven by the demo333 canary).
+E2E_KEEP=1 E2E_RESTORE=0 E2E_VERSION="$version" E2E_DOMAIN=apps.kind.invalid E2E_EXTERNAL=0 \
   E2E_STORAGE_CLASS=standard E2E_SHARED_STORAGE_CLASS=e2e-shared E2E_NODE_SELECTOR= \
   E2E_TIMEOUT="${E2E_TIMEOUT:-40m}" \
   go test -tags e2e -count=1 -timeout "${E2E_GO_TIMEOUT:-100m}" -v ./test/e2e/

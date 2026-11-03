@@ -35,6 +35,8 @@ jobs:
       base: ${{ steps.plan.outputs.base }}
       environment: ${{ steps.plan.outputs.environment }}
       prefix: ${{ steps.plan.outputs.prefix }}
+      operator: ${{ steps.plan.outputs.operator }}
+      apps: ${{ steps.plan.outputs.apps }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -65,7 +67,12 @@ jobs:
           if [ "$kind" != rc ]; then
             git merge-base --is-ancestor "$GITHUB_SHA" origin/stable || { echo "::error::$tag is not on stable"; exit 1; }
           fi
+          # The images the gate tests: the operator digest and the tag of the application images named in the tag.
+          sed '1,2d' "$RUNNER_TEMP/message" > "$RUNNER_TEMP/cut.json"
+          read -r operator apps < <(python3 -c 'import json,sys; i=json.load(open(sys.argv[1]))["images"]; print(i["operator"]["ref"], i["rag"]["tag"])' "$RUNNER_TEMP/cut.json")
           {
+            echo "operator=$operator"
+            echo "apps=$apps"
             echo "kind=$kind"
             echo "version=${tag#v}"
             echo "base=$base"
@@ -74,8 +81,17 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "### $tag: $kind release, environment $env, repositories quay.io/zuno/$prefix-*" >> "$GITHUB_STEP_SUMMARY"
 
-  publish:
+  # The gate: the light e2e suite on a throwaway kind cluster, on the operator and application images about to be
+  # published (fork/RELEASING.md, phase 2). Nothing is published if it fails.
+  e2e:
     needs: plan
+    uses: ./.github/workflows/e2e-kind.yml
+    with:
+      operator: ${{ needs.plan.outputs.operator }}
+      version: ${{ needs.plan.outputs.apps }}
+
+  publish:
+    needs: [plan, e2e]
     runs-on: ubuntu-latest
     environment: ${{ needs.plan.outputs.environment }}
     timeout-minutes: 60

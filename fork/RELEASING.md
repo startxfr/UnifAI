@@ -84,7 +84,8 @@ It resolves the six signed images of the `devel` head ([ci/release_images.py](ci
 locally: `python3 fork/ci/release_images.py --version 0.1.52`), fast-forwards `stable` and pushes the annotated tag with
 the release bot. The tag starts `release.yml`:
 
-1. it checks the tag (bot, kind, version = Makefile `VERSION`, commit on `stable`) and re-resolves the images;
+1. it checks the tag (bot, kind, version = Makefile `VERSION`, commit on `stable`), runs the e2e gate on kind on
+   those images (`e2e-kind.yml`), and re-resolves them;
 2. it tags the six digests `vX.Y.Z` and signs them with `release.yml@refs/tags/vX.Y.Z`;
 3. it builds and signs the bundle and the catalog (`alpha` channel only);
 4. it publishes the GitHub release with notes ([ci/release_notes.py](ci/release_notes.py)) and `release.json`;
@@ -109,7 +110,7 @@ phases; until they exist, releases follow the operator flow in
 |---|---|---|
 | 0 | this document, calendar, guard hook for `stable`/`release-*`, `stable` branch, GitHub protections and environments | Nov 2026 |
 | 1 (coded, inactive until the GitHub settings exist) | `cut-release.yml` + `release.yml`: six digests promoted, bundle/catalog in CI (`alpha` only), notes, `release.json`, bot commit; new signing identity agreed with zuno-demo before the first unified release | Nov 2026 |
-| 2 (spike running) | e2e on kind in CI (`e2e-kind.yml`, `unifai-operator/hack/kind/e2e.sh`: mock LLM, Route CRD without router, static RWX volumes), then blocking `release.yml` | Nov–Dec 2026 |
+| 2 (wired, first green run pending) | e2e on kind in CI (`e2e-kind.yml`, `unifai-operator/hack/kind/e2e.sh`: mock LLM, Route CRD without router, static RWX volumes, service-CA stand-in, restore test skipped), called by `release.yml` before anything is published | Nov–Dec 2026 |
 | 3 | `upstream-sync.yml` (Thursday) and `weekly-release.yml` (Friday, skips when nothing changed or during a freeze) | Dec 2026 |
 | 4 | `promote.yml` and hotfix releases on `release-0.X`; first promotion of the 0.1 line | 2026-12-15 |
 | 5 (optional) | self-hosted runner in demo333 to automate the canary before a promotion; CD only if zuno-demo asks | 2027 |
