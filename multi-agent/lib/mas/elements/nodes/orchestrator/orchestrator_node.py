@@ -27,6 +27,7 @@ from mas.elements.nodes.common.workload import Task, WorkItemStatus, WorkItemKin
 from mas.elements.nodes.common.workload.history_window import window_history
 from .orchestrator_phase_provider import OrchestratorPhaseProvider
 from .delegation_policy import OrchestratorDelegationPolicy
+from .empty_synthesis import delegated_answers, is_empty_answer
 from .context import PendingCycle, CycleTrigger, CycleTriggerReason, OrchestratorContextBuilder, OrchestratorCycle
 from mas.elements.tools.builtin import (
     CreateOrUpdateWorkPlanTool,
@@ -586,9 +587,15 @@ class OrchestratorNode(
             config=config
         )
 
+        output = str(result.get("output", ""))
+        if is_empty_answer(output):
+            output, fallback = self._answer_from_delegations(cycle.thread_id, output)
+            if fallback:
+                result["metadata"] = {**(result.get("metadata") or {}), "empty_synthesis_fallback": True}
+
         # Create AgentResult directly with the information we need
         agent_result = AgentResult(
-            content=str(result.get("output", "")),
+            content=output,
             agent_id=self.uid,
             agent_name=self.display_name,
             success=result.get("success", False),
@@ -608,6 +615,16 @@ class OrchestratorNode(
         logger.info("orchestrator.cycle_end", extra={"node_uid": self.uid, "thread_id": cycle.thread_id})
 
         return agent_result
+
+    def _answer_from_delegations(self, thread_id: str, output: str):
+        """The orchestrator's last message is empty: use what the delegated agents answered. (output, used_fallback)."""
+        plan = self.workspaces.load_work_plan(thread_id, self.uid)
+        answers = delegated_answers(plan.items) if plan else None
+        if not answers:
+            logger.warning("orchestrator.empty_synthesis", extra={"node_uid": self.uid, "thread_id": thread_id, "fallback": False})
+            return output, False
+        logger.warning("orchestrator.empty_synthesis", extra={"node_uid": self.uid, "thread_id": thread_id, "fallback": True})
+        return answers, True
 
     def _build_context_messages(self, thread_id: str, content: str) -> List[ChatMessage]:
         """
