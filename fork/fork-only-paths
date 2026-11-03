@@ -10,3 +10,4 @@ fork/
 .github/workflows/fork-tests.yml
 .github/workflows/cut-release.yml
 .github/workflows/release.yml
+.github/workflows/e2e-kind.yml

@@ -109,7 +109,7 @@ phases; until they exist, releases follow the operator flow in
 |---|---|---|
 | 0 | this document, calendar, guard hook for `stable`/`release-*`, `stable` branch, GitHub protections and environments | Nov 2026 |
 | 1 (coded, inactive until the GitHub settings exist) | `cut-release.yml` + `release.yml`: six digests promoted, bundle/catalog in CI (`alpha` only), notes, `release.json`, bot commit; new signing identity agreed with zuno-demo before the first unified release | Nov 2026 |
-| 2 | e2e on kind in CI (fake LLM), blocking the release | Nov–Dec 2026 |
+| 2 (spike running) | e2e on kind in CI (`e2e-kind.yml`, `unifai-operator/hack/kind/e2e.sh`: mock LLM, Route CRD without router, static RWX volumes), then blocking `release.yml` | Nov–Dec 2026 |
 | 3 | `upstream-sync.yml` (Thursday) and `weekly-release.yml` (Friday, skips when nothing changed or during a freeze) | Dec 2026 |
 | 4 | `promote.yml` and hotfix releases on `release-0.X`; first promotion of the 0.1 line | 2026-12-15 |
 | 5 (optional) | self-hosted runner in demo333 to automate the canary before a promotion; CD only if zuno-demo asks | 2027 |

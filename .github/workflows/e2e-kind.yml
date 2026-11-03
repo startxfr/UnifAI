@@ -1,0 +1,96 @@
+# Fork-only (fork/fork-only-paths): the light e2e suite of the UnifAI operator on a throwaway kind cluster
+# (fork/unifai-operator/hack/kind/e2e.sh), with the mock LLM: no cluster, no registry write, no secret. It is the
+# gate of a release (fork/RELEASING.md, phase 2); release.yml calls it on the six digests it is about to publish.
+#
+# Without inputs it tests the signed devel images of the commit (fork/ci/release_images.py).
+name: e2e-kind
+
+on:
+  push:
+    branches: [devel]
+    paths:
+      - .github/workflows/e2e-kind.yml
+      - fork/unifai-operator/hack/kind/**
+      - fork/unifai-operator/test/e2e/**
+  workflow_dispatch:
+    inputs:
+      operator:
+        description: "Operator image repo@sha256:... (empty = the signed devel image of this commit)"
+        required: false
+        default: ""
+      version:
+        description: "UnifAI images tag, e.g. devel-<sha> (empty = the one of this commit)"
+        required: false
+        default: ""
+  workflow_call:
+    inputs:
+      operator:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-kind-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: fork/unifai-operator/go.mod
+
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          cosign-release: v2.4.1
+
+      # The UnifAI images take several GB once pulled into the kind node.
+      - name: Free disk space on the runner
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af > /dev/null
+          df -h /
+
+      - name: kind
+        run: go install sigs.k8s.io/kind@v0.29.0 && kind version
+
+      - name: The images under test
+        env:
+          OPERATOR: ${{ inputs.operator }}
+          VERSION_IN: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$OPERATOR" ] || [ -z "$VERSION_IN" ]; then
+            base="$(sed -n 's/^VERSION ?= //p' fork/unifai-operator/Makefile)"
+            python3 fork/ci/release_images.py --version "$base" --out "$RUNNER_TEMP/images.json" > /dev/null
+            read -r op app < <(python3 -c 'import json,sys; i=json.load(open(sys.argv[1]))["images"]; print(i["operator"]["ref"], i["rag"]["tag"])' "$RUNNER_TEMP/images.json")
+            OPERATOR="${OPERATOR:-$op}"
+            VERSION_IN="${VERSION_IN:-$app}"
+          fi
+          echo "OPERATOR=$OPERATOR" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$VERSION_IN" >> "$GITHUB_ENV"
+          echo "### e2e on kind: operator $OPERATOR, UnifAI images $VERSION_IN" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: e2e on kind
+        working-directory: fork/unifai-operator
+        run: ./hack/kind/e2e.sh "$OPERATOR" "$APP_VERSION" 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+
+      - name: Test summary
+        if: always()
+        run: |
+          grep -E '^\s*--- (PASS|FAIL|SKIP)' "$RUNNER_TEMP/e2e.log" > "$RUNNER_TEMP/summary.txt" || true
+          { echo '```'; cat "$RUNNER_TEMP/summary.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          df -h / || true

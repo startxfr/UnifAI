@@ -201,6 +201,9 @@ func TestUnifaiStack(t *testing.T) {
 	})
 
 	t.Run("the internal auth header is not honoured from outside", func(t *testing.T) {
+		if os.Getenv("E2E_EXTERNAL") == "0" {
+			t.Skip("E2E_EXTERNAL=0: the UI route is not reachable from the test (kind, no router)")
+		}
 		hc := &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} //nolint:gosec
 		url := st.Status.Endpoints.UI + "/api2/resources/resources.list?category=llms"
 		eventually(t, "UI route answers", 3*time.Minute, func() (bool, string) {
@@ -530,6 +533,8 @@ func stackSpec(identity unifaiv1.IdentitySpec) unifaiv1.UnifaiStackSpec {
 		DeletionPolicy: "Delete",
 		Version:        os.Getenv("E2E_VERSION"), // UnifAI images tag ("" = the operator's default)
 	}
+	// Outside OpenShift (kind) the operator finds no cluster apps domain: the hosts need one.
+	spec.Exposure.Domain = os.Getenv("E2E_DOMAIN")
 	if sel := os.Getenv("E2E_NODE_SELECTOR"); sel != "" {
 		k, v, _ := strings.Cut(sel, "=")
 		spec.NodeSelector = map[string]string{k: v}

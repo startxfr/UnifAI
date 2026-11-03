@@ -1,0 +1,25 @@
+# The OpenShift Route kind, without a router: the UnifAI charts create Routes, which an e2e on kind only needs the
+# API server to accept (hack/kind/e2e.sh). Nothing serves them; the test skips what goes through a Route
+# (E2E_EXTERNAL=0).
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: routes.route.openshift.io
+spec:
+  group: route.openshift.io
+  scope: Namespaced
+  names:
+    kind: Route
+    listKind: RouteList
+    plural: routes
+    singular: route
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
