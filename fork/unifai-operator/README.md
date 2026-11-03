@@ -377,8 +377,7 @@ Requirements: Go 1.26, operator-sdk 1.41, opm, podman, write access to `quay.io/
 
 ```bash
 make test        # unit tests (chart rendering, OKF) + envtest (controllers against a fake UnifAI API, CEL rules)
-make release     # VERSION=x.y.z: test, canary e2e of the CI image, bundle, catalog on `alpha`
-make promote     # catalog on `stable` = production (demo333 subscribes to stable)
+make release     # local flow with quay write access (development only): test, canary e2e, bundle, catalog on `alpha`
 ```
 
 The operator image is built and signed by the CI, never on the workstation: a push to `devel` that changes the
@@ -394,13 +393,14 @@ it into the bundle. `docker-build-local` stays for quick local experiments only.
 on that digest, then `catalog-add CHANNELS=alpha catalog-build catalog-push`. Production is not touched before
 `make promote`.
 
-Release through GitHub (no quay credentials on the workstation):
+Release through GitHub (no quay credentials on the workstation) — since v0.1.54 the operator ships with the five
+application images under one product version `vX.Y.Z` ([../RELEASING.md](../RELEASING.md)); the `operator-vX.Y.Z` tags
+and `make release-files` belong to the transition flow (0.1.29 → 0.1.53) and are no longer used:
 
 ```bash
-# VERSION=x.y.z committed and pushed to devel; wait for publish-images to sign quay.io/zuno/unifai-operator:devel-<sha>
-make canary-ci canary-e2e canary-delete                # on the cluster: the signed CI image, by digest
-make release-files                                     # bundle on that digest + catalog template on alpha and stable
-git commit ... && git tag operator-vx.y.z && git push origin devel operator-vx.y.z
+# devel head built and signed by publish-images (VERSION is moved on by the release bot, never by hand)
+make canary-ci canary-e2e canary-delete      # on the cluster: the signed CI image of the devel head, by digest
+# then Actions → cut-release on devel, kind manual, operator = the digest the canary tested; approve quay-release
 ```
 
 A release that touches RAG (pipeline, sources, docling, embedding), identity/Keycloak or teams runs
@@ -408,11 +408,11 @@ A release that touches RAG (pipeline, sources, docling, embedding), identity/Key
 a web source crawled in the cluster and re-synced, one real Red Hat page, managed Keycloak and team access by group.
 It takes about 45 to 60 min more. `make e2e-full` runs the same suite against the OLM instance, on demand.
 
-The tag runs `.github/workflows/unifai-operator-release.yml` in the `quay-release` environment (approval required,
-quay robot `QUAY_USERNAME`/`QUAY_TOKEN`): it checks that the tag matches `VERSION`, the committed bundle and the
-catalog template, that the bundle references one operator image by digest, signed by `publish-images.yml` on `devel`
-and built for `VERSION` (it is not rebuilt), tags that same digest `vX.Y.Z`, then pushes the bundle and the catalog (rendered there: rendering reads the bundle from the registry). Clusters subscribed to `stable` upgrade at
-the next catalog poll. Afterwards, `make catalog` refreshes the committed `catalog/` (commit it with the next change).
+The tag `vX.Y.Z` runs `.github/workflows/release.yml`: an e2e gate on kind, then the same signed digests tagged
+`vX.Y.Z` and signed with `release.yml@refs/tags/vX.Y.Z` (nothing is rebuilt), the bundle and the catalog (`alpha`
+channel) built and signed in CI, `release.json` on the GitHub release, and a bot commit on `devel` with the release
+files (bundle, rendered `catalog/`) and the next patch `VERSION`. Weekly releases (Friday) need no approval;
+the `stable` channel only gets promoted lines (`promote.yml`) and their hotfixes.
 
 Operator instances: `OPERATOR_INSTANCE` names an instance ("" = the OLM one). An UnifAI resource labelled
 `unifai.startx.fr/operator-instance=<name>` is cached and reconciled only by that instance; unlabelled resources only

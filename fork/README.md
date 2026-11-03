@@ -38,14 +38,15 @@ verifies all of it before deploying
 - Both environments hold `QUAY_USERNAME` and `QUAY_TOKEN` of a quay robot with write access to `unifai-*`.
 - The identity zuno accepts is the workflow path and ref: do not rename the workflow file or change its triggers without changing
   zuno-demo's `platform/supply-chain/image-identities.yaml`.
-- The operator image (`quay.io/zuno/unifai-operator:devel-<sha>`) is built by the same workflow, on `devel` only, when
-  the operator's code or Makefile changed; the canary deploys it by digest and the operator release re-tags that signed
-  digest `vX.Y.Z` (see `fork/unifai-operator/README.md`). The quay robot needs write access to `unifai-operator` too.
-- The operator release (`unifai-operator-release.yml`) adds what a production cluster verifies, with
-  `fork/ci/sign_and_attest.sh` (keyless, `id-token: write`): its own signature, provenance and SBOM-artifact signature on the
-  operator digest built on `devel` (the `devel` identity is accepted only by clusters that opt in), and the signature,
-  provenance and SBOM artifact of the bundle and the catalog it builds. The step summary prints the signed catalog digest to pin
-  as `catalogImage` in zuno-demo (`gitops/charts/unifai/values.yaml`).
+- The operator image (`quay.io/zuno/unifai-operator:<branch>-<sha>`) is built by the same workflow, when the
+  operator's code or Makefile changed; the canary deploys it by digest. The quay robot needs write access to
+  `unifai-operator` too.
+- A release `vX.Y.Z` (`cut-release.yml` then `release.yml`, [RELEASING.md](RELEASING.md)) adds what a production cluster
+  verifies, with `fork/ci/sign_and_attest.sh` (keyless, `id-token: write`): its own signature, provenance and
+  SBOM-artifact signature on the six digests built on `devel` (the `devel` identity is accepted only by clusters that opt
+  in), and the signature, provenance and SBOM artifact of the bundle and the catalog it builds. `release.json` on the
+  GitHub release lists every digest, the catalog to pin as `catalogImage` in zuno-demo
+  (`gitops/charts/unifai/values.yaml`) included.
 - `make images-devel` stays for local development and quick test images, pushed as `local-<sha>` only (the Makefile refuses a
   `devel*` tag). Those images are **unsigned**: a cluster that verifies
   its UnifAI images refuses them, so pin only digests taken from a CI run's summary.
