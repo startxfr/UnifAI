@@ -55,7 +55,18 @@ class WebPage:
 
 
 class WebError(RuntimeError):
-    pass
+    def __init__(self, message: str, status: int = 0) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+class WebCrawlBlocked(WebError):
+    """The site refused or throttled several requests in a row: the crawl stops instead of hammering it."""
+
+
+# Statuses a site answers when it blocks or throttles a crawler.
+BLOCK_STATUSES = (403, 429, 503)
+MAX_CONSECUTIVE_BLOCKS = 5
 
 
 MAX_REDIRECTS = 5
@@ -186,10 +197,18 @@ class WebConnector:
         if resp.status_code == 304:
             return None
         if resp.status_code >= 400:
-            raise WebError(f"{resp.status_code} on {url}")
+            raise WebError(f"{resp.status_code} on {url}", resp.status_code)
         body = resp.text
         return WebPage(url=url, html=body, content_hash=hashlib.sha256(resp.content).hexdigest(),
                        etag=resp.headers.get("ETag", ""), last_modified=resp.headers.get("Last-Modified", ""))
+
+    @staticmethod
+    def _count_blocks(blocked: int, exc: Exception) -> int:
+        """The count of consecutive blocked requests after this failure; raises when the site keeps refusing."""
+        blocked = blocked + 1 if getattr(exc, "status", 0) in BLOCK_STATUSES else 0
+        if blocked >= MAX_CONSECUTIVE_BLOCKS:
+            raise WebCrawlBlocked(f"the site refused or throttled {blocked} requests in a row ({exc}): crawl stopped")
+        return blocked
 
     def iter_pages(self, seeds: Sequence[str], previous: dict[str, dict], include: Sequence[str] = (),
                    exclude: Sequence[str] = (), crawl: str = "redhat-docs",
@@ -200,12 +219,16 @@ class WebConnector:
         """
         seed_pages: dict[str, WebPage | None] = {}
         discovered: list[str] = []
+        blocked = 0  # consecutive requests the site refused or throttled
         for seed in seeds:
             try:
                 page = self.fetch(seed)  # unconditional: its links are needed
             except (WebError, requests.RequestException) as exc:
                 logger.warning("web source: seed %s unreadable: %s", seed, exc)
                 page = None
+                blocked = self._count_blocks(blocked, exc)
+            else:
+                blocked = 0
             seed_pages[seed] = page
             if page is not None:
                 discovered += [u for u in discover_links(seed, page.html, crawl, max_pages)
@@ -217,4 +240,7 @@ class WebConnector:
             except (WebError, requests.RequestException) as exc:
                 logger.warning("web source: %s unreadable: %s", url, exc)
                 page = None
+                blocked = self._count_blocks(blocked, exc)
+            else:
+                blocked = 0
             yield url, page

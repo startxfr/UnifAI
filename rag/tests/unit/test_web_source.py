@@ -376,3 +376,24 @@ def test_user_agent_announces_the_contact_when_set():
     assert user_agent("  https://example.org/crawler \n") == USER_AGENT + " (+https://example.org/crawler)"
     conn = WebConnector(session=_session({}, []), host_check=lambda _h: None, contact="ops@example.org")
     assert conn._session.headers["User-Agent"] == USER_AGENT + " (+ops@example.org)"
+
+
+def test_a_site_that_keeps_refusing_stops_the_crawl():
+    from infrastructure.sources.web.connector import MAX_CONSECUTIVE_BLOCKS, WebCrawlBlocked
+    base = "https://docs.example.com/en/documentation/product/1.0/html/guide/"
+    pages = [f"{base}p{i}" for i in range(30)]
+    index = "<html><body>" + "".join(f'<a href="{u}">x</a>' for u in pages) + "</body></html>"
+    site = {SEED: (200, index, {}), **{u: (403, "forbidden", {}) for u in pages}}
+    calls = []
+    with pytest.raises(WebCrawlBlocked):
+        list(_connector(site, calls).iter_pages([SEED], {}, max_pages=50))
+    assert len(calls) == 1 + MAX_CONSECUTIVE_BLOCKS, "the crawl went on hammering a blocking site"
+
+
+def test_an_isolated_refusal_does_not_stop_the_crawl():
+    base = "https://docs.example.com/en/documentation/product/1.0/html/guide/"
+    pages = [f"{base}p{i}" for i in range(12)]
+    index = "<html><body>" + "".join(f'<a href="{u}">x</a>' for u in pages) + "</body></html>"
+    site = {SEED: (200, index, {}), **{u: (403 if i % 2 == 0 else 200, "x", {}) for i, u in enumerate(pages)}}
+    out = dict(_connector(site, []).iter_pages([SEED], {}, max_pages=50))
+    assert sum(1 for p in out.values() if p is not None) == 7  # the seed and the six readable pages
