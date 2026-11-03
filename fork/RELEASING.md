@@ -93,9 +93,11 @@ the release bot. The tag starts `release.yml`:
 Requirements before the first run: the settings of the GitHub bot, the environments `release-bot`, `quay-weekly`,
 `quay-release`, `quay-test`, the rulesets, `devel` as default branch, the quay robot and test repositories.
 
-**Open point:** demo333 subscribes to the `stable` channel today, not `alpha`. A release on `alpha` only reaches it
-once zuno-demo moves its Subscription to `alpha` (or pins the catalog digest); until then the transition flow
-(`operator-vX.Y.Z`, `make release-files`, alpha and stable) stays the one that reaches demo333.
+**Transition (decided by zuno-demo, 2026-11-03):** demo333 subscribes to `stable` today. At the FIRST unified release,
+zuno-demo (da) moves its Subscription to `alpha` (catalog still pinned by digest and signature-verified at each pin) and
+makes `image-identities.yaml` accept the release identity too, in a separate commit with its user's go. Until then the
+transition flow (`operator-vX.Y.Z`, `make release-files`, alpha and stable) stays the one that reaches demo333. da tests
+its pin dry-run on the first `rc` rehearsal.
 
 ## Status of the automation
 
