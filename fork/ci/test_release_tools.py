@@ -68,7 +68,7 @@ class Notes(unittest.TestCase):
                 import os
                 os.chdir(d)
                 self.assertEqual(rn.previous_release("HEAD"), "operator-v0.1.51")  # the rc is not a release
-                g("tag", "-a", "v0.1.52", "-m", "kind: weekly")
+                g("-c", "user.email=t@t", "-c", "user.name=t", "tag", "-a", "v0.1.52", "-m", "kind: weekly")
                 self.assertEqual(rn.previous_release("HEAD"), "operator-v0.1.51")  # not the release itself
                 g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "fix: next")
                 self.assertEqual(rn.previous_release("HEAD"), "v0.1.52")
