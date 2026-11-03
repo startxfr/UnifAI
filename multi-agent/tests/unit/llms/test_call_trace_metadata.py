@@ -51,3 +51,20 @@ def test_no_header_no_entry():
     seen = []
     _llm(seen).chat(MESSAGES)
     assert seen == [{"max_tokens": None}]
+
+
+def test_the_end_of_a_call_reports_why_it_stopped_and_how_much_text_it_gave():
+    updates = []
+    tracing = MagicMock()
+
+    @contextmanager
+    def trace_llm(**_kw):
+        gen = MagicMock()
+        gen.update.side_effect = lambda **kw: updates.append(kw)
+        yield gen
+
+    tracing.trace_llm = trace_llm
+    llm = OpenAICompatibleLLM(base_url="http://llm.test/v1", model_name="m", tracing=tracing,
+                              http_client=build_http_client(transport=httpx.MockTransport(_ok)))
+    llm.chat(MESSAGES)
+    assert updates[-1]["metadata"] == {"finish_reason": "stop", "content_chars": 2, "tool_calls": 0}

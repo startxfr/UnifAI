@@ -179,7 +179,12 @@ class OpenAICompatibleLLM(BaseLLM):
                     "output_tokens": response.usage.completion_tokens,
                     "total_tokens": response.usage.total_tokens,
                 }
-            gen.update(output=result_msg.content, usage_details=usage or None)
+            gen.update(
+                output=result_msg.content, usage_details=usage or None,
+                metadata={"finish_reason": str(response.choices[0].finish_reason or ""),
+                          "content_chars": len(result_msg.content or ""),
+                          "tool_calls": len(result_msg.tool_calls or [])},
+            )
         return result_msg
 
     def stream(
@@ -193,6 +198,7 @@ class OpenAICompatibleLLM(BaseLLM):
         aggregator = StreamToolCallAggregator()
         collector = StreamMetadataCollector()
         accumulated_content = ""
+        finish_reason = ""
 
         with self._tracing.trace_llm(
             model=self._model,
@@ -234,13 +240,16 @@ class OpenAICompatibleLLM(BaseLLM):
                             "total_tokens": chunk.usage.total_tokens,
                         })
                     continue
+                finish_reason = chunk.choices[0].finish_reason or finish_reason
                 delta = chunk.choices[0].delta
                 if delta.content:
                     accumulated_content += delta.content
                     yield delta.content
                 if delta.tool_calls:
                     aggregator.absorb(delta.tool_calls)
-            gen.update(output=accumulated_content)
+            gen.update(output=accumulated_content,
+                       metadata={"finish_reason": str(finish_reason or ""), "content_chars": len(accumulated_content),
+                                 "tool_calls": 1 if aggregator.has_tool_calls else 0})
 
         response_metadata = self._response_metadata(
             collector.response_id, collector.model, collector.fields, request_id,

@@ -71,6 +71,18 @@ def _completion_transport(captured: list):
 
 
 @pytest.mark.unit
+class TestLlmSpanEnd:
+    def test_finish_reason_and_content_length_are_readable(self, otel):
+        service, exporter, reader, _ = otel
+        with service.trace_llm("gpt-test", "openai_compatible") as gen:
+            gen.update(metadata={"finish_reason": "length", "content_chars": 0, "tool_calls": 0})
+        llm = _by_name(exporter)["chat gpt-test"]
+        assert tuple(llm.attributes["gen_ai.response.finish_reasons"]) == ("length",)
+        assert llm.attributes["mas.content_chars"] == 0
+        assert llm.attributes["mas.finish_reason"] == "length"
+
+
+@pytest.mark.unit
 class TestOtelSpanTree:
     def test_session_node_llm_tree_and_genai_attributes(self, otel):
         service, exporter, reader, _ = otel

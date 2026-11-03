@@ -179,6 +179,9 @@ class OtelTracingService(TracingService):
                 if isinstance(success, bool):
                     obs.success = success
                 span.set_attributes(_scalar_attributes("mas.", metadata))
+                finish = metadata.get("finish_reason")
+                if isinstance(finish, str) and finish:
+                    span.set_attribute("gen_ai.response.finish_reasons", [finish])
             if level and level.upper() == "ERROR":
                 obs.error_type = obs.error_type or "error"
                 obs.success = False
