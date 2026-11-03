@@ -138,6 +138,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 {"role": m.role.value, "content": m.content}
                 for m in messages[-5:]
             ],
+            metadata=self._call_metadata(request_id),
         ) as gen:
             try:
                 response = self._client.chat.completions.create(
@@ -200,7 +201,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 {"role": m.role.value, "content": m.content}
                 for m in messages[-5:]
             ],
-            metadata={"streaming": True},
+            metadata={**self._call_metadata(request_id), "streaming": True},
         ) as gen:
             try:
                 stream_iter = self._client.chat.completions.create(
@@ -311,6 +312,15 @@ class OpenAICompatibleLLM(BaseLLM):
     def _new_request_id(self) -> Optional[str]:
         """A fresh id for this call, or ``None`` when no request-id header is configured."""
         return uuid.uuid4().hex if self._request_id_header else None
+
+    def _call_metadata(self, request_id: Optional[str] = None) -> Dict[str, Any]:
+        """What this call sends that bounds it, for the trace: the generation ceiling and the X-Zuno-Max-Tokens header (R-519)."""
+        meta: Dict[str, Any] = {"max_tokens": self._max_tokens}
+        sent = (self._request_options(request_id).get("extra_headers") or {})
+        for name, value in sent.items():
+            if name.lower() == "x-zuno-max-tokens":
+                meta["x_zuno_max_tokens"] = value
+        return meta
 
     def _request_options(self, request_id: Optional[str] = None) -> Dict[str, Any]:
         """Per-call headers: rendered templates, the user's token when enabled, the request id."""
