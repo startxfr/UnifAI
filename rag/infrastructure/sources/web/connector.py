@@ -26,6 +26,12 @@ logger = logging.getLogger(__name__)
 # docs.redhat.com books: /html/<book>/... and /html-single/<book>/...
 REDHAT_DOCS_PATH = re.compile(r"/(html|html-single)/")
 USER_AGENT = "unifai-rag-web/1.0"
+
+
+def user_agent(contact: str = "") -> str:
+    """The crawler's honest identity; with a contact (URL or address) a site operator can reach us. Never a browser's."""
+    contact = " ".join(contact.split())
+    return f"{USER_AGENT} (+{contact})" if contact else USER_AGENT
 MAX_RETRIES = 3
 MAX_RETRY_WAIT = 30.0
 
@@ -129,12 +135,12 @@ def in_scope(url: str, include: Sequence[str], exclude: Sequence[str]) -> bool:
 class WebConnector:
     def __init__(self, timeout: float = 60.0, min_interval: float = 0.2, verify_tls: bool = True,
                  allowed_hosts: Sequence[str] = (), session: requests.Session | None = None, sleep=time.sleep,
-                 host_check=resolve_public) -> None:
+                 host_check=resolve_public, contact: str = "") -> None:
         self._allowed = tuple(h.lower() for h in allowed_hosts)
         self._host_check = host_check
         self._session = session or requests.Session()
         self._session.verify = verify_tls
-        self._session.headers.setdefault("User-Agent", USER_AGENT)
+        self._session.headers.setdefault("User-Agent", user_agent(contact))
         self._timeout = timeout
         self._interval = min_interval
         self._sleep = sleep

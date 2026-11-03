@@ -368,3 +368,11 @@ def test_registration_stores_and_validates_the_classification():
     ok, problem = WebRegistration(MagicMock(), "u", {"urls": [SEED], "classification": "C9"}).run_validator()
     assert not ok and problem["issue_type"] == "InvalidValue" and "C1, C2, C3, C4" in problem["message"]
     assert WebRegistration(MagicMock(), "u", {"urls": [SEED]}).run_validator() == (True, None)
+
+
+def test_user_agent_announces_the_contact_when_set():
+    from infrastructure.sources.web.connector import USER_AGENT, user_agent
+    assert user_agent() == USER_AGENT
+    assert user_agent("  https://example.org/crawler \n") == USER_AGENT + " (+https://example.org/crawler)"
+    conn = WebConnector(session=_session({}, []), host_check=lambda _h: None, contact="ops@example.org")
+    assert conn._session.headers["User-Agent"] == USER_AGENT + " (+ops@example.org)"

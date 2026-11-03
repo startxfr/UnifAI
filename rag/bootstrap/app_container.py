@@ -636,6 +636,7 @@ def web_pipeline_handler():
         connector_factory=lambda: WebConnector(timeout=cfg.web_timeout_seconds,
                                                min_interval=cfg.web_request_interval_seconds,
                                                allowed_hosts=cfg.web_allowed_hosts,
+                                               contact=cfg.web_contact,
                                                # The connector vets each URL and redirect itself; the adapter also
                                                # connects to the address it vetted (no second resolution).
                                                session=guard_session(requests.Session())),
