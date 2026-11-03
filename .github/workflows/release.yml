@@ -129,7 +129,7 @@ jobs:
         run: |
           set -euo pipefail
           # q: run a registry command, and on failure annotate it with its error (readable without the run's log).
-          q() { local out; if ! out="$("$@" 2>&1)"; then echo "::error::$1 ${*: -1}: ${out: -600}"; return 1; fi; printf '%s' "$out"; }
+          q() { local out; if ! out="$("$@" 2>&1)"; then echo "::error::$1 ${*: -1}: $(printf "%s" "$out" | tail -c 600 | tr "\n" " ")"; return 1; fi; printf '%s' "$out"; }
           creds="$QUAY_USERNAME:$QUAY_TOKEN"
           echo '{}' > "$RUNNER_TEMP/released.json"
           for c in operator rag multiagent backend identity ui; do
