@@ -87,6 +87,12 @@ type BundleDelegation struct {
 	// +kubebuilder:default=5
 	// +optional
 	MaxRounds int32 `json:"maxRounds,omitempty"`
+	// Seconds the A2A node waits for a target's answer; past it the remote task is cancelled (ADR-0406). Unset: the
+	// engine's own 30 s.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=900
+	// +optional
+	TimeoutSeconds int32 `json:"timeoutSeconds,omitempty"`
 }
 
 // BundleLLM is the template of the LLM emitted for every task: the bundle adds the Zuno headers

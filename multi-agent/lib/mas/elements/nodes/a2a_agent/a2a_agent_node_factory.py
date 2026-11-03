@@ -69,6 +69,7 @@ class A2AAgentNodeFactory(BaseFactory[A2AAgentNodeConfig, A2AAgentNode]):
                 auth_credential=auth_credential,
                 retriever=retriever,
                 retries=cfg.retries,
+                timeout_seconds=cfg.timeout_seconds,
             )
         except Exception as e:
             raise PluginConfigurationError(

@@ -117,6 +117,13 @@ class A2AAgentNodeConfig(NodeBaseConfig):
         ),
     )
 
+    timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        description="How long to wait for the remote agent's answer; past it the remote task is cancelled",
+        title="Timeout (seconds)",
+    )
+
     bearer_token: Optional[str] = Field(
         default=None,
         description="Bearer token for authentication",

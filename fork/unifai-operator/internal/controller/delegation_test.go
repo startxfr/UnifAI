@@ -229,3 +229,16 @@ func TestA2ANodeCarriesTheGenerationCeiling(t *testing.T) {
 		t.Errorf("no declared ceiling, no header (existing blueprints keep their hash): %v", h)
 	}
 }
+
+func TestA2ANodeCarriesTheWaitBound(t *testing.T) {
+	config := func(timeout int32) map[string]any {
+		d := &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080", TimeoutSeconds: timeout}
+		return a2aNodes(d, "arkos", "draft", 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})[0]["config"].(map[string]any)
+	}
+	if c := config(12); c["timeout_seconds"] != int32(12) {
+		t.Errorf("a declared wait follows the node: %v", c)
+	}
+	if c := config(0); c["timeout_seconds"] != nil {
+		t.Errorf("no declared wait, no field (existing blueprints keep their hash): %v", c)
+	}
+}

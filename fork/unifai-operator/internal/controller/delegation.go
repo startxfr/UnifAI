@@ -176,15 +176,16 @@ func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, maxTokens int, t
 		if maxTokens > 0 { // the caller's generation ceiling follows the hop (R-519); the gateway forwards it
 			headers[headerMaxTokens] = strconv.Itoa(maxTokens)
 		}
-		out = append(out, map[string]any{
-			"rid": tg.nodeUID(), "name": tg.Title, "type": a2aNodeType,
-			"config": map[string]any{
-				"type":               a2aNodeType,
-				"base_url":           strings.TrimRight(d.GatewayURL, "/") + "/agents/" + tg.Agent,
-				"auth_method":        "forward_user_token",
-				"additional_headers": headers,
-			},
-		})
+		config := map[string]any{
+			"type":               a2aNodeType,
+			"base_url":           strings.TrimRight(d.GatewayURL, "/") + "/agents/" + tg.Agent,
+			"auth_method":        "forward_user_token",
+			"additional_headers": headers,
+		}
+		if d.TimeoutSeconds > 0 { // unset keeps the node config, and so the blueprint hash, of the earlier releases
+			config["timeout_seconds"] = d.TimeoutSeconds
+		}
+		out = append(out, map[string]any{"rid": tg.nodeUID(), "name": tg.Title, "type": a2aNodeType, "config": config})
 	}
 	return out
 }

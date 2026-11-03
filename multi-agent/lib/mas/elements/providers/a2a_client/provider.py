@@ -24,6 +24,9 @@ from mas.elements.providers.a2a_client.result import A2AResult
 
 logger = logging.getLogger(__name__)
 
+# How long we wait for the remote agent to acknowledge a cancellation.
+CANCEL_TIMEOUT_SECONDS = 5.0
+
 
 class A2ATaskError(A2AClientError):
     """Task execution error."""
@@ -182,7 +185,32 @@ class A2AProvider:
             max_attempts: int,
             raise_on_error: bool,
     ) -> A2AResult:
-        """Poll until completion or timeout."""
+        """Poll until completion or timeout; the remote task is cancelled when we stop waiting for it (ADR-0406)."""
+        try:
+            return await self._poll_loop(client, task_id, interval, max_attempts, raise_on_error)
+        except A2ATaskError:
+            raise  # the task ended on its own (failed, input or auth required): nothing left to cancel
+        except BaseException:
+            await self._cancel_remote(client, task_id)
+            raise
+
+    @staticmethod
+    async def _cancel_remote(client: A2AClient, task_id: str) -> None:
+        """Best effort: tell the remote agent we no longer wait for task_id. Never raises."""
+        try:
+            await asyncio.wait_for(client.cancel_task(task_id), timeout=CANCEL_TIMEOUT_SECONDS)
+            logger.info("a2a.task_cancelled", extra={"task_id": task_id})
+        except BaseException as e:  # a second cancellation or a failing gateway must not hide the first error
+            logger.warning("a2a.task_cancel_failed", extra={"task_id": task_id, "error": f"{type(e).__name__}: {e}"})
+
+    async def _poll_loop(
+            self,
+            client: A2AClient,
+            task_id: str,
+            interval: float,
+            max_attempts: int,
+            raise_on_error: bool,
+    ) -> A2AResult:
         for _ in range(max_attempts):
             await asyncio.sleep(interval)
 
