@@ -13,7 +13,8 @@ Fork-only files (never part of an upstream PR): `Makefile`, `fork.mk` (local, gi
 
 ## Guard rails for main
 `main` mirrors upstream, so fork-only paths (`fork/fork-only-paths`) must never reach it. `make init` installs
-`fork/hooks/guard-fork-only` as pre-commit and pre-merge-commit hook: it refuses these paths on every branch except `devel`.
+`fork/hooks/guard-fork-only` as pre-commit and pre-merge-commit hook: it refuses these paths on every branch except
+`devel`, `stable` and `release-*` (the release branches, see [RELEASING.md](RELEASING.md)).
 
 ## Signed images (CI)
 

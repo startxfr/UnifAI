@@ -1,0 +1,34 @@
+# Release calendar of the startxfr/UnifAI fork (fork/RELEASING.md).
+# Read by the weekly release automation: no weekly feature release during a freeze, promotion to the OLM `stable`
+# channel on the promote date. Dates are inclusive, Europe/Paris.
+weekly:
+  day: friday
+  time: "18:00"        # Europe/Paris (cron 17:00 UTC in winter)
+upstreamSync:
+  day: thursday
+  time: "07:00"        # Europe/Paris
+lines:
+  - line: "0.1"
+    freeze: { from: 2026-12-01, to: 2026-12-14 }
+    promote: 2026-12-15
+  - line: "0.2"
+    freeze: { from: 2027-03-01, to: 2027-03-14 }
+    promote: 2027-03-15
+  - line: "0.3"
+    freeze: { from: 2027-06-01, to: 2027-06-14 }
+    promote: 2027-06-15
+  - line: "1.0"          # 1.0 GA
+    freeze: { from: 2027-09-01, to: 2027-09-14 }
+    promote: 2027-09-15
+  - line: "1.1"
+    freeze: { from: 2027-12-01, to: 2027-12-14 }
+    promote: 2027-12-15
+  - line: "1.2"
+    freeze: { from: 2028-03-01, to: 2028-03-14 }
+    promote: 2028-03-15
+  - line: "1.3"
+    freeze: { from: 2028-06-01, to: 2028-06-14 }
+    promote: 2028-06-15
+  - line: "2.0"
+    freeze: { from: 2028-09-01, to: 2028-09-14 }
+    promote: 2028-09-15
