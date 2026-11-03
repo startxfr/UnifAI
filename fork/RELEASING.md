@@ -65,12 +65,19 @@ feature/* ──merge──► devel ──ff at each release──► stable   
 
 - **CI bot** (GitHub App): pushes `stable`, the `v*` tags and the post-release commit on `devel` (next `VERSION`,
   rendered catalog).
-- **Maintainer**: approves `quay-release` (manual, minor, hotfix), runs the full canary on demo333 before a promotion,
-  merges the weekly upstream PR.
+- **Maintainer**: approves `quay-release` (manual, minor, hotfix), runs the full canary on demo333 before a manual
+  release and before a promotion, merges the weekly upstream PR.
+- **Operator session (startx-unifai-b9)**: after each release, checks that the post-release commit holds the digests of
+  `release.json`, sends them to the zuno-demo sessions and writes "delivered X.Y.Z" in [ROADMAP.md](ROADMAP.md).
 - **zuno-demo**: consumes releases from `release.json`; pins and rolls when it decides (no CD from the fork). Its
   feature requests go to [ROADMAP.md](ROADMAP.md) with the target line.
 
 ## Cutting a release (phase 1)
+
+A manual release ships what the canary tested: run `E2E_VERSION=devel-<sha> make canary-ci canary-e2e-full
+canary-delete` (in `fork/unifai-operator`) on the operator image of the `devel` head, then give its digest to the
+`operator` input of cut-release. The cut fails if `devel` resolves another operator (a later commit changed its code).
+Nothing is ever rebuilt: the release promotes the existing `devel-<sha>` images by digest.
 
 `cut-release.yml` (Actions → cut-release → Run workflow, on `devel`) takes a `kind`:
 
@@ -94,6 +101,17 @@ the release bot. The tag starts `release.yml`:
 Requirements before the first run: the settings of the GitHub bot, the environments `release-bot`, `quay-weekly`,
 `quay-release`, `quay-test`, the rulesets, `devel` as default branch, the quay robot and test repositories.
 
+## Weekly automation (phase 3)
+
+- **`upstream-sync.yml`**, Thursday 06:00 UTC (and Run workflow): fast-forwards `main` to upstream `main` (read only,
+  nothing is pushed upstream), then opens or refreshes the PR `main→devel` with a merge preview (conflicts,
+  `make charts-check`, `make fork-check`). A human merges it **with a merge commit**.
+- **`weekly-release.yml`**, Friday 17:00 UTC: [ci/release_gate.py](ci/release_gate.py) decides, then cut-release runs
+  with `kind: weekly`. No release when `devel` did not change since the last `vX.Y.Z`, when a fork workflow of the
+  `devel` head failed or still runs after 45 minutes, or during a freeze when a `feat` commit reached `devel` (revert it,
+  the next weekly goes out). A manual Run workflow is a dry run unless `dry_run` is unticked. Locally:
+  `python3 fork/ci/release_gate.py --date 2026-12-04`.
+
 **Transition (decided by zuno-demo, 2026-11-03):** demo333 subscribes to `stable` today. At the FIRST unified release,
 zuno-demo (da) moves its Subscription to `alpha` (catalog still pinned by digest and signature-verified at each pin) and
 makes `image-identities.yaml` accept the release identity too, in a separate commit with its user's go. Until then the
@@ -111,7 +129,7 @@ phases; until they exist, releases follow the operator flow in
 | 0 | this document, calendar, guard hook for `stable`/`release-*`, `stable` branch, GitHub protections and environments | Nov 2026 |
 | 1 (done: rehearsal v0.1.53-rc.2 green and cosign-verified, 2026-11-03) | `cut-release.yml` + `release.yml`: six digests promoted, bundle/catalog in CI (`alpha` only), notes, `release.json`, bot commit; new signing identity agreed with zuno-demo before the first unified release | Nov 2026 |
 | 2 (done: the kind e2e gate passed inside the v0.1.53-rc.2 release) | e2e on kind in CI (`e2e-kind.yml`, `unifai-operator/hack/kind/e2e.sh`: mock LLM, Route CRD without router, static RWX volumes, service-CA stand-in, restore test skipped), called by `release.yml` before anything is published | Nov–Dec 2026 |
-| 3 | `upstream-sync.yml` (Thursday) and `weekly-release.yml` (Friday, skips when nothing changed or during a freeze) | Dec 2026 |
+| 3 (built 2026-11-03, to prove on the first Thursday and Friday) | `upstream-sync.yml` (Thursday) and `weekly-release.yml` (Friday, skips when nothing changed or during a freeze) | Dec 2026 |
 | 4 | `promote.yml` and hotfix releases on `release-0.X`; first promotion of the 0.1 line | 2026-12-15 |
 | 5 (optional) | self-hosted runner in demo333 to automate the canary before a promotion; CD only if zuno-demo asks | 2027 |
 

@@ -1,0 +1,118 @@
+# Fork-only (fork/fork-only-paths): the weekly upstream sync of the fork (fork/RELEASING.md), Thursday 06:00 UTC.
+# 1. fast-forwards `main` to redhat-community-ai-tools/UnifAI main (read only: nothing is ever pushed upstream);
+# 2. opens, or refreshes, the PR main→devel with a merge preview: conflicts, `make charts-check` (embedded operator
+#    charts against the new helm/) and `make fork-check` (deliberate fork divergences still there).
+# A human reviews and merges that PR with a merge commit (not squash, not rebase: main's history must stay in devel).
+# Pushes and the PR use the release bot's token, so the PR's CI runs (a GITHUB_TOKEN PR starts no workflow).
+name: upstream-sync
+
+on:
+  schedule:
+    - cron: "0 6 * * 4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: https://github.com/redhat-community-ai-tools/UnifAI.git
+
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/devel'
+    runs-on: ubuntu-latest
+    environment: release-bot
+    timeout-minutes: 20
+    steps:
+      - name: Release bot token
+        id: bot
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: devel
+          fetch-depth: 0
+          token: ${{ steps.bot.outputs.token }}
+
+      - name: Fast-forward main to upstream
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main devel
+          git fetch --no-tags "$UPSTREAM" main:refs/remotes/upstream/main
+          if ! git merge-base --is-ancestor origin/main upstream/main; then
+            echo "::error::main has commits that upstream/main does not: main must stay a mirror, fix it by hand"
+            git log --oneline upstream/main..origin/main | head -20
+            exit 1
+          fi
+          n=$(git rev-list --count origin/main..upstream/main)
+          if [ "$n" -gt 0 ]; then
+            # A plain push: refused unless it is a fast-forward.
+            git push origin refs/remotes/upstream/main:refs/heads/main
+            git fetch --no-tags origin main
+          fi
+          echo "main: $n new upstream commit(s), now $(git rev-parse --short=9 origin/main)" >> "$GITHUB_STEP_SUMMARY"
+          echo "BEHIND=$(git rev-list --count origin/devel..origin/main)" >> "$GITHUB_ENV"
+
+      - name: Merge preview and checks
+        if: env.BEHIND != '0'
+        run: |
+          set -uo pipefail
+          body="$RUNNER_TEMP/body.md"
+          echo "BODY=$body" >> "$GITHUB_ENV"
+          git config user.name "unifai-release-bot[bot]"
+          git config user.email "unifai-release-bot[bot]@users.noreply.github.com"
+          git worktree add -q --detach "$RUNNER_TEMP/preview" origin/devel
+          cd "$RUNNER_TEMP/preview"
+          {
+            echo "Weekly upstream sync (fork/RELEASING.md): \`main\` now mirrors upstream $(git rev-parse --short=9 origin/main)."
+            echo "**Merge with a merge commit** (not squash, not rebase). Refreshed by upstream-sync.yml every Thursday."
+            echo
+            echo "### $BEHIND upstream commit(s) not in devel"
+            echo '```'; git log --oneline --no-merges origin/devel..origin/main | head -50; echo '```'
+            helm=$(git log --oneline origin/devel..origin/main -- helm | wc -l)
+            if [ "$helm" -gt 0 ]; then
+              echo "$helm of them touch \`helm/\`: after the merge run \`make -C fork/unifai-operator charts\` on devel."
+            fi
+            echo
+            if git merge -q --no-commit --no-ff origin/main > /dev/null 2>&1; then
+              echo "### Merge preview: no conflict"
+              for check in charts-check fork-check; do
+                if out=$(make -s -C fork/unifai-operator "$check" 2>&1); then
+                  echo "- \`make $check\`: OK"
+                else
+                  echo "- \`make $check\`: **FAILED**"
+                  echo '```'; printf '%s\n' "$out" | tail -n 40; echo '```'
+                  echo "::warning::make $check fails on the merge preview" >> "$RUNNER_TEMP/warn"
+                fi
+              done
+            else
+              echo "### Merge preview: CONFLICTS, resolve them on a branch from devel (\`make merge-main-to-devel\`)"
+              echo '```'; git diff --name-only --diff-filter=U; echo '```'
+              echo "::warning::the merge main→devel has conflicts" >> "$RUNNER_TEMP/warn"
+            fi
+          } > "$body"
+          git merge --abort 2>/dev/null || true
+          cat "$body" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/warn" 2>/dev/null || true
+
+      - name: Open or refresh the PR main→devel
+        if: env.BEHIND != '0'
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+        run: |
+          set -euo pipefail
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --base devel --head main --state open --json number -q '.[0].number')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --body-file "$BODY"
+            echo "refreshed PR #$pr" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base devel --head main \
+              --title "sync(fork): upstream main into devel ($(date -u +%F))" --body-file "$BODY"
+          fi

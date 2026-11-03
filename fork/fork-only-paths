@@ -11,3 +11,5 @@ fork/
 .github/workflows/cut-release.yml
 .github/workflows/release.yml
 .github/workflows/e2e-kind.yml
+.github/workflows/weekly-release.yml
+.github/workflows/upstream-sync.yml

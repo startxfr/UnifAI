@@ -1,0 +1,55 @@
+# Fork-only (fork/fork-only-paths): the weekly release of the fork (fork/RELEASING.md), Friday 17:00 UTC (18:00 Paris
+# in winter, 19:00 in summer). fork/ci/release_gate.py decides; when it says yes, cut-release.yml cuts `kind: weekly`,
+# whose tag release.yml publishes WITHOUT approval (environment quay-weekly), after the kind e2e gate.
+# Skipped when devel did not change since the last vX.Y.Z, when the fork CI of the devel head is not green (it waits up
+# to 45 minutes for running workflows), or during a freeze when a `feat` commit reached devel.
+# A manual run is a dry run by default: it only prints the decision.
+name: weekly-release
+
+on:
+  schedule:
+    - cron: "0 17 * * 5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "only print the decision, cut nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: weekly-release
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    if: github.ref == 'refs/heads/devel'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      release: ${{ steps.gate.outputs.release }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: devel
+          fetch-depth: 0
+      - name: Decide
+        id: gate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          python3 fork/ci/release_gate.py --wait 2700 | tee -a "$GITHUB_STEP_SUMMARY"
+
+  cut:
+    needs: gate
+    if: needs.gate.outputs.release == 'true' && (github.event_name == 'schedule' || inputs.dry_run == false)
+    uses: ./.github/workflows/cut-release.yml
+    with:
+      kind: weekly
+    secrets: inherit
