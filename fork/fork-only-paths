@@ -5,7 +5,6 @@ MEMORY.md
 fork/
 .fork/
 .github/workflows/unifai-operator.yml
-.github/workflows/unifai-operator-release.yml
 .github/workflows/publish-images.yml
 .github/workflows/fork-tests.yml
 .github/workflows/cut-release.yml

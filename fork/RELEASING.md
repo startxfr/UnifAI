@@ -138,7 +138,9 @@ Requirements before the first run: the settings of the GitHub bot, the environme
 **Transition (decided by zuno-demo, 2026-11-03), done at v0.1.54:** the `operator-vX.Y.Z` flow
 (`unifai-operator-release.yml`, `make release-files`) carried 0.1.29 → 0.1.53; v0.1.54 is the first unified release
 (alpha only, stable channel left at 0.1.53 until the 0.1 promotion). zuno-demo (da) accepts the `release.yml` identity
-and moves demo333's Subscription to `alpha`, with its user's go; then `unifai-operator-release.yml` is removed.
+and moves demo333's Subscription to `alpha`, with its user's go (done 2026-11-03: v0.1.54 pinned and live on demo333,
+Subscription on `alpha`); `unifai-operator-release.yml` is removed. demo333's Subscription is hand-made, not managed
+by zuno-demo's chart: a channel change is a live patch there.
 
 ## Status of the automation
 
