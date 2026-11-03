@@ -64,8 +64,8 @@ env:
   IMAGE_PREFIX: unifai
 
 jobs:
-  # Which images this run builds: the application images when their code changed, the operator image (devel only)
-  # when its code changed; everything on a manual run or when the previous commit is unknown.
+  # Which images this run builds: those whose code has no image yet (application images together, operator image on
+  # devel only); everything, or the `components` input, on a manual run.
   changes:
     if: github.ref == 'refs/heads/devel'
     runs-on: ubuntu-latest
@@ -78,23 +78,24 @@ jobs:
       - name: Select the images to build
         id: select
         env:
-          BEFORE: ${{ github.event.before }}
           COMPONENTS: ${{ github.event.inputs.components }}
         run: |
           set -euo pipefail
-          # The workflow holds the build steps of every image: changing it rebuilds them all. fork/ci only holds the
-          # signing and provenance scripts (not image content): the operator image alone (a few minutes) exercises them.
-          workflow='^\.github/workflows/publish-images\.yml$'
-          apps="$workflow|^(rag|multi-agent|backend|shared-resources/identity|ui|global_utils)/"
-          operator="$workflow|^fork/ci/|^fork/unifai-operator/(cmd/|api/|internal/|go\.mod$|go\.sum$|Dockerfile$|Makefile$)"
-          if [[ "$GITHUB_EVENT_NAME" == push && -n "$BEFORE" && ! "$BEFORE" =~ ^0+$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-            changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
+          # A push builds the images whose code at this commit has no devel-<sha> image yet
+          # (fork/ci/release_images.py --missing, the same content paths a release resolves): comparing with the
+          # images, not with the previous push, also builds a change whose own run was cancelled or replaced in the
+          # concurrency queue. The workflow file holds every image's build steps: changing it rebuilds them all.
+          # A manual run builds everything (or the `components` input).
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            command -v skopeo > /dev/null || { sudo apt-get update -q && sudo apt-get install -yq skopeo; }
+            missing=" $(python3 fork/ci/release_images.py --missing --commit "$GITHUB_SHA" | tr '\n' ' ') "
           else
-            changed="*all*"
+            missing=" rag multiagent backend identity ui operator "
           fi
-          want() { [[ "$changed" == "*all*" ]] || grep -Eq "$1" <<< "$changed"; }
+          echo "without an image for this code:$missing"
+          want() { [[ "$missing" == *" $1 "* ]]; }
           entries=()
-          if want "$apps"; then
+          if want rag || want multiagent || want backend || want identity || want ui; then
             # component = quay image suffix (the Makefile's IMAGE_<component> mapping); same Dockerfiles and
             # arguments as the Makefile's build-<component> targets.
             entries+=('{"component":"rag","dockerfile":"rag/Dockerfile","context":".","prepare":"","build_args":""}')
@@ -103,7 +104,7 @@ jobs:
             entries+=('{"component":"identity","dockerfile":"shared-resources/identity/Dockerfile","context":".","prepare":"","build_args":""}')
             entries+=('{"component":"ui","dockerfile":"ui/deployment/Dockerfile","context":".","prepare":"make ui-certs ui-perms","build_args":""}')
           fi
-          if [[ "$GITHUB_REF" == refs/heads/devel ]] && want "$operator"; then
+          if [[ "$GITHUB_REF" == refs/heads/devel ]] && want operator; then
             entries+=('{"component":"operator","dockerfile":"fork/unifai-operator/Dockerfile","context":"fork/unifai-operator","prepare":"","build_args":"--build-arg UNIFAI_VERSION=devel"}')
           fi
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && -n "${COMPONENTS// /}" ]]; then

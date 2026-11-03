@@ -8,6 +8,7 @@ first-parent history back to the newest commit that has a `devel-<sha>` image an
 reports the Makefile VERSION.
 
     release_images.py --version 0.1.52 [--commit HEAD] [--registry quay.io/zuno] [--no-verify] [--out images.json]
+    release_images.py --missing [--commit HEAD]     # the components publish-images must build
 
 Prints and writes {"commit", "version", "images": {component: {"ref": repo@sha256:..., "tag": "devel-<sha>"}}}.
 """
@@ -21,9 +22,8 @@ import sys
 from typing import Callable, Iterable
 
 # The paths that make an image's content, as publish-images.yml builds them: its own file rebuilds every image, the
-# five application images are built together. publish-images also rebuilds the operator image when fork/ci (its
-# signing scripts) changes, but that is not image content: such a rebuild does not make the previous image stale (and
-# its digest, maybe the one a canary tested, stays the one released).
+# five application images are built together. fork/ci (the signing scripts) is not image content: changing it does not
+# make an image stale, so the digest a canary tested stays the one released.
 WORKFLOW = ".github/workflows/publish-images.yml"
 APP_PATHS = [WORKFLOW, "rag", "multi-agent", "backend", "shared-resources/identity", "ui", "global_utils"]
 OPERATOR_PATHS = [WORKFLOW] + [
@@ -71,6 +71,15 @@ def list_tags(repo: str) -> set[str]:
     return set(json.loads(run("skopeo", "list-tags", f"docker://{repo}"))["Tags"])
 
 
+def missing(commit: str, registry: str) -> list[str]:
+    """The components whose code at `commit` has no devel-<sha> image yet: what publish-images must build. Comparing
+    with the images (not with the previous push) also catches a change whose own run was cancelled or replaced."""
+    head = run("git", "rev-parse", commit)
+    history = run("git", "rev-list", "--first-parent", "-n", str(MAX_COMMITS), head).split()
+    return [c for c, paths in COMPONENTS.items()
+            if find_tag(head, paths, list_tags(f"{registry}/unifai-{c}"), history) is None]
+
+
 def resolve(version: str, commit: str, registry: str, verify: bool) -> dict:
     head = run("git", "rev-parse", commit)
     history = run("git", "rev-list", "--first-parent", "-n", str(MAX_COMMITS), head).split()
@@ -106,12 +115,19 @@ def resolve(version: str, commit: str, registry: str, verify: bool) -> dict:
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--version", required=True, help="the release version without its pre-release part (X.Y.Z)")
+    p.add_argument("--version", help="the release version without its pre-release part (X.Y.Z)")
+    p.add_argument("--missing", action="store_true",
+                   help="print the components that have no image for the code of --commit, one per line, and stop")
     p.add_argument("--commit", default="HEAD")
     p.add_argument("--registry", default="quay.io/zuno")
     p.add_argument("--no-verify", action="store_true", help="skip the cosign check (local inspection only)")
     p.add_argument("--out")
     a = p.parse_args(argv)
+    if a.missing:
+        print("\n".join(missing(a.commit, a.registry)))
+        return
+    if not a.version:
+        p.error("--version is required")
     result = resolve(a.version, a.commit, a.registry, not a.no_verify)
     text = json.dumps(result, indent=2)
     if a.out:

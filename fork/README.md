@@ -28,9 +28,11 @@ verifies all of it before deploying
 - A push to `devel` that touches an image's code publishes `devel-<sha>` and `devel` (environment `quay-devel`, no approval,
   restricted to the `devel` branch). Releases are not built: `release.yml` (tag `vX.Y.Z` cut by `cut-release.yml`, see
   [RELEASING.md](RELEASING.md)) tags those signed digests `vX.Y.Z` and signs them with its own identity.
-- Only what changed is rebuilt: the five application images when their code changed, the operator image when its
-  code or Makefile changed, the operator image alone when only `fork/ci/` (signing scripts) changed, everything when
-  `publish-images.yml` itself changed. A manual run takes a `components` input (e.g. `rag,operator`; empty = all).
+- A push builds only the images whose code has no `devel-<sha>` image yet (`fork/ci/release_images.py --missing`):
+  the five application images together, the operator image when its code or Makefile changed, everything when
+  `publish-images.yml` itself changed. Comparing with the images rather than with the previous push also builds a
+  change whose own run was cancelled or replaced in the queue. A manual run builds everything, or the `components`
+  input (e.g. `rag,operator`).
 - `.github/workflows/fork-tests.yml` runs, without a cluster, the guarded MCP and A2A clients against real local
   servers (`multi-agent/tests/integration/external_servers`), the outbound guard unit tests and the `fork/ci` tests.
 - Both environments hold `QUAY_USERNAME` and `QUAY_TOKEN` of a quay robot with write access to `unifai-*`.
