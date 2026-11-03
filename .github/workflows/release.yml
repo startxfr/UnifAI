@@ -9,8 +9,10 @@
 # images in release.json, attached to the GitHub release for zuno-demo's pin script.
 #
 # Environments: kind `weekly` → quay-weekly (no approval), `manual` → quay-release (approval), `rc` → quay-test (a
-# rehearsal into quay.io/zuno/test-unifai-*, pre-release, no commit back). After a weekly or manual release, the bot
-# commits the release files and the next patch VERSION to devel.
+# rehearsal into quay.io/zuno/test-unifai-*, pre-release, no commit back), `hotfix` → quay-release (a patch of a
+# promoted line, cut on release-X.Y, OLM channel `stable` only). After a weekly or manual release, the bot commits the
+# release files and the next patch VERSION to devel; after a hotfix, the bundle and the next patch VERSION to
+# release-X.Y and the catalog (rendered from devel's template, the one catalog of every channel) to devel.
 #
 # Actions are pinned by commit SHA (the publish job holds an OIDC token that signs).
 name: release
@@ -35,6 +37,8 @@ jobs:
       base: ${{ steps.plan.outputs.base }}
       environment: ${{ steps.plan.outputs.environment }}
       prefix: ${{ steps.plan.outputs.prefix }}
+      branch: ${{ steps.plan.outputs.branch }}
+      channel: ${{ steps.plan.outputs.channel }}
       operator: ${{ steps.plan.outputs.operator }}
       apps: ${{ steps.plan.outputs.apps }}
     steps:
@@ -56,15 +60,20 @@ jobs:
           [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]] || { echo "::error::$tag is not vX.Y.Z or vX.Y.Z-rc.N"; exit 1; }
           base="${BASH_REMATCH[1]}"
           rc="${BASH_REMATCH[2]}"
+          branch=devel channel=alpha
           case "$kind" in
             weekly) env=quay-weekly prefix=unifai ;;
             manual) env=quay-release prefix=unifai ;;
             rc) env=quay-test prefix=test-unifai ;;
+            hotfix) env=quay-release prefix=unifai branch="release-${base%.*}" channel=stable ;;
             *) echo "::error::unknown kind '$kind' in the message of $tag"; exit 1 ;;
           esac
           [[ ( "$kind" = rc && -n "$rc" ) || ( "$kind" != rc && -z "$rc" ) ]] || { echo "::error::kind $kind does not match $tag"; exit 1; }
           grep -qx "VERSION ?= $base" fork/unifai-operator/Makefile || { echo "::error::the Makefile VERSION of $tag is not $base"; exit 1; }
-          if [ "$kind" != rc ]; then
+          if [ "$kind" = hotfix ]; then
+            git fetch --force origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+            git merge-base --is-ancestor "$GITHUB_SHA" "origin/$branch" || { echo "::error::$tag is not on $branch"; exit 1; }
+          elif [ "$kind" != rc ]; then
             git merge-base --is-ancestor "$GITHUB_SHA" origin/stable || { echo "::error::$tag is not on stable"; exit 1; }
           fi
           # The images the gate tests: the operator digest and the tag of the application images named in the tag.
@@ -78,6 +87,8 @@ jobs:
             echo "base=$base"
             echo "environment=$env"
             echo "prefix=$prefix"
+            echo "branch=$branch"
+            echo "channel=$channel"
           } >> "$GITHUB_OUTPUT"
           echo "### $tag: $kind release, environment $env, repositories quay.io/zuno/$prefix-*" >> "$GITHUB_STEP_SUMMARY"
 
@@ -103,6 +114,8 @@ jobs:
       BASE: ${{ needs.plan.outputs.base }}
       PREFIX: ${{ needs.plan.outputs.prefix }}
       KIND: ${{ needs.plan.outputs.kind }}
+      BRANCH: ${{ needs.plan.outputs.branch }}
+      CHANNEL: ${{ needs.plan.outputs.channel }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -122,7 +135,7 @@ jobs:
           set -euo pipefail
           git fetch --force origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
           git for-each-ref "refs/tags/$GITHUB_REF_NAME" --format='%(contents)' | sed '1,2d' > "$RUNNER_TEMP/cut.json"
-          python3 fork/ci/release_images.py --version "$BASE" --commit "$GITHUB_SHA" --out "$RUNNER_TEMP/images.json" > /dev/null
+          python3 fork/ci/release_images.py --version "$BASE" --commit "$GITHUB_SHA" --branch "$BRANCH" --out "$RUNNER_TEMP/images.json" > /dev/null
           python3 - "$RUNNER_TEMP/cut.json" "$RUNNER_TEMP/images.json" <<'EOF'
           import json, sys
           cut, now = (json.load(open(p))["images"] for p in sys.argv[1:3])
@@ -169,7 +182,7 @@ jobs:
             echo "- $c: $repo@$digest" >> "$GITHUB_STEP_SUMMARY"
           done
 
-      - name: Bundle v${{ env.VERSION }} on the alpha channel
+      - name: Bundle v${{ env.VERSION }} on the ${{ env.CHANNEL }} channel
         working-directory: fork/unifai-operator
         env:
           QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
@@ -178,7 +191,7 @@ jobs:
           set -euo pipefail
           operator="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["operator"])' "$RUNNER_TEMP/released.json")"
           base="quay.io/zuno/$PREFIX-operator"
-          make bundle IMG="$operator" VERSION="$VERSION" IMAGE_TAG_BASE="$base" CHANNELS=alpha
+          make bundle IMG="$operator" VERSION="$VERSION" IMAGE_TAG_BASE="$base" CHANNELS="$CHANNEL"
           make bundle-build bundle-push VERSION="$VERSION" IMAGE_TAG_BASE="$base" CONTAINER_TOOL=docker
           echo "BUNDLE_REF=$base-bundle@$(skopeo inspect --creds "$QUAY_USERNAME:$QUAY_TOKEN" --no-tags --format '{{.Digest}}' "docker://$base-bundle:v$VERSION")" >> "$GITHUB_ENV"
 
@@ -203,7 +216,13 @@ jobs:
         run: |
           set -euo pipefail
           base="quay.io/zuno/$PREFIX-operator"
-          make catalog-add VERSION="$VERSION" IMAGE_TAG_BASE="$base" CHANNELS=alpha
+          if [ "$KIND" = hotfix ]; then
+            # One catalog carries every channel: a hotfix adds itself to stable in devel's template, so the catalog
+            # it publishes keeps the alpha releases of the next line.
+            git fetch --no-tags origin "+refs/heads/devel:refs/remotes/origin/devel"
+            git show origin/devel:fork/unifai-operator/catalog-template.yaml > catalog-template.yaml
+          fi
+          make catalog-add VERSION="$VERSION" IMAGE_TAG_BASE="$base" CHANNELS="$CHANNEL"
           make catalog-build catalog-push VERSION="$VERSION" IMAGE_TAG_BASE="$base" CONTAINER_TOOL=docker
           echo "CATALOG_REF=$base-catalog@$(skopeo inspect --creds "$QUAY_USERNAME:$QUAY_TOKEN" --no-tags --format '{{.Digest}}' "docker://$base-catalog:v$VERSION")" >> "$GITHUB_ENV"
 
@@ -236,7 +255,7 @@ jobs:
               "images": {c: {"ref": ref, "source": resolved["images"][c]["tag"]} for c, ref in released.items()},
               "bundle": os.environ["BUNDLE_REF"],
               "catalog": os.environ["CATALOG_REF"],
-              "channel": "alpha",
+              "channel": os.environ["CHANNEL"],
           }, indent=2))
           EOF
           # What the release changed in the tree (bundle, catalog template and rendering, manager image): the
@@ -273,6 +292,7 @@ jobs:
           set -euo pipefail
           pre=""
           [ "$KIND" = rc ] && pre="--prerelease"
+          [ "$KIND" = hotfix ] && pre="--latest=false"  # the newest line stays the latest release
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag $pre \
             --title "UnifAI ${GITHUB_REF_NAME#v}" --notes-file out/notes.md out/release.json
 
@@ -282,6 +302,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: release-bot
     timeout-minutes: 15
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      KIND: ${{ needs.plan.outputs.kind }}
+      BRANCH: ${{ needs.plan.outputs.branch }}
     steps:
       - name: Release bot token
         id: bot
@@ -293,6 +317,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: devel
+          fetch-depth: 0   # git apply --3way needs the blobs of the released commit
           token: ${{ steps.bot.outputs.token }}
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -300,26 +325,50 @@ jobs:
           name: release-${{ needs.plan.outputs.version }}
           path: ${{ runner.temp }}/out
 
-      # The release files of vX.Y.Z and the next patch VERSION, on top of whatever devel has gained meanwhile.
-      - name: Commit the release files and the next VERSION to devel
-        env:
-          VERSION: ${{ needs.plan.outputs.version }}
+      # The release files of vX.Y.Z and the next patch VERSION, on top of whatever the branch gained meanwhile.
+      - name: Commit the release files and the next VERSION to ${{ env.BRANCH }}
         run: |
           set -euo pipefail
           git config user.name "unifai-release-bot[bot]"
           git config user.email "unifai-release-bot[bot]@users.noreply.github.com"
           IFS=. read -r major minor patch <<< "$VERSION"
           next="$major.$minor.$((patch + 1))"
+          exclude=()
+          # A hotfix's catalog was rendered from devel's template: it goes to devel (next step), not to release-X.Y.
+          [ "$KIND" = hotfix ] && exclude=(--exclude=fork/unifai-operator/catalog-template.yaml --exclude='fork/unifai-operator/catalog/*')
           for attempt in 1 2 3; do
-            git fetch origin devel && git reset -q --hard origin/devel
-            git apply --3way "$RUNNER_TEMP/out/release-files.patch"
+            git fetch origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" && git checkout -q -B "$BRANCH" "origin/$BRANCH"
+            git apply --3way "${exclude[@]}" "$RUNNER_TEMP/out/release-files.patch"
             # Only when nobody moved VERSION on already.
             sed -i "s/^VERSION ?= $VERSION$/VERSION ?= $next/" fork/unifai-operator/Makefile
             git add -A fork/unifai-operator
             git commit -q -m "release(fork): v$VERSION published, next VERSION $next" \
-              -m "Release files of v$VERSION (bundle, catalog on alpha) committed by the release workflow."
+              -m "Release files of v$VERSION ($KIND) committed by the release workflow."
+            git push origin "HEAD:$BRANCH" && exit 0
+            sleep $((attempt * 10))
+          done
+          echo "::error::could not push the post-release commit to $BRANCH"
+          exit 1
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        if: env.KIND == 'hotfix'
+        with:
+          go-version-file: fork/unifai-operator/go.mod
+
+      # The hotfix on the stable channel of devel's catalog template (and its rendering), so the next releases of
+      # any line keep it.
+      - name: Record the hotfix in devel's catalog
+        if: env.KIND == 'hotfix'
+        run: |
+          set -euo pipefail
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          for attempt in 1 2 3; do
+            git fetch origin "+refs/heads/devel:refs/remotes/origin/devel" && git checkout -q -B devel origin/devel
+            make -C fork/unifai-operator catalog-add catalog VERSION="$VERSION" IMAGE_TAG_BASE=quay.io/zuno/unifai-operator CHANNELS=stable
+            git add -A fork/unifai-operator/catalog-template.yaml fork/unifai-operator/catalog
+            git commit -q -m "release(fork): v$VERSION hotfix recorded in the stable channel of the catalog"
             git push origin HEAD:devel && exit 0
             sleep $((attempt * 10))
           done
-          echo "::error::could not push the post-release commit to devel"
+          echo "::error::could not push the hotfix catalog to devel"
           exit 1

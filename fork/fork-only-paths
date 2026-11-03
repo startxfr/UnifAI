@@ -13,3 +13,4 @@ fork/
 .github/workflows/e2e-kind.yml
 .github/workflows/weekly-release.yml
 .github/workflows/upstream-sync.yml
+.github/workflows/promote.yml

@@ -10,6 +10,9 @@ reports the Makefile VERSION.
     release_images.py --version 0.1.52 [--commit HEAD] [--registry quay.io/zuno] [--no-verify] [--out images.json]
     release_images.py --missing [--commit HEAD]     # the components publish-images must build
 
+A hotfix branch `release-0.X` (--branch) has its own `release-0.X-<sha>` images, signed by publish-images on that
+branch; before its branch point it falls back on the `devel-<sha>` images of the promoted release.
+
 Prints and writes {"commit", "version", "images": {component: {"ref": repo@sha256:..., "tag": "devel-<sha>"}}}.
 """
 from __future__ import annotations
@@ -36,7 +39,8 @@ COMPONENTS = {
     "identity": APP_PATHS,
     "ui": APP_PATHS,
 }
-DEVEL_SIGNER = "https://github.com/startxfr/UnifAI/.github/workflows/publish-images.yml@refs/heads/devel"
+SIGNER = "https://github.com/startxfr/UnifAI/.github/workflows/publish-images.yml@refs/heads/{branch}"
+DEVEL_SIGNER = SIGNER.format(branch="devel")
 ISSUER = "https://token.actions.githubusercontent.com"
 MAX_COMMITS = 300
 
@@ -55,15 +59,27 @@ def same_code(commit: str, head: str, paths: list[str]) -> bool:
     return subprocess.run(["git", "diff", "--quiet", commit, head, "--", *paths]).returncode == 0
 
 
+def prefixes(branch: str) -> tuple[str, ...]:
+    """Image tag prefixes a build of `branch` may use: its own, then devel's (a release branch starts from devel)."""
+    return (branch,) if branch == "devel" else (branch, "devel")
+
+
+def signer_of(tag: str) -> str:
+    """The publish-images identity that signed a `<branch>-<sha9>` image."""
+    return SIGNER.format(branch=tag.rsplit("-", 1)[0])
+
+
 def find_tag(head: str, paths: list[str], tags: set[str], history: Iterable[str],
-             same: Callable[[str, str, list[str]], bool] = same_code) -> str | None:
-    """The devel-<sha> tag of the newest commit of `history` that has an image and the code of `head` for `paths`."""
+             same: Callable[[str, str, list[str]], bool] = same_code,
+             branch: str = "devel") -> str | None:
+    """The <branch>-<sha> tag of the newest commit of `history` that has an image and the code of `head` for `paths`."""
     for commit in history:
         if not same(commit, head, paths):
             return None  # older commits build other code
-        tag = f"devel-{commit[:9]}"
-        if tag in tags:
-            return tag
+        for prefix in prefixes(branch):
+            tag = f"{prefix}-{commit[:9]}"
+            if tag in tags:
+                return tag
     return None
 
 
@@ -71,33 +87,34 @@ def list_tags(repo: str) -> set[str]:
     return set(json.loads(run("skopeo", "list-tags", f"docker://{repo}"))["Tags"])
 
 
-def missing(commit: str, registry: str) -> list[str]:
+def missing(commit: str, registry: str, branch: str = "devel") -> list[str]:
     """The components whose code at `commit` has no devel-<sha> image yet: what publish-images must build. Comparing
     with the images (not with the previous push) also catches a change whose own run was cancelled or replaced."""
     head = run("git", "rev-parse", commit)
     history = run("git", "rev-list", "--first-parent", "-n", str(MAX_COMMITS), head).split()
     return [c for c, paths in COMPONENTS.items()
-            if find_tag(head, paths, list_tags(f"{registry}/unifai-{c}"), history) is None]
+            if find_tag(head, paths, list_tags(f"{registry}/unifai-{c}"), history, branch=branch) is None]
 
 
-def resolve(version: str, commit: str, registry: str, verify: bool) -> dict:
+def resolve(version: str, commit: str, registry: str, verify: bool, branch: str = "devel") -> dict:
     head = run("git", "rev-parse", commit)
     history = run("git", "rev-list", "--first-parent", "-n", str(MAX_COMMITS), head).split()
     images, errors = {}, []
     for component, paths in COMPONENTS.items():
         repo = f"{registry}/unifai-{component}"
-        tag = find_tag(head, paths, list_tags(repo), history)
+        tag = find_tag(head, paths, list_tags(repo), history, branch=branch)
         if tag is None:
-            errors.append(f"{component}: no {repo}:devel-<sha> for the code of {head[:9]} "
-                          "(push to devel and wait for publish-images)")
+            errors.append(f"{component}: no {repo}:{branch}-<sha> for the code of {head[:9]} "
+                          f"(push to {branch} and wait for publish-images)")
             continue
         digest = run("skopeo", "inspect", "--no-tags", "--format", "{{.Digest}}", f"docker://{repo}:{tag}")
         ref = f"{repo}@{digest}"
         if verify:
-            ok = subprocess.run(["cosign", "verify", "--certificate-identity", DEVEL_SIGNER,
+            signer = signer_of(tag)
+            ok = subprocess.run(["cosign", "verify", "--certificate-identity", signer,
                                  "--certificate-oidc-issuer", ISSUER, ref], capture_output=True).returncode == 0
             if not ok:
-                errors.append(f"{component}: {ref} ({tag}) is not signed by {DEVEL_SIGNER}")
+                errors.append(f"{component}: {ref} ({tag}) is not signed by {signer}")
                 continue
         if component == "operator":
             built = run("skopeo", "inspect", "--no-tags", "--format", '{{index .Labels "version"}}', f"docker://{ref}")
@@ -135,17 +152,18 @@ def main(argv: list[str] | None = None) -> None:
                    help="print the components that have no image for the code of --commit, one per line, and stop")
     p.add_argument("--commit", default="HEAD")
     p.add_argument("--registry", default="quay.io/zuno")
+    p.add_argument("--branch", default="devel", help="the branch whose images to use: devel or release-X.Y")
     p.add_argument("--no-verify", action="store_true", help="skip the cosign check (local inspection only)")
     p.add_argument("--out")
     p.add_argument("--expect", action="append", default=[], metavar="COMPONENT=sha256:…",
                    help="fail unless COMPONENT resolves to this digest, e.g. the operator the canary tested (repeatable)")
     a = p.parse_args(argv)
     if a.missing:
-        print("\n".join(missing(a.commit, a.registry)))
+        print("\n".join(missing(a.commit, a.registry, a.branch)))
         return
     if not a.version:
         p.error("--version is required")
-    result = resolve(a.version, a.commit, a.registry, not a.no_verify)
+    result = resolve(a.version, a.commit, a.registry, not a.no_verify, a.branch)
     errors = check_expected(result["images"], a.expect)
     if errors:
         if os.environ.get("GITHUB_ACTIONS"):

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Add a bundle version to an olm.template.basic catalog template.
 
-Usage: catalog_add.py TEMPLATE PACKAGE VERSION BUNDLE_IMAGE CHANNELS
+Usage: catalog_add.py TEMPLATE PACKAGE VERSION BUNDLE_IMAGE CHANNELS [SKIP_RANGE]
 The bundle is appended to every channel of CHANNELS (comma-separated, created if missing) and replaces the current
 head of that channel, so OLM upgrades installed operators along the channel. Re-adding a version is a no-op.
+SKIP_RANGE (e.g. ">=0.1.0 <0.1.60") lets OLM upgrade straight to it from any version of the range: the promotion of
+a line to `stable` (fork/RELEASING.md), whose entry replaces the old head but skips every release in between.
 """
 import sys
 from pathlib import Path
@@ -11,7 +13,7 @@ from pathlib import Path
 import yaml
 
 
-def main(template: str, package: str, version: str, image: str, channels: str) -> None:
+def main(template: str, package: str, version: str, image: str, channels: str, skip_range: str = "") -> None:
     path = Path(template)
     doc = yaml.safe_load(path.read_text()) if path.exists() else None
     if not doc:
@@ -31,12 +33,14 @@ def main(template: str, package: str, version: str, image: str, channels: str) -
         entry = {"name": name}
         if ch["entries"]:
             entry["replaces"] = ch["entries"][-1]["name"]
+        if skip_range:
+            entry["skipRange"] = skip_range
         ch["entries"].append(entry)
     path.write_text(yaml.safe_dump(doc, sort_keys=False))
     print(f"{name} added to {channels}")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 6:
+    if len(sys.argv) not in (6, 7):
         raise SystemExit(__doc__)
     main(*sys.argv[1:])

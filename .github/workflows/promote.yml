@@ -1,0 +1,134 @@
+# Fork-only (fork/fork-only-paths): the quarterly promotion of a line to the OLM `stable` channel
+# (fork/RELEASING.md, fork/calendar.yaml). Run on devel with an existing release vX.Y.N, after the full canary on
+# demo333 and with the `quay-release` approval. Nothing is rebuilt or re-signed: vX.Y.N stays the release it is.
+#
+# 1. check (fork/ci/promote.py): a weekly or manual release of the bot, ≥ 7 days on alpha, line in the calendar and
+#    frozen, canary confirmed;
+# 2. on devel: vX.Y.N enters the stable channel of the catalog template (replacing the stable head, with
+#    skipRange ">=<previous line>.0 <X.Y.N"), catalog rendered, VERSION moves to the next line (X.(Y+1).0);
+# 3. release-X.Y is created at vX.Y.N with VERSION = the first free patch of X.Y: its hotfixes (cut-release
+#    kind hotfix on that branch) go to stable only.
+# The catalog that carries the promotion is published by the next release of devel (the weekly, or a manual cut once
+# publish-images built the operator X.(Y+1).0): its release notes and release.json are what zuno-demo pins.
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "the release to promote, X.Y.N (an existing vX.Y.N on alpha)"
+        type: string
+        required: true
+      canary:
+        description: "I ran `make canary-ci canary-e2e-full canary-delete` green on demo333 with this version"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/devel'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      line: ${{ steps.plan.outputs.line }}
+      skip_range: ${{ steps.plan.outputs.skip_range }}
+      next_devel: ${{ steps.plan.outputs.next_devel }}
+      hotfix: ${{ steps.plan.outputs.hotfix }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: devel
+          fetch-depth: 0
+      - name: Plan the promotion
+        id: plan
+        env:
+          VERSION: ${{ inputs.version }}
+          CANARY: ${{ inputs.canary }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          flag=()
+          [ "$CANARY" = true ] && flag=(--canary)
+          python3 fork/ci/promote.py --version "$VERSION" "${flag[@]}" --out "$RUNNER_TEMP/plan.json"
+          python3 - "$RUNNER_TEMP/plan.json" >> "$GITHUB_OUTPUT" <<'EOF'
+          import json, sys
+          for k, v in json.load(open(sys.argv[1])).items():
+              if isinstance(v, str):
+                  print(f"{k}={v}")
+          EOF
+          if git ls-remote --exit-code --heads origin "release-$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["line"])' "$RUNNER_TEMP/plan.json")" > /dev/null; then
+            echo "::error::the release branch of this line exists already: the line was promoted"; exit 1
+          fi
+          { echo '### Promotion plan'; echo '```json'; cat "$RUNNER_TEMP/plan.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  # The maintainer's approval, on the plan above.
+  approve:
+    needs: check
+    runs-on: ubuntu-latest
+    environment: quay-release
+    steps:
+      - run: echo "promotion of v${{ needs.check.outputs.version }} to stable approved"
+
+  promote:
+    needs: [check, approve]
+    runs-on: ubuntu-latest
+    environment: release-bot
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      LINE: ${{ needs.check.outputs.line }}
+      SKIP_RANGE: ${{ needs.check.outputs.skip_range }}
+      NEXT: ${{ needs.check.outputs.next_devel }}
+      HOTFIX: ${{ needs.check.outputs.hotfix }}
+    steps:
+      - name: Release bot token
+        id: bot
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: devel
+          fetch-depth: 0
+          token: ${{ steps.bot.outputs.token }}
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: fork/unifai-operator/go.mod
+
+      - name: Stable channel and next line on devel, release branch at the promoted tag
+        run: |
+          set -euo pipefail
+          git config user.name "unifai-release-bot[bot]"
+          git config user.email "unifai-release-bot[bot]@users.noreply.github.com"
+          git fetch --tags --force origin
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          # devel: the promoted bundle (already in the template, published by its release) enters stable.
+          make -C fork/unifai-operator catalog-add catalog VERSION="$VERSION" CHANNELS=stable \
+            SKIP_RANGE="$SKIP_RANGE" IMAGE_TAG_BASE=quay.io/zuno/unifai-operator
+          sed -i "s/^VERSION ?= .*/VERSION ?= $NEXT/" fork/unifai-operator/Makefile
+          git add -A fork/unifai-operator
+          git commit -q -m "release(fork): promote v$VERSION to stable (skipRange $SKIP_RANGE), devel moves to $NEXT"
+          # release-X.Y: the promoted code, whose next patch is a hotfix.
+          git switch -q -c "release-$LINE" "v$VERSION^{commit}"
+          sed -i "s/^VERSION ?= .*/VERSION ?= $HOTFIX/" fork/unifai-operator/Makefile
+          git commit -q -am "release(fork): release-$LINE opened at v$VERSION, next hotfix VERSION $HOTFIX"
+          # Both or neither: a devel that moved meanwhile makes the push fail, run the promotion again.
+          git push --atomic origin refs/heads/devel:refs/heads/devel "refs/heads/release-$LINE:refs/heads/release-$LINE"
+          {
+            echo "### v$VERSION promoted to stable"
+            echo "- devel: stable channel with skipRange \`$SKIP_RANGE\`, VERSION $NEXT"
+            echo "- release-$LINE created at v$VERSION, VERSION $HOTFIX (hotfixes: cut-release kind hotfix on it)"
+            echo "- the catalog with the promotion ships with the next release of devel (v$NEXT): the weekly, or a"
+            echo "  manual cut-release once publish-images built the operator $NEXT"
+          } >> "$GITHUB_STEP_SUMMARY"

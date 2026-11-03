@@ -29,6 +29,19 @@ class FindTag(unittest.TestCase):
     def test_no_image_at_all(self):
         self.assertIsNone(ri.find_tag(self.HISTORY[0], ["x"], set(), self.HISTORY, self.same_until(4)))
 
+    def test_a_release_branch_prefers_its_own_images_then_devel(self):
+        h = self.HISTORY
+        tags = {f"devel-{h[1][:9]}", f"release-0.1-{h[1][:9]}", f"devel-{h[2][:9]}"}
+        same = self.same_until(4)
+        self.assertEqual(ri.find_tag(h[0], ["x"], tags, h, same, "release-0.1"), f"release-0.1-{h[1][:9]}")
+        self.assertEqual(ri.find_tag(h[0], ["x"], {f"devel-{h[2][:9]}"}, h, same, "release-0.1"),
+                         f"devel-{h[2][:9]}")
+        self.assertIsNone(ri.find_tag(h[0], ["x"], {f"release-0.1-{h[1][:9]}"}, h, same))  # devel never takes them
+
+    def test_the_signer_follows_the_tag_branch(self):
+        self.assertEqual(ri.signer_of("devel-abc"), ri.DEVEL_SIGNER)
+        self.assertTrue(ri.signer_of("release-0.1-abc").endswith("publish-images.yml@refs/heads/release-0.1"))
+
     def test_components_follow_publish_images(self):
         self.assertEqual(sorted(ri.COMPONENTS), ["backend", "identity", "multiagent", "operator", "rag", "ui"])
         self.assertNotIn("fork/ci", ri.COMPONENTS["operator"])  # signing scripts are not image content

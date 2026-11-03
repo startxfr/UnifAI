@@ -432,7 +432,7 @@ fork-check: ## Fail when a deliberate fork divergence from upstream (UI nginx ce
 
 .PHONY: catalog-add
 catalog-add: ## Add bundle VERSION to catalog-template.yaml in CHANNELS (comma-separated), replacing each channel head.
-	python3 hack/catalog_add.py catalog-template.yaml unifai-operator $(VERSION) $(BUNDLE_IMG) $(CHANNELS)
+	python3 hack/catalog_add.py catalog-template.yaml unifai-operator $(VERSION) $(BUNDLE_IMG) $(CHANNELS) "$(SKIP_RANGE)"
 
 .PHONY: catalog
 catalog: opm ## Render and validate the file-based catalog in catalog/.

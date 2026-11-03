@@ -112,6 +112,29 @@ Requirements before the first run: the settings of the GitHub bot, the environme
   the next weekly goes out). A manual Run workflow is a dry run unless `dry_run` is unticked. Locally:
   `python3 fork/ci/release_gate.py --date 2026-12-04`.
 
+## Promotion and hotfixes (phase 4)
+
+**Promotion** (on the promote date of [calendar.yaml](calendar.yaml)):
+
+1. the maintainer picks the release to promote, `vX.Y.N` (a weekly or manual release, at least 7 days on alpha, usually
+   the last one of the freeze), and runs `E2E_VERSION=vX.Y.N make canary-ci canary-e2e-full canary-delete` on demo333;
+2. Actions → promote → Run workflow on `devel`: `version` = `X.Y.N`, tick `canary`, then approve `quay-release`.
+   [ci/promote.py](ci/promote.py) checks it (locally: `python3 fork/ci/promote.py --version X.Y.N --canary`);
+3. the bot commits on `devel` the stable entry of `vX.Y.N` (`skipRange ">=<previous line>.0 <X.Y.N"`) and
+   `VERSION X.(Y+1).0`, and creates `release-X.Y` at `vX.Y.N` with `VERSION` = the first patch of `X.Y` that no tag
+   uses;
+4. the next release of `devel` (`vX.(Y+1).0`, weekly or manual) publishes the catalog that carries the promotion.
+
+**Hotfix** of the promoted line `X.Y`:
+
+1. on `release-X.Y`, cherry-pick the fix from `devel` (`git cherry-pick -x`) and push: publish-images builds the
+   changed images as `release-X.Y-<sha>` (the others stay the `devel-<sha>` images of the promoted release);
+2. canary on that operator image if the operator changed;
+3. Actions → cut-release → Run workflow on **`release-X.Y`**, `kind` = `hotfix`, then approve `quay-release`;
+4. `release.yml` publishes `vX.Y.N+1` on the `stable` channel only (one catalog, rendered from `devel`'s template, so
+   it keeps the alpha releases of the next line), as a GitHub release that is not marked latest. The bot commits the
+   bundle and the next patch `VERSION` to `release-X.Y`, and the stable entry to `devel`'s catalog.
+
 **Transition (decided by zuno-demo, 2026-11-03):** demo333 subscribes to `stable` today. At the FIRST unified release,
 zuno-demo (da) moves its Subscription to `alpha` (catalog still pinned by digest and signature-verified at each pin) and
 makes `image-identities.yaml` accept the release identity too, in a separate commit with its user's go. Until then the
@@ -130,7 +153,7 @@ phases; until they exist, releases follow the operator flow in
 | 1 (done: rehearsal v0.1.53-rc.2 green and cosign-verified, 2026-11-03) | `cut-release.yml` + `release.yml`: six digests promoted, bundle/catalog in CI (`alpha` only), notes, `release.json`, bot commit; new signing identity agreed with zuno-demo before the first unified release | Nov 2026 |
 | 2 (done: the kind e2e gate passed inside the v0.1.53-rc.2 release) | e2e on kind in CI (`e2e-kind.yml`, `unifai-operator/hack/kind/e2e.sh`: mock LLM, Route CRD without router, static RWX volumes, service-CA stand-in, restore test skipped), called by `release.yml` before anything is published | Nov–Dec 2026 |
 | 3 (built 2026-11-03, to prove on the first Thursday and Friday) | `upstream-sync.yml` (Thursday) and `weekly-release.yml` (Friday, skips when nothing changed or during a freeze) | Dec 2026 |
-| 4 | `promote.yml` and hotfix releases on `release-0.X`; first promotion of the 0.1 line | 2026-12-15 |
+| 4 (built 2026-11-03, to prove before 2026-12-15) | `promote.yml` and hotfix releases on `release-0.X`; first promotion of the 0.1 line | 2026-12-15 |
 | 5 (optional) | self-hosted runner in demo333 to automate the canary before a promotion; CD only if zuno-demo asks | 2027 |
 
 The signing identity of the operator, bundle and catalog moves from `unifai-operator-release.yml@refs/tags/operator-v…`

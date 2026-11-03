@@ -5,7 +5,9 @@
 #
 # - kind `manual`: a release of the Makefile VERSION, published after the `quay-release` approval;
 # - kind `weekly`: the same, published without approval (called by weekly-release.yml);
-# - kind `rc`: a rehearsal vVERSION-rc.N into the quay.io/zuno/test-unifai-* repositories, `stable` untouched.
+# - kind `rc`: a rehearsal vVERSION-rc.N into the quay.io/zuno/test-unifai-* repositories, `stable` untouched;
+# - kind `hotfix`: run on `release-X.Y` (not devel), the Makefile VERSION of that branch on the OLM `stable` channel,
+#   from its release-X.Y-<sha> images; `stable` (the branch) untouched.
 #
 # The tag is pushed with the release bot's GitHub App token: a tag pushed with GITHUB_TOKEN would start no workflow,
 # and the `release-tags` ruleset lets only the bot create v* tags, so release.yml can trust the kind in the message.
@@ -15,9 +17,9 @@ on:
   workflow_dispatch:
     inputs:
       kind:
-        description: "manual (approval), weekly (no approval) or rc (rehearsal into the test repositories)"
+        description: "manual (approval), weekly (no approval), rc (rehearsal into the test repositories); hotfix: run on release-X.Y"
         type: choice
-        options: [manual, weekly, rc]
+        options: [manual, weekly, rc, hotfix]
         default: manual
       operator:
         description: "optional: the operator digest the canary tested (sha256:…); the cut fails if devel resolves another one"
@@ -41,7 +43,7 @@ concurrency:
 
 jobs:
   cut:
-    if: github.ref == 'refs/heads/devel'
+    if: github.ref == 'refs/heads/devel' || startsWith(github.ref, 'refs/heads/release-')
     runs-on: ubuntu-latest
     environment: release-bot
     timeout-minutes: 20
@@ -55,7 +57,7 @@ jobs:
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: devel
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
           token: ${{ steps.bot.outputs.token }}
 
@@ -68,9 +70,17 @@ jobs:
           KIND: ${{ inputs.kind }}
         run: |
           set -euo pipefail
-          case "$KIND" in manual|weekly|rc) ;; *) echo "::error::unknown kind '$KIND'"; exit 1 ;; esac
+          branch="$GITHUB_REF_NAME"
+          case "$KIND/$branch" in
+            manual/devel|weekly/devel|rc/devel|hotfix/release-*) ;;
+            hotfix/*) echo "::error::a hotfix is cut on release-X.Y, not on $branch"; exit 1 ;;
+            *) echo "::error::kind '$KIND' is cut on devel, not on $branch"; exit 1 ;;
+          esac
           base="$(sed -n 's/^VERSION ?= //p' fork/unifai-operator/Makefile)"
           [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Makefile VERSION '$base' is not X.Y.Z"; exit 1; }
+          if [ "$KIND" = hotfix ] && [ "release-${base%.*}" != "$branch" ]; then
+            echo "::error::VERSION $base is not a version of $branch"; exit 1
+          fi
           git fetch --tags --force origin
           if [ "$KIND" = rc ]; then
             n=$(git tag -l "v$base-rc.*" | wc -l)
@@ -89,9 +99,10 @@ jobs:
             fi
           fi
           echo "BASE=$base" >> "$GITHUB_ENV"
+          echo "BRANCH=$branch" >> "$GITHUB_ENV"
           echo "VERSION=$version" >> "$GITHUB_ENV"
 
-      - name: Resolve the six signed images of the devel head
+      - name: Resolve the six signed images of the branch head
         if: env.SKIP != '1'
         env:
           EXPECT_OPERATOR: ${{ inputs.operator }}
@@ -99,7 +110,7 @@ jobs:
           set -euo pipefail
           expect=()
           [ -z "$EXPECT_OPERATOR" ] || expect=(--expect "operator=$EXPECT_OPERATOR")
-          python3 fork/ci/release_images.py --version "$BASE" --out "$RUNNER_TEMP/images.json" "${expect[@]}"
+          python3 fork/ci/release_images.py --version "$BASE" --branch "$BRANCH" --out "$RUNNER_TEMP/images.json" "${expect[@]}"
 
       - name: Fast-forward stable and push the tag
         if: env.SKIP != '1'
@@ -111,7 +122,7 @@ jobs:
           git config user.email "unifai-release-bot[bot]@users.noreply.github.com"
           { printf 'kind: %s\n\n' "$KIND"; cat "$RUNNER_TEMP/images.json"; } > "$RUNNER_TEMP/tag-message"
           git tag -a "v$VERSION" -F "$RUNNER_TEMP/tag-message" HEAD
-          if [ "$KIND" != rc ]; then
+          if [ "$KIND" = manual ] || [ "$KIND" = weekly ]; then
             # A plain push: refused unless it is a fast-forward of stable.
             git push origin HEAD:refs/heads/stable
           fi
