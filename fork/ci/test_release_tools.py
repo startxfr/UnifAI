@@ -31,7 +31,7 @@ class FindTag(unittest.TestCase):
 
     def test_components_follow_publish_images(self):
         self.assertEqual(sorted(ri.COMPONENTS), ["backend", "identity", "multiagent", "operator", "rag", "ui"])
-        self.assertIn("fork/ci", ri.COMPONENTS["operator"])
+        self.assertNotIn("fork/ci", ri.COMPONENTS["operator"])  # signing scripts are not image content
         self.assertIn(ri.WORKFLOW, ri.COMPONENTS["ui"])
         self.assertNotIn("fork/ci", ri.COMPONENTS["rag"])
 

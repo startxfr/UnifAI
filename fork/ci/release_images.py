@@ -15,15 +15,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from typing import Callable, Iterable
 
-# Build paths, as publish-images.yml selects them: its own file rebuilds every image, the five application images are
-# built together, the operator image also when fork/ci (its signing scripts) changes.
+# The paths that make an image's content, as publish-images.yml builds them: its own file rebuilds every image, the
+# five application images are built together. publish-images also rebuilds the operator image when fork/ci (its
+# signing scripts) changes, but that is not image content: such a rebuild does not make the previous image stale (and
+# its digest, maybe the one a canary tested, stays the one released).
 WORKFLOW = ".github/workflows/publish-images.yml"
 APP_PATHS = [WORKFLOW, "rag", "multi-agent", "backend", "shared-resources/identity", "ui", "global_utils"]
-OPERATOR_PATHS = [WORKFLOW, "fork/ci"] + [
+OPERATOR_PATHS = [WORKFLOW] + [
     f"fork/unifai-operator/{p}" for p in ("cmd", "api", "internal", "go.mod", "go.sum", "Dockerfile", "Makefile")]
 COMPONENTS = {
     "operator": OPERATOR_PATHS,
@@ -39,7 +42,13 @@ MAX_COMMITS = 300
 
 
 def run(*cmd: str) -> str:
-    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout.strip()
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        msg = f"{' '.join(cmd[:3])}... failed ({r.returncode}): {r.stderr.strip()[:300]}"
+        if os.environ.get("GITHUB_ACTIONS"):
+            print(f"::error::{msg}", file=sys.stderr)
+        raise SystemExit(msg)
+    return r.stdout.strip()
 
 
 def same_code(commit: str, head: str, paths: list[str]) -> bool:
@@ -88,6 +97,9 @@ def resolve(version: str, commit: str, registry: str, verify: bool) -> dict:
                 continue
         images[component] = {"ref": ref, "tag": tag}
     if errors:
+        if os.environ.get("GITHUB_ACTIONS"):
+            for e in errors:  # annotations: readable without the run's log
+                print(f"::error::{e}", file=sys.stderr)
         raise SystemExit("\n".join(errors))
     return {"commit": head, "version": version, "images": images}
 

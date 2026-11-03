@@ -64,8 +64,12 @@ jobs:
           docker system prune -af > /dev/null
           df -h /
 
-      - name: kind
-        run: go install sigs.k8s.io/kind@v0.29.0 && kind version
+      - name: kind and the registry tools
+        run: |
+          set -euo pipefail
+          go install sigs.k8s.io/kind@v0.29.0 && kind version
+          command -v skopeo > /dev/null || { sudo apt-get update -q && sudo apt-get install -yq skopeo; }
+          for t in skopeo kubectl yq docker; do echo "::notice::$t: $($t --version 2>&1 | head -n1)"; done
 
       - name: The images under test
         env:
@@ -92,5 +96,8 @@ jobs:
         if: always()
         run: |
           grep -E '^\s*--- (PASS|FAIL|SKIP)' "$RUNNER_TEMP/e2e.log" > "$RUNNER_TEMP/summary.txt" || true
+          # Annotations are readable without the run's log: one per failed test, with the last lines of the run.
+          grep -E '^\s*--- FAIL' "$RUNNER_TEMP/summary.txt" | sed 's/^ *//' | while read -r l; do echo "::error::$l"; done || true
+          tail -n 30 "$RUNNER_TEMP/e2e.log" 2>/dev/null | tr '\n' ' ' | cut -c1-3000 | sed 's/^/::notice::tail: /' || true
           { echo '```'; cat "$RUNNER_TEMP/summary.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           df -h / || true
