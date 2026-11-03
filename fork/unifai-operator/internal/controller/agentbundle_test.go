@@ -696,6 +696,7 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(ocfg["system_message"]).To(ContainSubstring("`a2a-arkos`"))
 		Expect(ocfg["system_message"]).To(ContainSubstring("When the user's request names one of them"), "a named target is delegated to, not answered in its place")
 		Expect(ocfg["system_message"]).NotTo(ContainSubstring("first:"), "the own agent is not forced before a named target")
+		Expect(ocfg["system_message"]).To(ContainSubstring("never delegate the same request to it again"), "an answer is final: no re-delegation loop (0.1.52: 11 Tekos turns per user turn)")
 
 		var wf unifaiv1.UnifaiWorkflow
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos"}, &wf)).To(Succeed())

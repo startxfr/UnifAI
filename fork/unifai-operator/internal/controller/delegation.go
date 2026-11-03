@@ -145,6 +145,9 @@ func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Tas
 	for _, tg := range targets {
 		fmt.Fprintf(&msg, "- `%s` %s (%s): %s\n", tg.nodeUID(), tg.Title, tg.key(), strings.TrimSpace(tg.Description))
 	}
+	msg.WriteString("An agent's answer is final for that request: when it answers, mark its work item done with the work item status tool ")
+	msg.WriteString("and never delegate the same request to it again, even if the answer is long or you would have worded it differently; ")
+	msg.WriteString("ask it again only when it says it needs information from the user.\n")
 	msg.WriteString("Then give a single final answer built from their results, keeping the sources they cite.")
 	cfg := map[string]any{"llm": "$ref:llm/" + llmName, "system_message": msg.String(), "max_rounds": rounds}
 	setHistory(cfg, b.History)
