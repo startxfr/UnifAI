@@ -49,14 +49,11 @@ class MarkWorkItemStatusTool(BaseTool):
     For REMOTE items: Review responses first, then mark done/failed
     For LOCAL items: RecordLocalExecutionTool auto-marks DONE (rarely need this tool)
     
-    ⚠️ IMPORTANT - DON'T RUSH TO MARK 'DONE':
-    - If response is incomplete → Use DelegateTaskTool to ask for more
-    - If response is unclear → Use DelegateTaskTool to ask for clarification
-    - If response is partial → Use DelegateTaskTool to request the rest
-    - Only mark 'done' when you're truly satisfied with the result
-    
-    REMEMBER: Thread context is preserved - you can re-delegate multiple times to get quality results.
-    Better to ask follow-up questions than accept incomplete work!"""
+    ⚠️ DON'T MARK 'DONE' ON A RESPONSE THAT MISSES THE REQUIREMENT, BUT DON'T LOOP EITHER:
+    - If response is incomplete, unclear or partial → ask ONE precise follow-up with DelegateTaskTool
+    - If the response addresses the requirement (even if long, or worded differently than you would) → mark 'done'
+    - Never re-ask the same question: asking again returns the same answer and costs a full agent turn
+    - An item can be delegated only a few times; after that it is closed with the answers it has"""
     args_schema = MarkStatusArgs
     
     def __init__(

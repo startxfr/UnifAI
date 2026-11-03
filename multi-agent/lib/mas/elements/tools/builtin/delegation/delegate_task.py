@@ -2,6 +2,7 @@
 Tool for delegating tasks to other nodes.
 """
 
+import os
 from typing import Dict, Any, Callable, Optional
 from pydantic import BaseModel, Field
 from mas.elements.tools.common.base_tool import BaseTool
@@ -13,6 +14,25 @@ from mas.elements.nodes.common.workload import (
     WorkItemResult
 )
 from mas.elements.nodes.common.agent.constants import ToolNames
+
+
+# One work item is delegated at most this many times (first delegation + follow-ups). A model that never marks an
+# answered item done keeps asking the same agent the same question: 0.1.52 on demo333 sent 11 A2A turns per user turn.
+# 0 = unlimited.
+MAX_DELEGATIONS_ENV = "MAS_MAX_DELEGATIONS_PER_ITEM"
+DEFAULT_MAX_DELEGATIONS = 3
+
+
+def max_delegations_per_item() -> int:
+    try:
+        return max(0, int(os.environ.get(MAX_DELEGATIONS_ENV, DEFAULT_MAX_DELEGATIONS)))
+    except ValueError:
+        return DEFAULT_MAX_DELEGATIONS
+
+
+def delegation_cap_reached(item, limit: int) -> bool:
+    """True when the work item was already delegated `limit` times (the answers received are all it will get)."""
+    return bool(limit and item is not None and item.result and len(item.result.delegations) >= limit)
 
 
 class DelegateTaskArgs(BaseModel):
@@ -95,6 +115,28 @@ class DelegateTaskTool(BaseTool):
         self._get_workspace_service = get_workspace_service
         self._check_adjacency = check_adjacency
     
+    @staticmethod
+    def _close_capped_item(workspace_service, thread_id: str, owner_uid: str, work_item_id: str, item, limit: int):
+        """Mark an item DONE with the answers it has (or FAILED when none arrived) and tell the model to answer."""
+        answered = any(e.response_content is not None for e in item.result.delegations)
+
+        def close(it, plan):
+            for exchange in it.result.delegations:
+                exchange.processed = True
+            it.status = WorkItemStatus.DONE if answered else WorkItemStatus.FAILED
+            if answered:
+                it.result.success = True
+            else:
+                it.error = f"no answer after {limit} delegations"
+
+        workspace_service.atomic_update_work_item(thread_id, owner_uid, work_item_id, close)
+        outcome = "marked done with the answers received" if answered else "marked failed (no answer arrived)"
+        return {
+            "success": False,
+            "error": (f"Work item {work_item_id} was already delegated {limit} times and is {outcome}. Do NOT delegate it "
+                      f"again: give your final answer from the answers you already have."),
+        }
+
     def run(self, **kwargs) -> Dict[str, Any]:
         """Delegate task to adjacent node with automatic thread and status management."""
         
@@ -141,6 +183,12 @@ class DelegateTaskTool(BaseTool):
                 "error": error_msg
             }
         
+        # Bound the follow-ups: past the cap the item keeps the answers it has and is closed, nothing is sent.
+        limit = max_delegations_per_item()
+        if delegation_cap_reached(target_item, limit):
+            return self._close_capped_item(workspace_service, current_thread.thread_id, owner_uid, work_item_id,
+                                           target_item, limit)
+
         # ✅ Reuse existing child thread or create new one
         child_thread = None
         if target_item and target_item.child_thread_id:
