@@ -128,19 +128,23 @@ jobs:
           QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
         run: |
           set -euo pipefail
+          # q: run a registry command, and on failure annotate it with its error (readable without the run's log).
+          q() { local out; if ! out="$("$@" 2>&1)"; then echo "::error::$1 ${*: -1}: ${out: -600}"; return 1; fi; printf '%s' "$out"; }
+          creds="$QUAY_USERNAME:$QUAY_TOKEN"
           echo '{}' > "$RUNNER_TEMP/released.json"
           for c in operator rag multiagent backend identity ui; do
             src="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["images"][sys.argv[2]]["ref"])' "$RUNNER_TEMP/images.json" "$c")"
             digest="${src#*@}"
             repo="quay.io/zuno/$PREFIX-$c"
-            skopeo copy --preserve-digests --dest-creds "$QUAY_USERNAME:$QUAY_TOKEN" "docker://$src" "docker://$repo:v$VERSION"
-            got="$(skopeo inspect --no-tags --format '{{.Digest}}' "docker://$repo:v$VERSION")"
+            q skopeo copy --preserve-digests --dest-creds "$creds" "docker://$src" "docker://$repo:v$VERSION" > /dev/null
+            got="$(q skopeo inspect --creds "$creds" --no-tags --format '{{.Digest}}' "docker://$repo:v$VERSION")"
             [ "$got" = "$digest" ] || { echo "::error::$repo:v$VERSION is $got, not $digest"; exit 1; }
             sbom="${digest/:/-}.sbom"
             if [ "${src%@*}" != "$repo" ]; then
-              skopeo copy --preserve-digests --dest-creds "$QUAY_USERNAME:$QUAY_TOKEN" "docker://${src%@*}:$sbom" "docker://$repo:$sbom"
+              q skopeo copy --preserve-digests --dest-creds "$creds" "docker://${src%@*}:$sbom" "docker://$repo:$sbom" > /dev/null
             fi
-            bash fork/ci/sign_and_attest.sh "$repo@$digest" "$c"
+            q bash fork/ci/sign_and_attest.sh "$repo@$digest" "$c"
+            echo
             python3 - "$RUNNER_TEMP/released.json" "$c" "$repo@$digest" <<'EOF'
           import json, sys
           path, c, ref = sys.argv[1:4]
@@ -151,13 +155,16 @@ jobs:
 
       - name: Bundle v${{ env.VERSION }} on the alpha channel
         working-directory: fork/unifai-operator
+        env:
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
         run: |
           set -euo pipefail
           operator="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["operator"])' "$RUNNER_TEMP/released.json")"
           base="quay.io/zuno/$PREFIX-operator"
           make bundle IMG="$operator" VERSION="$VERSION" IMAGE_TAG_BASE="$base" CHANNELS=alpha
           make bundle-build bundle-push VERSION="$VERSION" IMAGE_TAG_BASE="$base" CONTAINER_TOOL=docker
-          echo "BUNDLE_REF=$base-bundle@$(skopeo inspect --no-tags --format '{{.Digest}}' "docker://$base-bundle:v$VERSION")" >> "$GITHUB_ENV"
+          echo "BUNDLE_REF=$base-bundle@$(skopeo inspect --creds "$QUAY_USERNAME:$QUAY_TOKEN" --no-tags --format '{{.Digest}}' "docker://$base-bundle:v$VERSION")" >> "$GITHUB_ENV"
 
       - name: SBOM of the bundle
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
@@ -174,12 +181,15 @@ jobs:
       # Rendering the catalog reads the bundle images from the registry: only once the bundle is pushed.
       - name: Catalog with v${{ env.VERSION }}
         working-directory: fork/unifai-operator
+        env:
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
         run: |
           set -euo pipefail
           base="quay.io/zuno/$PREFIX-operator"
           make catalog-add VERSION="$VERSION" IMAGE_TAG_BASE="$base" CHANNELS=alpha
           make catalog-build catalog-push VERSION="$VERSION" IMAGE_TAG_BASE="$base" CONTAINER_TOOL=docker
-          echo "CATALOG_REF=$base-catalog@$(skopeo inspect --no-tags --format '{{.Digest}}' "docker://$base-catalog:v$VERSION")" >> "$GITHUB_ENV"
+          echo "CATALOG_REF=$base-catalog@$(skopeo inspect --creds "$QUAY_USERNAME:$QUAY_TOKEN" --no-tags --format '{{.Digest}}' "docker://$base-catalog:v$VERSION")" >> "$GITHUB_ENV"
 
       - name: SBOM of the catalog
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3

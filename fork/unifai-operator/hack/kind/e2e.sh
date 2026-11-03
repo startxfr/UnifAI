@@ -9,7 +9,10 @@
 #   (E2E_EXTERNAL=0);
 # - the cluster apps domain: E2E_DOMAIN gives the stack its hosts;
 # - ReadWriteMany storage: static hostPath volumes of a class `e2e-shared` (one node, so they are shared);
-# - Prometheus: the operator's ServiceMonitor is left out.
+# - Prometheus: the operator's ServiceMonitor is left out;
+# - the OpenShift service CA: a background loop gives every Service annotated
+#   service.beta.openshift.io/serving-cert-secret-name a self-signed TLS Secret of that name (the UI's nginx
+#   certificate, unifai-ui-tls), as the service CA operator would.
 # Set KEEP_CLUSTER=1 to keep the cluster afterwards (kind delete cluster --name unifai-e2e).
 set -euo pipefail
 
@@ -39,9 +42,29 @@ cleanup() {
       df -h / | tail -n1 | sed 's/^/::notice::disk /' || true
     fi
   fi
+  [ -z "${service_ca_pid:-}" ] || kill "$service_ca_pid" 2>/dev/null || true
   [ -n "${KEEP_CLUSTER:-}" ] || kind delete cluster --name "$cluster" || true
 }
 trap cleanup EXIT
+
+# Stand-in for the OpenShift service CA (see above).
+service_ca() {
+  local work
+  work="$(mktemp -d)"
+  while true; do
+    kubectl get svc -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{" "}{.metadata.annotations.service\.beta\.openshift\.io/serving-cert-secret-name}{"\n"}{end}' 2>/dev/null |
+      while read -r ns svc secret; do
+        [ -n "${secret:-}" ] || continue
+        kubectl -n "$ns" get secret "$secret" > /dev/null 2>&1 && continue
+        openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=$svc.$ns.svc" \
+          -addext "subjectAltName=DNS:$svc.$ns.svc,DNS:$svc.$ns.svc.cluster.local,DNS:$svc" \
+          -keyout "$work/tls.key" -out "$work/tls.crt" 2> /dev/null &&
+          kubectl -n "$ns" create secret tls "$secret" --cert="$work/tls.crt" --key="$work/tls.key" > /dev/null 2>&1 &&
+          echo "service CA stand-in: $ns/$secret for $svc"
+      done
+    sleep 5
+  done
+}
 
 kind create cluster --name "$cluster" --wait 120s
 kubectl apply -f "$here/route-crd.yaml"
@@ -78,8 +101,12 @@ bin/kustomize build config/default | yq 'select(.kind != "ServiceMonitor")' | ku
 git checkout -- config/manager/kustomization.yaml
 kubectl -n unifai-operator-system rollout status deploy/unifai-operator-controller-manager --timeout=300s
 
+service_ca &
+service_ca_pid=$!
+
 # What `make test-e2e` runs, with the kind values (E2E_DOMAIN and E2E_EXTERNAL are read by the tests only).
-E2E_VERSION="$version" E2E_DOMAIN=apps.kind.invalid E2E_EXTERNAL=0 \
+# E2E_KEEP: the namespace stays for the failure report below (the cluster is thrown away anyway).
+E2E_KEEP=1 E2E_VERSION="$version" E2E_DOMAIN=apps.kind.invalid E2E_EXTERNAL=0 \
   E2E_STORAGE_CLASS=standard E2E_SHARED_STORAGE_CLASS=e2e-shared E2E_NODE_SELECTOR= \
   E2E_TIMEOUT="${E2E_TIMEOUT:-40m}" \
   go test -tags e2e -count=1 -timeout "${E2E_GO_TIMEOUT:-100m}" -v ./test/e2e/
