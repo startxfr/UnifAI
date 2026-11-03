@@ -28,6 +28,10 @@ spec:
     - jsonPath: .status.pages
       name: Pages
       type: integer
+    - jsonPath: .status.ingestedClassification
+      name: Classification
+      priority: 1
+      type: string
     - jsonPath: .status.lastSyncTime
       name: LastSync
       type: date
@@ -289,6 +293,12 @@ spec:
               hash:
                 description: Truncated SHA-256 of the resolved spec last pushed to
                   UnifAI.
+                type: string
+              ingestedClassification:
+                description: |-
+                  Classification the RAG service stamped on the chunks of the last run (C1-C4). Empty while no run reported one:
+                  a RAG image older than the classification field never reports it, so a set spec.classification with an empty
+                  value here means the field is ignored.
                 type: string
               lastReconciled:
                 format: date-time
