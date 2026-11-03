@@ -207,6 +207,54 @@ def test_an_unreadable_known_page_is_kept_and_an_unreadable_new_page_skipped():
     assert C1 in summary["pages"] and SINGLE not in summary["pages"] and summary["pages_deleted"] == 0
 
 
+def _many(n):
+    return {f"https://docs.example.com/p{i}": {"content_hash": "h", "title": "t"} for i in range(n)}
+
+
+def test_a_crawl_that_lost_most_pages_fails_instead_of_deleting_them():
+    # A blocked crawl returns the book index and none of its pages: the 40 indexed pages must stay.
+    from core.data_sources.types.web.pipeline_handler import WebCrawlDegraded
+    old = {SEED: {"content_hash": _web_page(SEED).content_hash, "title": "t"}, **_many(39)}
+    with pytest.raises(WebCrawlDegraded, match="nothing was changed"):
+        _handler(old, [(SEED, _web_page(SEED))]).collect(CTX)
+
+
+def test_the_deletion_guard_lets_a_small_removal_and_a_small_source_through():
+    old = {SEED: {"content_hash": _web_page(SEED).content_hash, "title": "t"}, **_many(9)}
+    kept = [(SEED, _web_page(SEED))] + [(u, None) for u in list(old)[1:7]]  # 4 of 10 vanish: under half
+    _chunks, _stale, summary = _run(_handler(old, kept))
+    assert summary["pages_deleted"] == 3
+    tiny = {SEED: {"content_hash": _web_page(SEED).content_hash, "title": "t"}, **_many(3)}
+    _chunks, _stale, summary = _run(_handler(tiny, [(SEED, _web_page(SEED))]))  # 4 pages: not a crawl, no guard
+    assert summary["pages_deleted"] == 3
+
+
+def test_the_guard_can_be_turned_off():
+    old = {SEED: {"content_hash": _web_page(SEED).content_hash, "title": "t"}, **_many(39)}
+    handler = _handler(old, [(SEED, _web_page(SEED))])
+    handler._max_deleted_ratio = 0.0
+    _chunks, _stale, summary = _run(handler)
+    assert summary["pages_deleted"] == 39
+
+
+def test_a_throttled_page_is_retried_after_its_retry_after():
+    site = {SEED: (200, LANDING, {})}
+    answers = [(429, "", {"Retry-After": "7"}), (200, "<p>ok</p>", {})]
+    waits, calls = [], []
+    session = _session(site, calls)
+    def get(url, headers=None, timeout=None, allow_redirects=True):
+        status, body, hdrs = answers.pop(0)
+        return SimpleNamespace(status_code=status, text=body, content=body.encode(), headers=hdrs)
+    session.get.side_effect = get
+    conn = WebConnector(session=session, min_interval=0, sleep=waits.append, host_check=lambda _h: None)
+    assert conn.fetch(SEED).html == "<p>ok</p>" and waits == [7.0]
+
+
+def test_retry_after_falls_back_to_a_backoff_and_is_capped():
+    from infrastructure.sources.web.connector import retry_after
+    assert retry_after(None, 0) == 2.0 and retry_after("x", 2) == 8.0 and retry_after("600", 0) == 30.0
+
+
 def test_point_ids_are_stable_per_page_chunk():
     a, _, _ = _run(_handler({}, [(SEED, _web_page(SEED, "<p>a</p>"))]))
     b, _, _ = _run(_handler({}, [(SEED, _web_page(SEED, "<p>b</p>"))]))

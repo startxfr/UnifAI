@@ -644,6 +644,7 @@ def web_pipeline_handler():
         data_source_service=data_source_service(),
         min_chunk_chars=cfg.web_min_chunk_chars,
         index_version=cfg.index_version(),
+        max_deleted_ratio=cfg.web_max_deleted_ratio,
     )
 
 

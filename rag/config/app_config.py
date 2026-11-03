@@ -90,6 +90,10 @@ class AppConfig(SharedConfig):
 
     # Web chunks with less text than this (whitespace normalised) are not embedded; 0 = keep every chunk.
     web_min_chunk_chars: int = 200
+    # A web sync that would delete more than this share of the pages already indexed (once a source holds at least 5)
+    # FAILS instead: a blocked or throttled crawl (docs.redhat.com answers 403 to a burst) returns the book index and
+    # none of its pages, and the sync would wipe the source. 0 = never refuse.
+    web_max_deleted_ratio: float = 0.5
 
     # Slack Configuration
     default_slack_bot_token: str = ""

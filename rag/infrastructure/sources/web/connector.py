@@ -26,6 +26,17 @@ logger = logging.getLogger(__name__)
 # docs.redhat.com books: /html/<book>/... and /html-single/<book>/...
 REDHAT_DOCS_PATH = re.compile(r"/(html|html-single)/")
 USER_AGENT = "unifai-rag-web/1.0"
+MAX_RETRIES = 3
+MAX_RETRY_WAIT = 30.0
+
+
+def retry_after(value: str | None, attempt: int) -> float:
+    """Seconds to wait before a retry: the server's Retry-After (seconds) when it gives one, else 2, 4, 8 ...; capped."""
+    try:
+        wait = float(value) if value else 2.0 * (2 ** attempt)
+    except ValueError:
+        wait = 2.0 * (2 ** attempt)
+    return min(max(wait, 0.0), MAX_RETRY_WAIT)
 
 
 @dataclass(frozen=True)
@@ -160,6 +171,11 @@ class WebConnector:
         if wait > 0:
             self._sleep(wait)
         resp = self._get(url, headers)
+        for attempt in range(MAX_RETRIES):  # a throttled site (429/503) is retried after its Retry-After, not hammered
+            if resp.status_code not in (429, 503):
+                break
+            self._sleep(retry_after(resp.headers.get("Retry-After"), attempt))
+            resp = self._get(url, headers)
         self._last = time.monotonic()
         if resp.status_code == 304:
             return None
