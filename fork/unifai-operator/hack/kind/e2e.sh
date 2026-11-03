@@ -29,6 +29,15 @@ cleanup() {
     kubectl get events -A --sort-by=.lastTimestamp | tail -n 80 || true
     kubectl -n unifai-operator-system logs deploy/unifai-operator-controller-manager --tail=200 || true
     echo "::endgroup::"
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+      # Annotations (readable without the run's log): the pods that are not up, and why.
+      kubectl get pods -A --no-headers 2>/dev/null | awk '$4 != "Running" && $4 != "Completed" {print "::error::pod " $1 "/" $2 " " $3 " " $4 " restarts=" $5}' || true
+      kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{range .status.containerStatuses[*]}{.state.waiting.reason}{":"}{.state.waiting.message}{" "}{end}{"\n"}{end}' 2>/dev/null |
+        grep -E 'ImagePull|ErrImage|CrashLoop|CreateContainer' | cut -c1-400 | sed 's/^/::error::waiting /' || true
+      kubectl get pvc -A --no-headers 2>/dev/null | awk '$3 != "Bound" {print "::error::pvc " $1 "/" $2 " " $3}' || true
+      kubectl get events -A --field-selector type=Warning --no-headers 2>/dev/null | tail -n 15 | cut -c1-400 | sed 's/^/::warning::event /' || true
+      df -h / | tail -n1 | sed 's/^/::notice::disk /' || true
+    fi
   fi
   [ -n "${KEEP_CLUSTER:-}" ] || kind delete cluster --name "$cluster" || true
 }

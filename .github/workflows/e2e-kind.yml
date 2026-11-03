@@ -69,7 +69,8 @@ jobs:
           set -euo pipefail
           go install sigs.k8s.io/kind@v0.29.0 && kind version
           command -v skopeo > /dev/null || { sudo apt-get update -q && sudo apt-get install -yq skopeo; }
-          for t in skopeo kubectl yq docker; do echo "::notice::$t: $($t --version 2>&1 | head -n1)"; done
+          for t in skopeo yq docker; do echo "::notice::$t: $($t --version 2>&1 | head -n1)"; done
+          echo "::notice::kubectl: $(kubectl version --client 2>&1 | head -n1)"
 
       - name: The images under test
         env:
@@ -90,7 +91,9 @@ jobs:
 
       - name: e2e on kind
         working-directory: fork/unifai-operator
-        run: ./hack/kind/e2e.sh "$OPERATOR" "$APP_VERSION" 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+        run: |
+          set -o pipefail   # the default shell has no pipefail: tee would hide a failure
+          ./hack/kind/e2e.sh "$OPERATOR" "$APP_VERSION" 2>&1 | tee "$RUNNER_TEMP/e2e.log"
 
       - name: Test summary
         if: always()
@@ -98,6 +101,7 @@ jobs:
           grep -E '^\s*--- (PASS|FAIL|SKIP)' "$RUNNER_TEMP/e2e.log" > "$RUNNER_TEMP/summary.txt" || true
           # Annotations are readable without the run's log: one per failed test, with the last lines of the run.
           grep -E '^\s*--- FAIL' "$RUNNER_TEMP/summary.txt" | sed 's/^ *//' | while read -r l; do echo "::error::$l"; done || true
-          tail -n 30 "$RUNNER_TEMP/e2e.log" 2>/dev/null | tr '\n' ' ' | cut -c1-3000 | sed 's/^/::notice::tail: /' || true
+          grep -E 'timed out after|Error Trace|Error:' "$RUNNER_TEMP/e2e.log" | head -n 20 | cut -c1-1000 | sed 's/^/::error::/' || true
+          grep -E 'stack Ready: ' "$RUNNER_TEMP/e2e.log" | tail -n 5 | cut -c1-1000 | sed 's/^/::notice::/' || true
           { echo '```'; cat "$RUNNER_TEMP/summary.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           df -h / || true
