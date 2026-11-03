@@ -3,8 +3,10 @@
 #
 # - push to devel (when an image's code changed): quay.io/zuno/unifai-<component>:devel-<sha> and :devel,
 #   environment `quay-devel` (no approval, branch devel only);
-# - tag vX.Y.Z: quay.io/zuno/unifai-<component>:vX.Y.Z, environment `quay-release` (requires an approval);
-# - manual run: from devel or a v* tag only; the `components` input picks the images (empty = all).
+# - manual run: from devel only; the `components` input picks the images (empty = all).
+#
+# Releases do not build here: release.yml (tag vX.Y.Z, fork/RELEASING.md) tags these signed devel-<sha> digests
+# vX.Y.Z and adds its own release signature.
 #
 # The operator image (quay.io/zuno/unifai-operator, fork/unifai-operator/Dockerfile) is built the same way on devel
 # only, when the operator's code or Makefile changed: devel-<sha> is the image the canary deploys by digest, and the
@@ -13,9 +15,9 @@
 # code changed.
 #
 # Each image is signed KEYLESS by this workflow's GitHub OIDC identity and carries two attestations, a SLSA
-# provenance and an SPDX SBOM. The identity zuno accepts is
-#   https://github.com/startxfr/UnifAI/.github/workflows/publish-images.yml@refs/tags/v...   (releases)
-#   https://github.com/startxfr/UnifAI/.github/workflows/publish-images.yml@refs/heads/devel (development builds)
+# provenance and an SPDX SBOM. The identity zuno accepts for development builds is
+#   https://github.com/startxfr/UnifAI/.github/workflows/publish-images.yml@refs/heads/devel
+# (releases: release.yml@refs/tags/vX.Y.Z)
 # (zuno-demo platform/supply-chain/image-identities.yaml): renaming this file or its triggers changes that
 # identity and needs the zuno side to change with it.
 #
@@ -27,7 +29,6 @@ name: publish-images
 on:
   push:
     branches: [devel]
-    tags: ['v*']
     paths:
       - rag/**
       - multi-agent/**
@@ -66,7 +67,7 @@ jobs:
   # Which images this run builds: the application images when their code changed, the operator image (devel only)
   # when its code changed; everything on a manual run or when the previous commit is unknown.
   changes:
-    if: github.ref == 'refs/heads/devel' || startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/devel'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
@@ -128,7 +129,7 @@ jobs:
     name: ${{ matrix.component }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'quay-release' || 'quay-devel' }}
+    environment: quay-devel
     permissions:
       contents: read
       id-token: write   # keyless signing with this run's OIDC token
@@ -154,11 +155,7 @@ jobs:
         run: |
           set -euo pipefail
           image="$REGISTRY/$IMAGE_PREFIX-$COMPONENT"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            tags="$GITHUB_REF_NAME"
-          else
-            tags="devel-$(git rev-parse --short=9 HEAD) devel"
-          fi
+          tags="devel-$(git rev-parse --short=9 HEAD) devel"
           echo "image=$image" >> "$GITHUB_OUTPUT"
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
 

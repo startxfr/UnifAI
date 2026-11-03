@@ -26,7 +26,8 @@ verifies all of it before deploying
 (zuno-demo ADR-0586, WP-176).
 
 - A push to `devel` that touches an image's code publishes `devel-<sha>` and `devel` (environment `quay-devel`, no approval,
-  restricted to the `devel` branch). A `vX.Y.Z` tag publishes `vX.Y.Z` (environment `quay-release`, with its approval).
+  restricted to the `devel` branch). Releases are not built: `release.yml` (tag `vX.Y.Z` cut by `cut-release.yml`, see
+  [RELEASING.md](RELEASING.md)) tags those signed digests `vX.Y.Z` and signs them with its own identity.
 - Only what changed is rebuilt: the five application images when their code changed, the operator image when its
   code or Makefile changed, the operator image alone when only `fork/ci/` (signing scripts) changed, everything when
   `publish-images.yml` itself changed. A manual run takes a `components` input (e.g. `rag,operator`; empty = all).

@@ -1,0 +1,109 @@
+# Fork-only (fork/fork-only-paths): cuts a release of the fork (fork/RELEASING.md). It does not publish anything: it
+# resolves the six images of the devel head (fork/ci/release_images.py: the signed devel-<sha> builds of the same code,
+# operator at the Makefile VERSION), fast-forwards `stable` to that commit and pushes an annotated tag vX.Y.Z whose
+# message carries the kind and those digests. The tag starts release.yml, which publishes them.
+#
+# - kind `manual`: a release of the Makefile VERSION, published after the `quay-release` approval;
+# - kind `weekly`: the same, published without approval (called by weekly-release.yml);
+# - kind `rc`: a rehearsal vVERSION-rc.N into the quay.io/zuno/test-unifai-* repositories, `stable` untouched.
+#
+# The tag is pushed with the release bot's GitHub App token: a tag pushed with GITHUB_TOKEN would start no workflow,
+# and the `release-tags` ruleset lets only the bot create v* tags, so release.yml can trust the kind in the message.
+name: cut-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "manual (approval), weekly (no approval) or rc (rehearsal into the test repositories)"
+        type: choice
+        options: [manual, weekly, rc]
+        default: manual
+  workflow_call:
+    inputs:
+      kind:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    if: github.ref == 'refs/heads/devel'
+    runs-on: ubuntu-latest
+    environment: release-bot
+    timeout-minutes: 20
+    steps:
+      - name: Release bot token
+        id: bot
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: devel
+          fetch-depth: 0
+          token: ${{ steps.bot.outputs.token }}
+
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          cosign-release: v2.4.1
+
+      - name: The version of this release
+        env:
+          KIND: ${{ inputs.kind }}
+        run: |
+          set -euo pipefail
+          case "$KIND" in manual|weekly|rc) ;; *) echo "::error::unknown kind '$KIND'"; exit 1 ;; esac
+          base="$(sed -n 's/^VERSION ?= //p' fork/unifai-operator/Makefile)"
+          [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Makefile VERSION '$base' is not X.Y.Z"; exit 1; }
+          git fetch --tags --force origin
+          if [ "$KIND" = rc ]; then
+            n=$(git tag -l "v$base-rc.*" | wc -l)
+            version="$base-rc.$((n + 1))"
+          else
+            version="$base"
+            if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+              echo "::error::v$version already exists: the post-release commit should have moved VERSION on"
+              exit 1
+            fi
+            last="$(git tag --merged HEAD --sort=-v:refname -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+            # The post-release commit of release.yml ("release(fork): vX.Y.Z published…") is not a change.
+            if [ -n "$last" ] && [ -z "$(git log --format=%s "$last..HEAD" | grep -v '^release(fork): v' | head -n1)" ]; then
+              echo "nothing changed on devel since $last: no release" >> "$GITHUB_STEP_SUMMARY"
+              echo "SKIP=1" >> "$GITHUB_ENV"
+            fi
+          fi
+          echo "BASE=$base" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Resolve the six signed images of the devel head
+        if: env.SKIP != '1'
+        run: python3 fork/ci/release_images.py --version "$BASE" --out "$RUNNER_TEMP/images.json"
+
+      - name: Fast-forward stable and push the tag
+        if: env.SKIP != '1'
+        env:
+          KIND: ${{ inputs.kind }}
+        run: |
+          set -euo pipefail
+          git config user.name "unifai-release-bot[bot]"
+          git config user.email "unifai-release-bot[bot]@users.noreply.github.com"
+          { printf 'kind: %s\n\n' "$KIND"; cat "$RUNNER_TEMP/images.json"; } > "$RUNNER_TEMP/tag-message"
+          git tag -a "v$VERSION" -F "$RUNNER_TEMP/tag-message" HEAD
+          if [ "$KIND" != rc ]; then
+            # A plain push: refused unless it is a fast-forward of stable.
+            git push origin HEAD:refs/heads/stable
+          fi
+          git push origin "refs/tags/v$VERSION"
+          {
+            echo "### v$VERSION ($KIND) cut at $(git rev-parse --short=9 HEAD)"
+            echo '```json'; cat "$RUNNER_TEMP/images.json"; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

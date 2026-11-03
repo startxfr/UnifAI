@@ -70,6 +70,33 @@ feature/* ──merge──► devel ──ff at each release──► stable   
 - **zuno-demo**: consumes releases from `release.json`; pins and rolls when it decides (no CD from the fork). Its
   feature requests go to [ROADMAP.md](ROADMAP.md) with the target line.
 
+## Cutting a release (phase 1)
+
+`cut-release.yml` (Actions → cut-release → Run workflow, on `devel`) takes a `kind`:
+
+- `rc`: rehearsal `vVERSION-rc.N` into `quay.io/zuno/test-unifai-*` (environment `quay-test`), GitHub pre-release, no
+  commit back, `stable` untouched;
+- `manual`: `vVERSION`, published after the `quay-release` approval;
+- `weekly`: `vVERSION` without approval (environment `quay-weekly`), skipped when `devel` has no change since the last
+  release.
+
+It resolves the six signed images of the `devel` head ([ci/release_images.py](ci/release_images.py), also runnable
+locally: `python3 fork/ci/release_images.py --version 0.1.52`), fast-forwards `stable` and pushes the annotated tag with
+the release bot. The tag starts `release.yml`:
+
+1. it checks the tag (bot, kind, version = Makefile `VERSION`, commit on `stable`) and re-resolves the images;
+2. it tags the six digests `vX.Y.Z` and signs them with `release.yml@refs/tags/vX.Y.Z`;
+3. it builds and signs the bundle and the catalog (`alpha` channel only);
+4. it publishes the GitHub release with notes ([ci/release_notes.py](ci/release_notes.py)) and `release.json`;
+5. the bot commits the release files and the next patch `VERSION` to `devel` (`release(fork): vX.Y.Z published…`).
+
+Requirements before the first run: the settings of the GitHub bot, the environments `release-bot`, `quay-weekly`,
+`quay-release`, `quay-test`, the rulesets, `devel` as default branch, the quay robot and test repositories.
+
+**Open point:** demo333 subscribes to the `stable` channel today, not `alpha`. A release on `alpha` only reaches it
+once zuno-demo moves its Subscription to `alpha` (or pins the catalog digest); until then the transition flow
+(`operator-vX.Y.Z`, `make release-files`, alpha and stable) stays the one that reaches demo333.
+
 ## Status of the automation
 
 The target workflows (`release.yml`, `weekly-release.yml`, `upstream-sync.yml`, `promote.yml`) are being built in
@@ -79,7 +106,7 @@ phases; until they exist, releases follow the operator flow in
 | Phase | Content | Target |
 |---|---|---|
 | 0 | this document, calendar, guard hook for `stable`/`release-*`, `stable` branch, GitHub protections and environments | Nov 2026 |
-| 1 | `release.yml` (dispatch): six digests promoted, bundle/catalog in CI (`alpha` only), notes, `release.json`, bot commit; new signing identity agreed with zuno-demo before the first unified release | Nov 2026 |
+| 1 (coded, inactive until the GitHub settings exist) | `cut-release.yml` + `release.yml`: six digests promoted, bundle/catalog in CI (`alpha` only), notes, `release.json`, bot commit; new signing identity agreed with zuno-demo before the first unified release | Nov 2026 |
 | 2 | e2e on kind in CI (fake LLM), blocking the release | Nov–Dec 2026 |
 | 3 | `upstream-sync.yml` (Thursday) and `weekly-release.yml` (Friday, skips when nothing changed or during a freeze) | Dec 2026 |
 | 4 | `promote.yml` and hotfix releases on `release-0.X`; first promotion of the 0.1 line | 2026-12-15 |

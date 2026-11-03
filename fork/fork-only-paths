@@ -8,3 +8,5 @@ fork/
 .github/workflows/unifai-operator-release.yml
 .github/workflows/publish-images.yml
 .github/workflows/fork-tests.yml
+.github/workflows/cut-release.yml
+.github/workflows/release.yml
