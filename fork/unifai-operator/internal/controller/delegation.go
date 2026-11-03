@@ -124,7 +124,7 @@ func delegatingTask(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, c
 	return obj, delegatingBlueprint(cond, orch, stages, at, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, targets))
 }
 
-// orchestratorConfig coordinates a delegating task: its own agent first, a target only when asked for.
+// orchestratorConfig coordinates a delegating task: its own agent does the task's work, and a target is called whenever the request names it or asks for what it provides (never answered in its place).
 func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, llmName, workUID string, targets []delegationTarget) map[string]any {
 	rounds := int(cr.Spec.Delegation.MaxRounds)
 	if rounds == 0 {
@@ -138,8 +138,9 @@ func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Tas
 	fmt.Fprintf(&msg, "You coordinate the answer of %s for the task %q.\n", agentTitle(b), title)
 	msg.WriteString("Delegate with the delegate_task tool. Its dst_uid is the node uid given below in backticks, exactly: never an agent name, a title or a task key. ")
 	msg.WriteString("Every piece of work you delegate is a REMOTE work item whose assigned_uid is that same uid.\n")
-	fmt.Fprintf(&msg, "Delegate the user's request to the agent `%s` first: it has this task's documents, tools and instructions.\n", workUID)
-	msg.WriteString("Delegate to another agent below only when the user asks for what it provides, at most once per request:\n")
+	fmt.Fprintf(&msg, "Your own agent is `%s`: it has this task's documents, tools and instructions. Delegate the work of the task to it.\n", workUID)
+	msg.WriteString("The agents below are other agents, the way to get what they know. When the user's request names one of them, or asks for an answer, an opinion or a check from what one of them provides, ")
+	msg.WriteString("delegate that part to it with delegate_task and put its answer in your reply: do not answer that part yourself. At most once per agent and per request:\n")
 	for _, tg := range targets {
 		fmt.Fprintf(&msg, "- `%s` %s (%s): %s\n", tg.nodeUID(), tg.Title, tg.key(), strings.TrimSpace(tg.Description))
 	}

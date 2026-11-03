@@ -693,6 +693,8 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(ocfg["max_rounds"]).To(BeNumerically("==", 5))
 		Expect(ocfg["system_message"]).To(ContainSubstring("arkos/answer-technical-question"))
 		Expect(ocfg["system_message"]).To(ContainSubstring("`a2a-arkos`"))
+		Expect(ocfg["system_message"]).To(ContainSubstring("When the user's request names one of them"), "a named target is delegated to, not answered in its place")
+		Expect(ocfg["system_message"]).NotTo(ContainSubstring("first:"), "the own agent is not forced before a named target")
 
 		var wf unifaiv1.UnifaiWorkflow
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos"}, &wf)).To(Succeed())
