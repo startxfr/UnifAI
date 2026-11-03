@@ -47,7 +47,7 @@ func TestBundleMayDelegate(t *testing.T) {
 }
 
 func TestA2ABaseURLs(t *testing.T) {
-	bp := delegatingBlueprint("c", "orch", []string{"agent"}, 0, a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "tekos", "answer",
+	bp := delegatingBlueprint("c", "orch", []string{"agent"}, 0, a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "tekos", "answer", 0,
 		[]delegationTarget{{Agent: "arkos", Task: "draft"}, {Agent: "comage", Task: "check"}}))
 	got := a2aBaseURLs(normalise(t, bp))
 	if len(got) != 2 || got[0] != "http://gw:8080/agents/arkos" || got[1] != "http://gw:8080/agents/comage" {
@@ -106,7 +106,7 @@ const (
 )
 
 func TestDelegatingBlueprintShapes(t *testing.T) {
-	a2a := a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "arkos", "draft", []delegationTarget{{Agent: "tekos", Task: "answer"}})
+	a2a := a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "arkos", "draft", 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})
 	stepsOf := func(bp map[string]any) map[string]map[string]any {
 		out := map[string]map[string]any{}
 		for _, s := range normalise(t, bp["plan"]).([]any) {
@@ -180,5 +180,18 @@ func TestOrchestratorPromptNamesTheNodeUIDs(t *testing.T) {
 	}
 	if targets[0].nodeUID() != tekosNode {
 		t.Errorf("node uid %q", targets[0].nodeUID())
+	}
+}
+
+func TestA2ANodeCarriesTheGenerationCeiling(t *testing.T) {
+	headers := func(maxTokens int) map[string]any {
+		nodes := a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "arkos", "draft", maxTokens, []delegationTarget{{Agent: "tekos", Task: "answer"}})
+		return nodes[0]["config"].(map[string]any)["additional_headers"].(map[string]any)
+	}
+	if h := headers(2048); h[headerMaxTokens] != "2048" {
+		t.Errorf("a declared ceiling follows the hop: %v", h)
+	}
+	if h := headers(0); h[headerMaxTokens] != nil {
+		t.Errorf("no declared ceiling, no header (existing blueprints keep their hash): %v", h)
 	}
 }

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -121,7 +122,7 @@ func delegatingTask(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, c
 	obj := &unifaiv1.UnifaiAgent{ObjectMeta: childMeta(cr, orch), Spec: unifaiv1.UnifaiAgentSpec{
 		CommonSpec: common, Type: "orchestrator_node",
 		ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(orchestratorConfig(cr, b, t, taskName, stageUID(at), targets))}}}
-	return obj, delegatingBlueprint(cond, orch, stages, at, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, targets))
+	return obj, delegatingBlueprint(cond, orch, stages, at, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, generationCeiling(b.Tokens(t), cr.Spec.LLM.MaxTokens), targets))
 }
 
 // orchestratorConfig coordinates a delegating task: its own agent does the task's work, and a target is called whenever the request names it or asks for what it provides (never answered in its place).
@@ -160,21 +161,25 @@ func agentTitle(b *okf.Bundle) string {
 // a2aNodes are the inline blueprint nodes of the targets. They carry the user's own token and the delegation chain
 // (<caller agent>:<task>, depth 1) that the gateway verifies; X-Zuno-Task names the target task for when the gateway
 // reads it (it is the primary task today).
-func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, targets []delegationTarget) []map[string]any {
+func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, maxTokens int, targets []delegationTarget) []map[string]any {
 	out := make([]map[string]any, 0, len(targets))
 	for _, tg := range targets {
+		headers := map[string]any{
+			headerRunID:           "{session_id}",
+			headerDelegatedBy:     agent + ":" + task,
+			headerDelegationDepth: "1",
+			headerTargetTask:      tg.Task,
+		}
+		if maxTokens > 0 { // the caller's generation ceiling follows the hop (R-519); the gateway forwards it
+			headers[headerMaxTokens] = strconv.Itoa(maxTokens)
+		}
 		out = append(out, map[string]any{
 			"rid": tg.nodeUID(), "name": tg.Title, "type": a2aNodeType,
 			"config": map[string]any{
-				"type":        a2aNodeType,
-				"base_url":    strings.TrimRight(d.GatewayURL, "/") + "/agents/" + tg.Agent,
-				"auth_method": "forward_user_token",
-				"additional_headers": map[string]any{
-					headerRunID:           "{session_id}",
-					headerDelegatedBy:     agent + ":" + task,
-					headerDelegationDepth: "1",
-					headerTargetTask:      tg.Task,
-				},
+				"type":               a2aNodeType,
+				"base_url":           strings.TrimRight(d.GatewayURL, "/") + "/agents/" + tg.Agent,
+				"auth_method":        "forward_user_token",
+				"additional_headers": headers,
 			},
 		})
 	}

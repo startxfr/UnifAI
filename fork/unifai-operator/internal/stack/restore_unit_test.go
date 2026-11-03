@@ -122,3 +122,9 @@ func TestConditionHelpers(t *testing.T) {
 		t.Error("job name prefix")
 	}
 }
+
+func TestUpstreamSourceNamesTheEmbeddedChartsCommit(t *testing.T) {
+	if UpstreamSource() == "" {
+		t.Error("assets/SOURCE is embedded and not empty: `make charts` records the upstream commit there")
+	}
+}
