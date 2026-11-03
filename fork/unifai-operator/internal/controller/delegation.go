@@ -210,32 +210,53 @@ func delegatingBlueprint(cond, orchestrator string, stages []string, at int, a2a
 	if at == 0 {
 		first = "orchestrate"
 	}
+	exit := "$rid:condition/" + cond
 	plan := []any{map[string]any{"uid": "ask", "node": "user_question", "branches": map[string]any{"agent": first},
-		"exit_condition": "$rid:condition/" + cond}}
-	var prev []string
+		"exit_condition": exit}}
+	// The wiring the engine's own validators ask of an orchestrator (graph/validation/orchestrator): it delegates by
+	// BRANCH to its workers and to the node that follows it, and each worker returns to it by `after`. A worker
+	// replies directly only to a successor in the plan, so without the return edge the reply of an A2A worker reached
+	// nobody and the turn ended with an empty answer (0.1.50, R-525); a pure `after` loop is a dangerous cycle for the
+	// validator, hence the branches. The delegation policy ignores a path to the output that comes back through the
+	// orchestrator, so the workers stay delegable (0.1.49: "Node a2a-tekos is not adjacent").
+	var prev []string // steps the next step waits for (`after`)
 	for i, stage := range stages {
 		uid := stageUID(i)
-		if i == at {
-			orch := map[string]any{"uid": "orchestrate", "node": "$rid:agent/" + orchestrator}
+		if i != at {
+			step := map[string]any{"uid": uid, "node": "$rid:agent/" + stage}
 			if len(prev) > 0 {
-				orch["after"] = afterOf(prev)
+				step["after"] = afterOf(prev)
 			}
-			plan = append(plan, orch, map[string]any{"uid": uid, "node": "$rid:agent/" + stage, "after": "orchestrate"})
-			for _, n := range a2a {
-				a := n["rid"].(string)
-				plan = append(plan, map[string]any{"uid": a, "node": a, "after": "orchestrate"})
-			}
-			prev = []string{"orchestrate"}
+			plan = append(plan, step)
+			prev = []string{uid}
 			continue
 		}
-		step := map[string]any{"uid": uid, "node": "$rid:agent/" + stage}
-		if len(prev) > 0 {
-			step["after"] = afterOf(prev)
+		workers := []string{uid}
+		for _, n := range a2a {
+			workers = append(workers, n["rid"].(string))
 		}
-		plan = append(plan, step)
-		prev = []string{uid}
+		branches := map[string]any{}
+		for _, w := range workers {
+			branches[w] = w
+		}
+		if i+1 < len(stages) {
+			branches[stageUID(i+1)] = stageUID(i + 1)
+		} else {
+			branches["finish"] = "finish"
+		}
+		plan = append(plan, map[string]any{"uid": "orchestrate", "node": "$rid:agent/" + orchestrator,
+			"after": afterOf(append(append([]string{}, prev...), workers...)), "exit_condition": exit, "branches": branches})
+		plan = append(plan, map[string]any{"uid": uid, "node": "$rid:agent/" + stage})
+		for _, a := range workers[1:] {
+			plan = append(plan, map[string]any{"uid": a, "node": a})
+		}
+		prev = nil // the stage after the orchestrator is reached by its branch
 	}
-	plan = append(plan, map[string]any{"uid": "finish", "node": "final_answer", "after": afterOf(prev)})
+	finish := map[string]any{"uid": "finish", "node": "final_answer"}
+	if len(prev) > 0 { // after the last stage; nil when the orchestrator itself branches to the answer
+		finish["after"] = afterOf(prev)
+	}
+	plan = append(plan, finish)
 	return map[string]any{
 		"conditions": []any{map[string]any{"rid": "$ref:condition/" + cond}},
 		"nodes":      nodes,

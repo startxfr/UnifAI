@@ -633,9 +633,10 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(bp).To(ContainSubstring(`"base_url":"http://a2a-gateway.zuno-ai-run.svc:8080/agents/tekos"`))
 		Expect(bp).To(ContainSubstring(`"X-Zuno-Delegated-By":"arkos:answer-technical-question"`))
 		Expect(bp).To(ContainSubstring(`"X-Zuno-Task":"answer-technical-question"`))
-		// plan first, then the orchestrator, and the draft stage and the A2A node are its workers.
-		Expect(bp).To(MatchRegexp(`"after":"agent","node":"\$rid:agent/arkos-answer-technical-question-orchestrator","uid":"orchestrate"`))
-		Expect(bp).To(MatchRegexp(`"after":"orchestrate","node":"\$rid:agent/arkos-answer-technical-question-draft","uid":"agent-2"`))
+		// plan first, then the orchestrator, which waits for the plan and for its workers (the draft stage and the A2A
+		// node, their return path) and delegates to them by branch; the draft stage and the A2A node have no `after`.
+		Expect(bp).To(MatchRegexp(`"after":\["agent","agent-2","a2a-tekos"\],"branches":\{[^}]*"agent-2":"agent-2"[^}]*\},"exit_condition":[^}]*"node":"\$rid:agent/arkos-answer-technical-question-orchestrator","uid":"orchestrate"`))
+		Expect(bp).To(MatchRegexp(`"node":"\$rid:agent/arkos-answer-technical-question-draft","uid":"agent-2"`))
 	})
 
 	It("refuses a delegation target outside spec.ceilings.delegationTargets", func() {

@@ -116,47 +116,81 @@ func TestDelegatingBlueprintShapes(t *testing.T) {
 		return out
 	}
 
-	// retrieve_reason_respond: the single stage is coordinated by the orchestrator.
+	// retrieve_reason_respond: the single stage is coordinated by the orchestrator; it branches to its workers and to
+	// the answer, and the workers return to it.
 	one := stepsOf(delegatingBlueprint("c", "orch", []string{"t"}, 0, a2a))
-	if one["ask"]["branches"].(map[string]any)[stepAgent] != stepOrchestrate || one[stepOrchestrate]["after"] != nil ||
-		one[stepAgent]["after"] != stepOrchestrate || one[tekosNode]["after"] != stepOrchestrate {
-		t.Errorf("single stage plan: %v", one)
+	if one["ask"]["branches"].(map[string]any)[stepAgent] != stepOrchestrate {
+		t.Errorf("the question must lead to the orchestrator: %v", one["ask"])
 	}
-	if one["finish"]["after"] != stepOrchestrate {
-		t.Errorf("single stage finish follows the orchestrator, got %v", one["finish"]["after"])
+	assertOrchestratorWiring(t, one, nil, []string{stepAgent, tekosNode}, "finish")
+	if one["finish"]["after"] != nil {
+		t.Errorf("the answer is reached by the orchestrator's branch, got after %v", one["finish"]["after"])
 	}
-	assertWorkersAreLeaves(t, one, stepAgent, tekosNode)
 
 	// plan_draft_write: plan -> orchestrator -> (draft | A2A) -> write -> answer.
 	three := stepsOf(delegatingBlueprint("c", "orch", []string{"t-plan", "t-draft", "t-write"}, 1, a2a))
 	if three["ask"]["branches"].(map[string]any)[stepAgent] != stepAgent || three[stepAgent]["after"] != nil {
 		t.Errorf("the question must lead to the plan stage: %v", three["ask"])
 	}
-	if three[stepOrchestrate]["after"] != stepAgent || three["agent-2"]["after"] != stepOrchestrate || three[tekosNode]["after"] != stepOrchestrate {
-		t.Errorf("orchestrator and workers: %v", three)
+	assertOrchestratorWiring(t, three, []string{stepAgent}, []string{"agent-2", tekosNode}, "agent-3")
+	if three["agent-3"]["after"] != nil {
+		t.Errorf("the write stage is reached by the orchestrator's branch, got after %v", three["agent-3"]["after"])
 	}
-	if three["agent-3"]["after"] != stepOrchestrate {
-		t.Errorf("the write stage follows the orchestrator, got %v", three["agent-3"]["after"])
-	}
-	assertWorkersAreLeaves(t, three, "agent-2", tekosNode)
 	if three["finish"]["after"] != "agent-3" {
 		t.Errorf("finish after %v", three["finish"]["after"])
 	}
 }
 
-// assertWorkersAreLeaves: the orchestrator refuses to delegate to a node that has a path to a node writing the output
-// (final_answer), so no step may wait for a worker (0.1.49: "Node a2a-tekos is not adjacent").
-func assertWorkersAreLeaves(t *testing.T, steps map[string]map[string]any, workers ...string) {
+// assertOrchestratorWiring checks the wiring the engine's validators expect of an orchestrator (R-525): it waits for the
+// stage before it and for its workers (their return path: a worker replies only to a successor, 0.1.50 lost the A2A
+// answer), delegates by BRANCH to every worker and to the next node, and no other step waits for a worker (a path from
+// a worker to the output that avoids the orchestrator makes it undelegable, 0.1.49: "Node a2a-tekos is not adjacent").
+func assertOrchestratorWiring(t *testing.T, steps map[string]map[string]any, before, workers []string, next string) {
 	t.Helper()
-	for uid, step := range steps {
-		var after []any
-		switch a := step["after"].(type) {
+	afterOf := func(uid string) []any {
+		switch a := steps[uid]["after"].(type) {
 		case string:
-			after = []any{a}
+			return []any{a}
 		case []any:
-			after = a
+			return a
 		}
-		for _, a := range after {
+		return nil
+	}
+	want := map[any]bool{}
+	for _, u := range append(append([]string{}, before...), workers...) {
+		want[u] = true
+	}
+	got := afterOf(stepOrchestrate)
+	if len(got) != len(want) {
+		t.Errorf("the orchestrator waits for %v, want the previous stages %v and the workers %v", got, before, workers)
+	}
+	for _, a := range got {
+		if !want[a] {
+			t.Errorf("the orchestrator waits for the unexpected step %v", a)
+		}
+	}
+	branches, _ := steps[stepOrchestrate]["branches"].(map[string]any)
+	for _, target := range append(append([]string{}, workers...), next) {
+		if branches[target] != target {
+			t.Errorf("the orchestrator does not branch to %s: %v", target, branches)
+		}
+	}
+	if len(branches) != len(workers)+1 {
+		t.Errorf("unexpected orchestrator branches: %v", branches)
+	}
+	if steps[stepOrchestrate]["exit_condition"] == nil {
+		t.Error("the orchestrator needs its router_direct exit_condition")
+	}
+	for _, w := range workers {
+		if steps[w]["after"] != nil {
+			t.Errorf("worker %s is reached by the orchestrator's branch, got after %v", w, steps[w]["after"])
+		}
+	}
+	for uid := range steps {
+		if uid == stepOrchestrate {
+			continue
+		}
+		for _, a := range afterOf(uid) {
 			for _, w := range workers {
 				if a == w {
 					t.Errorf("step %s waits for the worker %s, which would make it undelegable", uid, w)
