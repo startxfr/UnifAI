@@ -132,6 +132,10 @@ jobs:
       - name: Stable channel and next line on devel, release branch at the promoted tag
         run: |
           set -euo pipefail
+          # A failure is readable without the run's log (which needs a GitHub login): the failed command and the last
+          # lines of the step's output become annotations.
+          exec > >(tee "$RUNNER_TEMP/step.log") 2>&1
+          trap 'rc=$?; echo "::error::line $LINENO, exit $rc: $BASH_COMMAND"; tail -n 15 "$RUNNER_TEMP/step.log" | cut -c1-900 | sed "s/^/::error::/"' ERR
           git config user.name "unifai-release-bot[bot]"
           git config user.email "unifai-release-bot[bot]@users.noreply.github.com"
           git fetch --tags --force origin
