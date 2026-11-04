@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -255,7 +256,7 @@ func (b *Base) run(ctx context.Context, obj unifaiv1.Object, h Handlers) (reconc
 			if err := h.Delete(ctx); err != nil && !b.unifaiGone(ctx, obj.GetNamespace(), err) {
 				logger.Info("delete failed, retrying", "error", err.Error())
 				orig := obj.DeepCopyObject().(client.Object)
-				st.Phase, st.Message = PhaseDeleting, unifai.Truncate("cannot delete (still referenced?): "+err.Error(), 500)
+				st.Phase, st.Message = PhaseDeleting, unifai.Truncate(deleteFailure(obj, err), 500)
 				_ = b.Status().Patch(ctx, obj, client.MergeFrom(orig))
 				recordDeleteFailed(b.Recorder, obj, prev, st.Message)
 				return reconcile.Result{RequeueAfter: 3 * retry}, nil
@@ -361,6 +362,16 @@ func (b *Base) unifaiGone(ctx context.Context, ns string, err error) bool {
 	}
 	var st unifaiv1.UnifaiStack
 	return apierrors.IsNotFound(b.Get(ctx, types.NamespacedName{Namespace: ns, Name: unifaiv1.StackName}, &st))
+}
+
+// deleteFailure explains why an object cannot be deleted. The operator deletes as spec.owner, so a 403 means the
+// owner is no longer allowed in UnifAI (it left the admins or the team) rather than that the object is referenced.
+func deleteFailure(obj unifaiv1.Object, err error) string {
+	if unifai.IsStatus(err, http.StatusForbidden) {
+		return "cannot delete: UnifAI refuses spec.owner \"" + obj.GetCommon().Owner +
+			"\" (it must still be an UnifAI admin or a member of the team); set spec.owner to an allowed user, then delete: " + err.Error()
+	}
+	return "cannot delete (still referenced?): " + err.Error()
 }
 
 // statusChanged reports whether the status must be written: anything but lastReconciled changed, or
