@@ -43,13 +43,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: fork/unifai-operator/go.mod
+          cache-dependency-path: fork/unifai-operator/go.sum
+
+      # A transient proxy.golang.org error failed the v0.1.56 release run: fetch the modules up front, with retries,
+      # so the e2e step itself does no network module download.
+      - name: Go modules
+        working-directory: fork/unifai-operator
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4; do
+            go mod download && exit 0
+            echo "::warning::go mod download failed (attempt $i), retrying"
+            sleep $((i * 20))
+          done
+          exit 1
 
       - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
         with:
@@ -67,7 +81,8 @@ jobs:
       - name: kind and the registry tools
         run: |
           set -euo pipefail
-          go install sigs.k8s.io/kind@v0.29.0 && kind version
+          for i in 1 2 3; do go install sigs.k8s.io/kind@v0.29.0 && break; [ "$i" = 3 ] && exit 1; sleep 20; done
+          kind version
           command -v skopeo > /dev/null || { sudo apt-get update -q && sudo apt-get install -yq skopeo; }
           for t in skopeo yq docker; do echo "::notice::$t: $($t --version 2>&1 | head -n1)"; done
           echo "::notice::kubectl: $(kubectl version --client 2>&1 | head -n1)"
