@@ -262,3 +262,43 @@ def test_registration_keeps_the_ingested_classification_and_refuses_an_unknown_o
     ok, problem = ConfluenceRegistration(MagicMock(), "u", {"baseUrl": "https://c", "spaceKey": "SX",
                                                            "classification": "high"}).run_validator()
     assert not ok and problem["issue_type"] == "InvalidValue"
+
+
+def _pages(n):
+    return {str(i): {"version": 1, "title": "t"} for i in range(n)}
+
+
+def test_a_space_listed_empty_does_not_wipe_the_source():
+    # An unreachable or permission-trimmed space comes back with no page: the 40 indexed pages must stay.
+    from core.data_sources.deletion_guard import SyncDegraded
+    with pytest.raises(SyncDegraded, match="nothing was changed"):
+        _handler(_pages(40), []).collect(CTX)
+
+
+def test_a_small_removal_and_a_small_space_go_through():
+    _chunks, _stale, summary = _run(_handler(_pages(10), [_page(str(i), 1) for i in range(7)]))
+    assert summary["pages_deleted"] == 3
+    _chunks, _stale, summary = _run(_handler(_pages(4), []))  # four pages: not a space worth guarding
+    assert summary["pages_deleted"] == 4
+
+
+def test_the_confluence_guard_can_be_turned_off():
+    handler = _handler(_pages(40), [])
+    handler._max_deleted_ratio = 0.0
+    _chunks, _stale, summary = _run(handler)
+    assert summary["pages_deleted"] == 40
+
+
+def _store(total, doomed):
+    store = MagicMock()
+    store.count.side_effect = lambda filters, exact=False: doomed if "metadata.page_id" in filters else total
+    return store
+
+
+def test_the_store_guard_refuses_what_the_manifest_guard_cannot_see():
+    from core.data_sources.deletion_guard import SyncDegraded
+    handler = _handler(_pages(3), [])
+    handler.collect(CTX)  # three pages known: under the manifest guard
+    with pytest.raises(SyncDegraded, match="nothing was changed"):
+        handler.guard_stale(CTX, _store(400, 380))
+    handler.guard_stale(CTX, _store(400, 40))

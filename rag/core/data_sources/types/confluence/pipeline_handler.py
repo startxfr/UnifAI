@@ -24,18 +24,25 @@ from infrastructure.sources.confluence.connector import (
 )
 from infrastructure.sources.confluence.html_text import html_to_text
 
+from core.data_sources.deletion_guard import refuse_vanished_chunks, refuse_vanished_pages
+
 logger = logging.getLogger("rag_pipeline")
 
 POINT_NAMESPACE = uuid.UUID("0b1d6f7e-3a5c-4d2b-9f4e-7c8a2e1d5b60")
 
 
+_CAUSE = "the space was probably unreachable, empty or only partly listed"
+
+
 class ConfluencePipelineHandler(SourcePipelinePort):
 
     def __init__(self, connector_factory: Callable[[str], ConfluenceConnector], chunker: Any,
-                 embedder: EmbeddingGenerator, data_source_service: DataSourceService, index_version: int = 1) -> None:
+                 embedder: EmbeddingGenerator, data_source_service: DataSourceService, index_version: int = 1,
+                 max_deleted_ratio: float = 0.5) -> None:
         self._connector_factory = connector_factory
         # A source synced at an older index version re-embeds every page (sparse encoder migration).
         self._index_version = index_version
+        self._max_deleted_ratio = max(0.0, max_deleted_ratio)
         self._chunker = chunker
         self._embedder = embedder
         self._sources = data_source_service
@@ -67,6 +74,8 @@ class ConfluencePipelineHandler(SourcePipelinePort):
         self._changed = [p for p in live if reingest or (previous.get(p.page_id) or {}).get("version") != p.version]
         self._deleted = sorted(set(previous) - set(self._manifest))
         self._unchanged = len(live) - len(self._changed)
+        refuse_vanished_pages(f"Confluence {settings['space_key']}", len(previous), len(live), len(self._deleted),
+                              self._max_deleted_ratio, _CAUSE)
         logger.info(f"Confluence {settings['space_key']}: {len(live)} pages, {len(self._changed)} new or changed, "
                     f"{len(self._deleted)} deleted, {self._unchanged} unchanged")
         return self._changed
@@ -107,6 +116,11 @@ class ConfluencePipelineHandler(SourcePipelinePort):
         return [VectorChunk(text=d["text"], id=d["id"], metadata=d["metadata"],
                             embedding=d["embedding"].tolist() if hasattr(d["embedding"], "tolist") else d["embedding"])
                 for d in embedded]
+
+    def guard_stale(self, context: PipelineContext, vector_repo: Any) -> None:
+        """Refuse a sync whose vanished pages hold most of the source's chunks in the vector store."""
+        refuse_vanished_chunks(f"Confluence {context.source_name}", context.source_id, self._deleted, vector_repo,
+                               self._max_deleted_ratio, _CAUSE)
 
     def stale_point_filters(self, context: PipelineContext) -> list[dict[str, Any]]:
         """Points to delete before storing: every chunk of a changed or vanished page."""

@@ -23,6 +23,8 @@ from core.vector.domain.model import VectorChunk
 from infrastructure.sources.confluence.html_text import html_to_text
 from infrastructure.sources.web.connector import WebConnector, WebPage
 
+from core.data_sources.deletion_guard import SyncDegraded, refuse_vanished_chunks, refuse_vanished_pages
+
 logger = logging.getLogger("rag_pipeline")
 
 POINT_NAMESPACE = uuid.UUID("6d0c5b1e-8a47-4f0e-b3c9-2e7f1a9d4c85")
@@ -40,16 +42,11 @@ def page_title(html: str, url: str) -> str:
     return " ".join(title.split()) or url
 
 
-# A source with fewer pages than this may lose any share of them in one sync (a handful of pages is not a crawl).
-MIN_PAGES_FOR_DELETION_GUARD = 5
-
-
-# The chunk-count guard ignores a source holding fewer chunks than this.
-MIN_CHUNKS_FOR_DELETION_GUARD = 25
-
-
-class WebCrawlDegraded(RuntimeError):
+class WebCrawlDegraded(SyncDegraded):
     """The crawl found far fewer pages than the source holds: failing keeps the index as it is."""
+
+
+_CAUSE = "the site probably blocked or throttled the crawl"
 
 
 class WebPipelineHandler(SourcePipelinePort):
@@ -112,12 +109,11 @@ class WebPipelineHandler(SourcePipelinePort):
         self._manifest = manifest
         self._changed = [p.url for p in changed]
         deleted = sorted(set(previous) - set(manifest))
-        if (self._max_deleted_ratio and len(previous) >= MIN_PAGES_FOR_DELETION_GUARD
-                and len(deleted) > self._max_deleted_ratio * len(previous)):
-            raise WebCrawlDegraded(
-                f"web source {context.source_name}: the crawl found {len(manifest)} pages where {len(previous)} are indexed "
-                f"({len(deleted)} would be deleted, more than {self._max_deleted_ratio:.0%}): the site probably blocked or "
-                f"throttled it; nothing was changed")
+        try:
+            refuse_vanished_pages(f"web source {context.source_name}", len(previous), len(manifest), len(deleted),
+                                  self._max_deleted_ratio, _CAUSE)
+        except SyncDegraded as e:
+            raise WebCrawlDegraded(str(e)) from e
         self._deleted = deleted
         self._unchanged = len(manifest) - len(changed)
         logger.info(f"Web source {context.source_name}: {len(manifest)} pages, {len(changed)} new or changed, "
@@ -173,18 +169,11 @@ class WebPipelineHandler(SourcePipelinePort):
         The manifest guard in collect() trusts the manifest; a source whose manifest was cut down by an earlier
         degraded sync lists few pages for many chunks and would pass it. The store is the truth.
         """
-        if not self._max_deleted_ratio or not self._deleted:
-            return
-        source = {"metadata.source_id": context.source_id}
-        total = vector_repo.count(source, exact=True)
-        if total < MIN_CHUNKS_FOR_DELETION_GUARD:
-            return
-        doomed = vector_repo.count({**source, "metadata.page_id": [page_id(u) for u in self._deleted]}, exact=True)
-        if doomed > self._max_deleted_ratio * total:
-            raise WebCrawlDegraded(
-                f"web source {context.source_name}: {len(self._deleted)} vanished pages hold {doomed} of the {total} "
-                f"chunks indexed (more than {self._max_deleted_ratio:.0%}): the site probably blocked or throttled the "
-                f"crawl; nothing was changed")
+        try:
+            refuse_vanished_chunks(f"web source {context.source_name}", context.source_id,
+                                   [page_id(u) for u in self._deleted], vector_repo, self._max_deleted_ratio, _CAUSE)
+        except SyncDegraded as e:
+            raise WebCrawlDegraded(str(e)) from e
 
     def stale_point_filters(self, context: PipelineContext) -> list[dict[str, Any]]:
         """Points to delete before storing: every chunk of a changed or vanished page."""

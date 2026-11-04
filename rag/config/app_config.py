@@ -96,6 +96,8 @@ class AppConfig(SharedConfig):
     # FAILS instead: a blocked or throttled crawl (docs.redhat.com answers 403 to a burst) returns the book index and
     # none of its pages, and the sync would wipe the source. 0 = never refuse.
     web_max_deleted_ratio: float = 0.5
+    # Same for a Confluence sync: a space listed empty or partly (unreachable, permissions) would wipe the source.
+    confluence_max_deleted_ratio: float = 0.5
 
     # Slack Configuration
     default_slack_bot_token: str = ""

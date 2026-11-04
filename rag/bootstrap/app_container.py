@@ -620,6 +620,7 @@ def confluence_pipeline_handler():
         embedder=embedding_generator(),
         data_source_service=data_source_service(),
         index_version=cfg.index_version(),
+        max_deleted_ratio=cfg.confluence_max_deleted_ratio,
     )
 
 
