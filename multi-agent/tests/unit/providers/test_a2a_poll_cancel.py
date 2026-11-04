@@ -157,3 +157,41 @@ def test_the_timeout_is_recorded_on_the_delegation_span():
     assert updates[0]["level"] == "ERROR"
     assert updates[0]["metadata"] == {"a2a_timeout": True, "a2a_timeout_seconds": 5.0,
                                       "a2a_task_id": "t1", "a2a_cancel": "cancelled"}
+
+
+class _Interrupted(BaseException):
+    """Stands for the exception Temporal injects into the thread of a cancelled activity."""
+
+
+def _interrupt(thread, exc=_Interrupted):
+    import ctypes
+    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(thread.ident), ctypes.py_object(exc))
+
+
+def test_an_activity_cancelled_while_waiting_for_the_remote_agent_cancels_the_remote_task():
+    # The node waits in AsyncBridge.run; Temporal injects its cancel into that thread. The coroutine on the portal
+    # must be cancelled so that the poll's cleanup (tasks/cancel) runs.
+    import threading
+    import time
+    from global_utils.utils.async_bridge import get_async_bridge
+
+    client = _Client(["working"] * 1000)
+    provider = A2AProvider.__new__(A2AProvider)
+    outcome = []
+
+    def activity():
+        try:
+            get_async_bridge().run(provider._poll(client, "t1", 0.05, 1000, False))
+        except BaseException as e:  # noqa: BLE001
+            outcome.append(type(e))
+
+    thread = threading.Thread(target=activity)
+    thread.start()
+    time.sleep(0.5)
+    _interrupt(thread)
+    thread.join(5)
+    assert not thread.is_alive() and outcome == [_Interrupted]
+    deadline = time.time() + 5
+    while not client.cancelled and time.time() < deadline:
+        time.sleep(0.05)
+    assert client.cancelled == ["t1"]

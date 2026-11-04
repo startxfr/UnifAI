@@ -9,6 +9,7 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any, AsyncIterator, Iterator, Tuple
 
+import anyio
 from pydantic import HttpUrl
 
 from a2a.types import AgentCard, TaskState
@@ -210,7 +211,9 @@ class A2AProvider:
     async def _cancel_remote(client: A2AClient, task_id: str) -> bool:
         """Best effort: tell the remote agent we no longer wait for task_id. Never raises; True if it was cancelled."""
         try:
-            await asyncio.wait_for(client.cancel_task(task_id), timeout=CANCEL_TIMEOUT_SECONDS)
+            # Shielded: when we are being cancelled, the scope we run in keeps cancelling every await of this task.
+            with anyio.CancelScope(shield=True):
+                await asyncio.wait_for(client.cancel_task(task_id), timeout=CANCEL_TIMEOUT_SECONDS)
             logger.info("a2a.task_cancelled", extra={"task_id": task_id})
             return True
         except BaseException as e:  # a second cancellation or a failing gateway must not hide the first error

@@ -11,6 +11,7 @@ Key Features:
 
 """
 import asyncio
+import concurrent.futures
 import threading
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Awaitable, Callable, Iterable, Iterator, Optional, Protocol, runtime_checkable
@@ -21,6 +22,8 @@ import logging
 from queue import Queue, Empty
 
 logger = logging.getLogger(__name__)
+
+_INTERRUPT_CHECK_SECONDS = 0.25
 
 from .singleton import SingletonMeta
 
@@ -292,7 +295,21 @@ class BlockingPortalAsyncRunner(AsyncRunner):
         async def _runner():
             return await self._timeout_manager.apply_timeout(awaitable, effective_timeout)
         
-        return portal.call(_runner)
+        # portal.call would leave the coroutine running on the portal when this thread is interrupted (a Temporal
+        # activity cancel is injected into the thread that waits here): cancel it, so that its cleanup runs.
+        future = portal.start_task_soon(_runner)
+        try:
+            # A thread blocked in an untimed wait never runs Python code, so an exception injected into it
+            # (Temporal's cancel) would wait for the result: wake up regularly to let it through.
+            while True:
+                try:
+                    return future.result(timeout=_INTERRUPT_CHECK_SECONDS)
+                except concurrent.futures.TimeoutError:
+                    if future.done():  # the coroutine itself raised a TimeoutError
+                        raise
+        except BaseException:
+            future.cancel()
+            raise
     
     def run_many(
         self,
