@@ -64,6 +64,12 @@ def build_http_client(
     )
 
 
+
+def _tool_names(calls: Optional[List[Any]]) -> str:
+    """Names of the tools a model message asks for, comma-separated, for the trace."""
+    return ",".join(c.name for c in (calls or []))[:2000]
+
+
 class OpenAICompatibleLLM(BaseLLM):
     """LLM client for any OpenAI-compatible Chat Completions API.
 
@@ -183,7 +189,8 @@ class OpenAICompatibleLLM(BaseLLM):
                 output=result_msg.content, usage_details=usage or None,
                 metadata={"finish_reason": str(response.choices[0].finish_reason or ""),
                           "content_chars": len(result_msg.content or ""),
-                          "tool_calls": len(result_msg.tool_calls or [])},
+                          "tool_calls": len(result_msg.tool_calls or []),
+                          "called_tools": _tool_names(result_msg.tool_calls)},
             )
         return result_msg
 
@@ -249,7 +256,8 @@ class OpenAICompatibleLLM(BaseLLM):
                     aggregator.absorb(delta.tool_calls)
             gen.update(output=accumulated_content,
                        metadata={"finish_reason": str(finish_reason or ""), "content_chars": len(accumulated_content),
-                                 "tool_calls": 1 if aggregator.has_tool_calls else 0})
+                                 "tool_calls": 1 if aggregator.has_tool_calls else 0,
+                                 "called_tools": _tool_names(aggregator.build())})
 
         response_metadata = self._response_metadata(
             collector.response_id, collector.model, collector.fields, request_id,
@@ -325,6 +333,8 @@ class OpenAICompatibleLLM(BaseLLM):
     def _call_metadata(self, request_id: Optional[str] = None) -> Dict[str, Any]:
         """What this call sends that bounds it, for the trace: the generation ceiling and the X-Zuno-Max-Tokens header (R-519)."""
         meta: Dict[str, Any] = {"max_tokens": self._max_tokens}
+        # The tools this call offers, as sent: a turn without delegation says whether delegate_task was among them.
+        meta["tool_names"] = ",".join(t["function"]["name"] for t in (self._tools or []))[:2000]
         sent = (self._request_options(request_id).get("extra_headers") or {})
         for name, value in sent.items():
             if name.lower() == "x-zuno-max-tokens":
