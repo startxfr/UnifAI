@@ -24,6 +24,11 @@ spec:
       - {name: DIRECTORY_PROVIDER, value: oidc-claims}
       - {name: DIRECTORY_OIDC_JWKS_URL, value: https://keycloak.apps.demo333.startx.fr/realms/zuno/protocol/openid-connect/certs}
       - {name: DIRECTORY_OIDC_ISSUER, value: https://keycloak.apps.demo333.startx.fr/realms/zuno}
+    # The demo MCP server and mock LLM are in-namespace Services: allow them past the multiagent SSRF guard.
+    multiagent:
+      - {name: OUTBOUND_ALLOWED_HOSTS, value: "unifai-demo-mcp,unifai-demo-llm"}
+    multiagentWorker:
+      - {name: OUTBOUND_ALLOWED_HOSTS, value: "unifai-demo-mcp,unifai-demo-llm"}
   exposure:
     networkPolicy: true
   rag:
