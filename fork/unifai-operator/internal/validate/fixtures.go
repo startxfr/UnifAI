@@ -32,6 +32,11 @@ func Fixtures() []Fixture {
 	llm := func(typ string, cfg map[string]any, c unifaiv1.CommonSpec) *unifaiv1.UnifaiLLM {
 		return &unifaiv1.UnifaiLLM{Spec: unifaiv1.UnifaiLLMSpec{CommonSpec: c, Type: typ, ConfigSpec: unifaiv1.ConfigSpec{Config: raw(cfg)}}}
 	}
+	builtinLLM := func(c unifaiv1.CommonSpec) *unifaiv1.UnifaiLLM {
+		l := llm("openai_compatible", map[string]any{"model_name": "m"}, c)
+		l.Spec.Builtin = true
+		return l
+	}
 	bundle := func(mut func(*unifaiv1.UnifaiAgentBundleSpec)) *unifaiv1.UnifaiAgentBundle {
 		b := &unifaiv1.UnifaiAgentBundle{Spec: unifaiv1.UnifaiAgentBundleSpec{
 			Source:   unifaiv1.BundleSource{OCI: unifaiv1.OCIBundleSource{Reference: "quay.io/x/b@sha256:" + strings.Repeat("0", 64)}},
@@ -66,6 +71,8 @@ func Fixtures() []Fixture {
 		{"llm valid", llm("openai_compatible", map[string]any{"model_name": "m"}, unifaiv1.CommonSpec{TeamRef: "t"}), nil},
 		{"llm config.type same", llm("openai", map[string]any{"type": "openai"}, unifaiv1.CommonSpec{}), nil},
 		{"llm teamId and teamRef", llm("openai", nil, unifaiv1.CommonSpec{TeamID: "x", TeamRef: "y"}), []string{"spec.teamRef"}},
+		{"llm builtin", builtinLLM(unifaiv1.CommonSpec{Owner: "admin"}), nil},
+		{"llm builtin with teamRef", builtinLLM(unifaiv1.CommonSpec{TeamRef: "t"}), []string{"spec.builtin"}},
 		{"llm config.type differs", llm("openai", map[string]any{"type": "google_genai"}, unifaiv1.CommonSpec{}), []string{"spec.config.type"}},
 
 		{"bundle valid", bundle(func(s *unifaiv1.UnifaiAgentBundleSpec) {

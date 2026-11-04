@@ -173,6 +173,13 @@ var Rules = map[string][]Rule{
 		},
 	}},
 	"resource": {{
+		Field: "spec.builtin", Message: "builtin is exclusive with teamId and teamRef",
+		check: func(obj client.Object) bool {
+			c := common(obj)
+			ro, ok := obj.(unifaiv1.ResourceObject)
+			return !ok || c == nil || !ro.IsBuiltin() || (c.TeamID == "" && c.TeamRef == "")
+		},
+	}, {
 		// config is free-form (preserved unknown fields): CEL cannot read config.type.
 		Field: "spec.config.type", Message: "config.type, when set, must equal spec.type", WarnOnly: true,
 		check: func(obj client.Object) bool {

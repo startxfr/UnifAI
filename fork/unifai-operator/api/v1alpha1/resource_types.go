@@ -6,8 +6,14 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // UnifaiLLMSpec defines an UnifAI LLM endpoint.
 // +kubebuilder:validation:XValidation:rule="!has(self.teamId) || !has(self.teamRef) || size(self.teamId) == 0 || size(self.teamRef) == 0",message="teamId and teamRef are exclusive"
+// +kubebuilder:validation:XValidation:rule="!has(self.builtin) || !self.builtin || ((!has(self.teamId) || size(self.teamId) == 0) && (!has(self.teamRef) || size(self.teamRef) == 0))",message="builtin is exclusive with teamId and teamRef"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.builtin) || !oldSelf.builtin || (has(self.builtin) && self.builtin)",message="builtin cannot be turned off: delete the object instead"
 type UnifaiLLMSpec struct {
 	CommonSpec `json:",inline"`
+	// Builtin makes the object an UnifAI built-in resource available to every user (the inventory "Built-in" tab).
+	// The owner must be an UnifAI admin. It can be turned on for an existing object (promoted in place), not off.
+	// +optional
+	Builtin bool `json:"builtin,omitempty"`
 	// UnifAI element type. The accepted set is what the deployed UnifAI serves (GET /api/catalog/elements.list.get).
 	// +kubebuilder:validation:Enum=openai;openai_compatible;google_genai
 	Type       string `json:"type"`
@@ -46,6 +52,7 @@ func (o *UnifaiLLM) GetObjectStatus() *ObjectStatus { return &o.Status }
 func (o *UnifaiLLM) Category() string               { return "llms" }
 func (o *UnifaiLLM) GetType() string                { return o.Spec.Type }
 func (o *UnifaiLLM) GetConfigSpec() *ConfigSpec     { return &o.Spec.ConfigSpec }
+func (o *UnifaiLLM) IsBuiltin() bool                { return o.Spec.Builtin }
 
 func init() {
 	SchemeBuilder.Register(&UnifaiLLM{}, &UnifaiLLMList{})
@@ -53,8 +60,14 @@ func init() {
 
 // UnifaiProviderSpec defines an UnifAI Provider (MCP server).
 // +kubebuilder:validation:XValidation:rule="!has(self.teamId) || !has(self.teamRef) || size(self.teamId) == 0 || size(self.teamRef) == 0",message="teamId and teamRef are exclusive"
+// +kubebuilder:validation:XValidation:rule="!has(self.builtin) || !self.builtin || ((!has(self.teamId) || size(self.teamId) == 0) && (!has(self.teamRef) || size(self.teamRef) == 0))",message="builtin is exclusive with teamId and teamRef"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.builtin) || !oldSelf.builtin || (has(self.builtin) && self.builtin)",message="builtin cannot be turned off: delete the object instead"
 type UnifaiProviderSpec struct {
 	CommonSpec `json:",inline"`
+	// Builtin makes the object an UnifAI built-in resource available to every user (the inventory "Built-in" tab).
+	// The owner must be an UnifAI admin. It can be turned on for an existing object (promoted in place), not off.
+	// +optional
+	Builtin bool `json:"builtin,omitempty"`
 	// UnifAI element type. The accepted set is what the deployed UnifAI serves (GET /api/catalog/elements.list.get).
 	// +kubebuilder:validation:Enum=mcp_server
 	Type       string `json:"type"`
@@ -93,6 +106,7 @@ func (o *UnifaiProvider) GetObjectStatus() *ObjectStatus { return &o.Status }
 func (o *UnifaiProvider) Category() string               { return "providers" }
 func (o *UnifaiProvider) GetType() string                { return o.Spec.Type }
 func (o *UnifaiProvider) GetConfigSpec() *ConfigSpec     { return &o.Spec.ConfigSpec }
+func (o *UnifaiProvider) IsBuiltin() bool                { return o.Spec.Builtin }
 
 func init() {
 	SchemeBuilder.Register(&UnifaiProvider{}, &UnifaiProviderList{})
@@ -100,8 +114,14 @@ func init() {
 
 // UnifaiToolSpec defines an UnifAI Tool.
 // +kubebuilder:validation:XValidation:rule="!has(self.teamId) || !has(self.teamRef) || size(self.teamId) == 0 || size(self.teamRef) == 0",message="teamId and teamRef are exclusive"
+// +kubebuilder:validation:XValidation:rule="!has(self.builtin) || !self.builtin || ((!has(self.teamId) || size(self.teamId) == 0) && (!has(self.teamRef) || size(self.teamRef) == 0))",message="builtin is exclusive with teamId and teamRef"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.builtin) || !oldSelf.builtin || (has(self.builtin) && self.builtin)",message="builtin cannot be turned off: delete the object instead"
 type UnifaiToolSpec struct {
 	CommonSpec `json:",inline"`
+	// Builtin makes the object an UnifAI built-in resource available to every user (the inventory "Built-in" tab).
+	// The owner must be an UnifAI admin. It can be turned on for an existing object (promoted in place), not off.
+	// +optional
+	Builtin bool `json:"builtin,omitempty"`
 	// UnifAI element type. The accepted set is what the deployed UnifAI serves (GET /api/catalog/elements.list.get).
 	// +kubebuilder:validation:Enum=ssh_exec;oc_exec;web_fetch
 	Type       string `json:"type"`
@@ -140,6 +160,7 @@ func (o *UnifaiTool) GetObjectStatus() *ObjectStatus { return &o.Status }
 func (o *UnifaiTool) Category() string               { return "tools" }
 func (o *UnifaiTool) GetType() string                { return o.Spec.Type }
 func (o *UnifaiTool) GetConfigSpec() *ConfigSpec     { return &o.Spec.ConfigSpec }
+func (o *UnifaiTool) IsBuiltin() bool                { return o.Spec.Builtin }
 
 func init() {
 	SchemeBuilder.Register(&UnifaiTool{}, &UnifaiToolList{})
@@ -147,8 +168,14 @@ func init() {
 
 // UnifaiConditionSpec defines an UnifAI Workflow condition.
 // +kubebuilder:validation:XValidation:rule="!has(self.teamId) || !has(self.teamRef) || size(self.teamId) == 0 || size(self.teamRef) == 0",message="teamId and teamRef are exclusive"
+// +kubebuilder:validation:XValidation:rule="!has(self.builtin) || !self.builtin || ((!has(self.teamId) || size(self.teamId) == 0) && (!has(self.teamRef) || size(self.teamRef) == 0))",message="builtin is exclusive with teamId and teamRef"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.builtin) || !oldSelf.builtin || (has(self.builtin) && self.builtin)",message="builtin cannot be turned off: delete the object instead"
 type UnifaiConditionSpec struct {
 	CommonSpec `json:",inline"`
+	// Builtin makes the object an UnifAI built-in resource available to every user (the inventory "Built-in" tab).
+	// The owner must be an UnifAI admin. It can be turned on for an existing object (promoted in place), not off.
+	// +optional
+	Builtin bool `json:"builtin,omitempty"`
 	// UnifAI element type. The accepted set is what the deployed UnifAI serves (GET /api/catalog/elements.list.get).
 	// +kubebuilder:validation:Enum=router_direct;threshold;router_boolean
 	Type       string `json:"type"`
@@ -187,6 +214,7 @@ func (o *UnifaiCondition) GetObjectStatus() *ObjectStatus { return &o.Status }
 func (o *UnifaiCondition) Category() string               { return "conditions" }
 func (o *UnifaiCondition) GetType() string                { return o.Spec.Type }
 func (o *UnifaiCondition) GetConfigSpec() *ConfigSpec     { return &o.Spec.ConfigSpec }
+func (o *UnifaiCondition) IsBuiltin() bool                { return o.Spec.Builtin }
 
 func init() {
 	SchemeBuilder.Register(&UnifaiCondition{}, &UnifaiConditionList{})
@@ -234,6 +262,7 @@ func (o *UnifaiRetriever) GetObjectStatus() *ObjectStatus { return &o.Status }
 func (o *UnifaiRetriever) Category() string               { return "retrievers" }
 func (o *UnifaiRetriever) GetType() string                { return o.Spec.Type }
 func (o *UnifaiRetriever) GetConfigSpec() *ConfigSpec     { return &o.Spec.ConfigSpec }
+func (o *UnifaiRetriever) IsBuiltin() bool                { return false }
 
 func init() {
 	SchemeBuilder.Register(&UnifaiRetriever{}, &UnifaiRetrieverList{})
@@ -241,8 +270,14 @@ func init() {
 
 // UnifaiSandboxSpec defines an UnifAI Sandbox.
 // +kubebuilder:validation:XValidation:rule="!has(self.teamId) || !has(self.teamRef) || size(self.teamId) == 0 || size(self.teamRef) == 0",message="teamId and teamRef are exclusive"
+// +kubebuilder:validation:XValidation:rule="!has(self.builtin) || !self.builtin || ((!has(self.teamId) || size(self.teamId) == 0) && (!has(self.teamRef) || size(self.teamRef) == 0))",message="builtin is exclusive with teamId and teamRef"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.builtin) || !oldSelf.builtin || (has(self.builtin) && self.builtin)",message="builtin cannot be turned off: delete the object instead"
 type UnifaiSandboxSpec struct {
 	CommonSpec `json:",inline"`
+	// Builtin makes the object an UnifAI built-in resource available to every user (the inventory "Built-in" tab).
+	// The owner must be an UnifAI admin. It can be turned on for an existing object (promoted in place), not off.
+	// +optional
+	Builtin bool `json:"builtin,omitempty"`
 	// UnifAI element type. The accepted set is what the deployed UnifAI serves (GET /api/catalog/elements.list.get).
 	// +kubebuilder:validation:Enum=openshell_sandbox
 	Type       string `json:"type"`
@@ -281,6 +316,7 @@ func (o *UnifaiSandbox) GetObjectStatus() *ObjectStatus { return &o.Status }
 func (o *UnifaiSandbox) Category() string               { return "sandboxes" }
 func (o *UnifaiSandbox) GetType() string                { return o.Spec.Type }
 func (o *UnifaiSandbox) GetConfigSpec() *ConfigSpec     { return &o.Spec.ConfigSpec }
+func (o *UnifaiSandbox) IsBuiltin() bool                { return o.Spec.Builtin }
 
 func init() {
 	SchemeBuilder.Register(&UnifaiSandbox{}, &UnifaiSandboxList{})
@@ -288,8 +324,14 @@ func init() {
 
 // UnifaiAgentSpec defines an UnifAI Agent (workflow node).
 // +kubebuilder:validation:XValidation:rule="!has(self.teamId) || !has(self.teamRef) || size(self.teamId) == 0 || size(self.teamRef) == 0",message="teamId and teamRef are exclusive"
+// +kubebuilder:validation:XValidation:rule="!has(self.builtin) || !self.builtin || ((!has(self.teamId) || size(self.teamId) == 0) && (!has(self.teamRef) || size(self.teamRef) == 0))",message="builtin is exclusive with teamId and teamRef"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.builtin) || !oldSelf.builtin || (has(self.builtin) && self.builtin)",message="builtin cannot be turned off: delete the object instead"
 type UnifaiAgentSpec struct {
 	CommonSpec `json:",inline"`
+	// Builtin makes the object an UnifAI built-in resource available to every user (the inventory "Built-in" tab).
+	// The owner must be an UnifAI admin. It can be turned on for an existing object (promoted in place), not off.
+	// +optional
+	Builtin bool `json:"builtin,omitempty"`
 	// UnifAI element type. The accepted set is what the deployed UnifAI serves (GET /api/catalog/elements.list.get).
 	// +kubebuilder:validation:Enum=custom_agent_node;orchestrator_node;deep_agent_node;claude_agent_node;branch_chooser_node;mock_agent_node
 	Type       string `json:"type"`
@@ -328,6 +370,7 @@ func (o *UnifaiAgent) GetObjectStatus() *ObjectStatus { return &o.Status }
 func (o *UnifaiAgent) Category() string               { return "nodes" }
 func (o *UnifaiAgent) GetType() string                { return o.Spec.Type }
 func (o *UnifaiAgent) GetConfigSpec() *ConfigSpec     { return &o.Spec.ConfigSpec }
+func (o *UnifaiAgent) IsBuiltin() bool                { return o.Spec.Builtin }
 
 func init() {
 	SchemeBuilder.Register(&UnifaiAgent{}, &UnifaiAgentList{})

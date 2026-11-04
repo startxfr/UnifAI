@@ -108,4 +108,6 @@ type ResourceObject interface {
 	Category() string
 	GetType() string
 	GetConfigSpec() *ConfigSpec
+	// IsBuiltin reports whether the object is an UnifAI built-in resource (UnifaiRetriever never is: UnifAI refuses it).
+	IsBuiltin() bool
 }

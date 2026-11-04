@@ -70,7 +70,12 @@ func (r *ResourceReconciler) apply(ctx context.Context, api *unifai.Client, obj 
 	if err != nil {
 		return err
 	}
-	h := hash([]any{rtype, name, resolved})
+	hv := []any{rtype, name, resolved}
+	if obj.IsBuiltin() {
+		// Only built-ins carry the flag in the hash, so existing objects are not pushed again.
+		hv = append(hv, "builtin")
+	}
+	h := hash(hv)
 
 	err = api.Call(ctx, http.MethodPost, "/api/resources/config.validate", nil,
 		map[string]any{"category": category, "type": rtype, "name": name, "config": resolved}, nil)
@@ -119,9 +124,25 @@ func (r *ResourceReconciler) apply(ctx context.Context, api *unifai.Client, obj 
 	if err != nil {
 		return permanentOn(err, http.StatusBadRequest, http.StatusConflict, http.StatusUnprocessableEntity)
 	}
+	if obj.IsBuiltin() && (st.Hash != h || st.RID != rid) {
+		if err := promoteBuiltin(ctx, api, rid); err != nil {
+			return err
+		}
+	}
 	st.RID, st.Hash = rid, h
 	setReady(st, "Ready", category+"/"+name)
 	return nil
+}
+
+// promoteBuiltin makes a resource a public UnifAI built-in. UnifAI promotes a custom resource in place (same rid) and
+// also promotes the resources it references; a public built-in stays one, so the call is idempotent.
+func promoteBuiltin(ctx context.Context, api *unifai.Client, rid string) error {
+	err := api.Call(ctx, http.MethodPatch, "/api/resources/builtin.toggle", nil,
+		map[string]any{"resourceId": rid, "availableToAll": true}, nil)
+	if unifai.IsStatus(err, http.StatusForbidden) {
+		return permanent("builtin needs an UnifAI admin owner (%q is not one): %s", api.User, err.Error())
+	}
+	return permanentOn(err, http.StatusBadRequest)
 }
 
 func kindOf(category string) string {

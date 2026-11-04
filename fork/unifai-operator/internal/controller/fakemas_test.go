@@ -27,6 +27,7 @@ type fakeMAS struct {
 	ragSyncs   map[string]int // source id -> embed calls (incremental syncs)
 	users      []string       // X-Authenticated-User of each call
 	internal   []string       // X-Internal-Auth of each call
+	toggles    int            // builtin.toggle calls
 	// noDisplay plays a multiagent image older than the display metadata key (HTTP 400).
 	noDisplay bool
 }
@@ -116,6 +117,20 @@ func (f *fakeMAS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		res["cfg_dict"] = body["config"]
+		reply(w, 200, res)
+	case "/api/resources/builtin.toggle":
+		// Only the default identity is an admin in the fake.
+		if r.Header.Get("X-Authenticated-User") != "admin" {
+			reply(w, 403, map[string]any{"error": "Access denied: insufficient permissions", "error_type": "ACCESS_DENIED"})
+			return
+		}
+		res, ok := f.resources[body["resourceId"].(string)]
+		if !ok {
+			reply(w, 404, map[string]any{"error": "not found"})
+			return
+		}
+		res["builtin"] = body["availableToAll"]
+		f.toggles++
 		reply(w, 200, res)
 	case "/api/resources/resource.delete":
 		rid := q.Get("resourceId")

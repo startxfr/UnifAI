@@ -144,6 +144,29 @@ metadata: {name: tekos-llm}
 spec: {teamRef: tekos, type: openai_compatible, config: {model_name: m, base_url: "http://llm:8000/v1"}}
 ```
 
+#### Built-in resources
+
+`spec.builtin: true` makes an LLM, Provider, Tool, Condition, Sandbox or Agent a public UnifAI built-in. Every user
+sees it in the inventory's "Built-in" tab and can use it in their workflows, but only admins can change it.
+- **Owner:** the owner must be an UnifAI admin (`adminUsers` of the stack). Otherwise the object goes to `Error` with
+  "builtin needs an UnifAI admin owner".
+- **How it is published:** the operator saves the resource as the owner, as usual, then calls
+  `PATCH /api/resources/builtin.toggle` with `availableToAll: true`. It calls it again only when the spec changes.
+- **Referenced resources:** UnifAI also promotes the resources a built-in references, for example the LLM of an
+  agent.
+- **Existing objects:** turning the flag on for an existing object promotes its resource in place; the rid is kept.
+- **Turning it off is refused**, because UnifAI cannot turn a built-in back into a personal resource. Delete the
+  object instead.
+- **Workspaces:** `builtin` is exclusive with `teamId` and `teamRef`.
+- **UnifaiRetriever has no `builtin`:** UnifAI refuses built-in retrievers.
+
+```yaml
+apiVersion: unifai.startx.fr/v1alpha1
+kind: UnifaiLLM
+metadata: {name: zuno-gateway}
+spec: {owner: ai-ops-01, builtin: true, type: openai_compatible, config: {model_name: auto, base_url: "http://ai-gateway:8080/v1"}}
+```
+
 ### Zuno OKF agent bundles (fork-only)
 
 `UnifaiAgentBundle` (`internal/okf`, [`examples/agent/agentbundle-tekos.yaml`](examples/agent/agentbundle-tekos.yaml))
@@ -356,7 +379,8 @@ model start of the gateway path.
 ### Spec rules (R-304)
 
 Static rules of the custom resources (checked on the object alone, `internal/validate`): `teamId`/`teamRef`
-exclusive; resource `config.type` equal to `spec.type`; bundle `groupTeam` exclusive with `teamId`/`teamRef`,
+exclusive; resource `builtin` exclusive with `teamId`/`teamRef` (and never turned off, a CRD transition rule);
+resource `config.type` equal to `spec.type`; bundle `groupTeam` exclusive with `teamId`/`teamRef`,
 `classificationOverrides` in C1-C3, `providers`/`retriever` names; RAG source `syncInterval` >= 10m and http(s) web
 URLs; RAG pipeline unique document names (pdf, docx, md, pptx) and http(s) URLs; schedule `user_prompt` input, ISO-8601
 `interval` >= PT1M, 5-field cron, `remaining_actions` >= 1, `start_at` < `end_at`; chat non-empty prompt; workflow
