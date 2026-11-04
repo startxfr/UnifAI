@@ -94,6 +94,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$OPERATOR" ] || [ -z "$VERSION_IN" ]; then
+            # A push that also changes an image's build paths races publish-images: wait for its images (60 min max).
+            for i in $(seq 30); do
+              missing="$(python3 fork/ci/release_images.py --missing | tr '\n' ' ')"
+              [ -z "$missing" ] && break
+              echo "waiting for publish-images: $missing"
+              sleep 120
+            done
             base="$(sed -n 's/^VERSION ?= //p' fork/unifai-operator/Makefile)"
             python3 fork/ci/release_images.py --version "$base" --out "$RUNNER_TEMP/images.json" > /dev/null
             read -r op app < <(python3 -c 'import json,sys; i=json.load(open(sys.argv[1]))["images"]; print(i["operator"]["ref"], i["rag"]["tag"])' "$RUNNER_TEMP/images.json")
