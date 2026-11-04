@@ -2,12 +2,13 @@
 
 Checks that vX.Y.N is a published release of line X.Y (a weekly or manual tag cut by the release bot, at least
 --min-days old), that the line is in fork/calendar.yaml and its freeze has started, and that the maintainer confirmed
-the full canary on demo333. Then works out:
+the full canary on demo333 (with --rehearsal, the age, freeze and canary checks only warn: a dry run of the
+promotion on throwaway branches, fork/RELEASING.md). Then works out:
 - skip_range: ">=<previous line>.0 <X.Y.N", so OLM upgrades a stable install straight to it;
 - next_devel: "<next line>.0", the VERSION devel moves to;
 - hotfix: the first patch of X.Y after every existing vX.Y.* tag, the VERSION release-X.Y starts with.
 
-    promote.py --version 0.1.60 --canary [--date 2026-12-15] [--out plan.json]
+    promote.py --version 0.1.60 --canary [--rehearsal] [--date 2026-12-15] [--out plan.json]
 """
 from __future__ import annotations
 
@@ -38,8 +39,9 @@ def tag_info(version: str) -> dict | None:
 
 
 def plan(version: str, calendar: dict, tag: dict | None, tags: list[str], today: dt.date, canary: bool,
-         min_days: int = 7) -> dict:
+         min_days: int = 7, rehearsal: bool = False) -> dict:
     errors = []
+    soft = []  # the checks a rehearsal may run before their time: errors of a real promotion, warnings of a rehearsal
     m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
     if not m:
         return {"errors": [f"{version} is not X.Y.Z"]}
@@ -59,20 +61,23 @@ def plan(version: str, calendar: dict, tag: dict | None, tags: list[str], today:
         else:
             age = (today - dt.datetime.fromisoformat(tag["date"]).date()).days
             if age < min_days:
-                errors.append(f"v{version} is {age} day(s) old: it must run {min_days} days on alpha first")
+                soft.append(f"v{version} is {age} day(s) old: it must run {min_days} days on alpha first")
     freeze = dt.date.fromisoformat(str(entry["freeze"]["from"]))
     if today < freeze:
-        errors.append(f"line {line} is promoted after its freeze, which starts on {freeze}")
+        soft.append(f"line {line} is promoted after its freeze, which starts on {freeze}")
     if not canary:
-        errors.append("the full canary (canary-e2e-full on demo333) is not confirmed green on this version")
+        soft.append("the full canary (canary-e2e-full on demo333) is not confirmed green on this version")
     patches = sorted(int(t[3]) for t in (RELEASE.fullmatch(x) for x in tags) if t and f"{t[1]}.{t[2]}" == line)
     newer = [f"v{line}.{p}" for p in patches if p > int(m[3])]
     lower = f"{lines[index - 1]['line']}.0" if index > 0 else f"{line}.0"
     nxt = f"{lines[index + 1]['line']}.0" if index + 1 < len(lines) else None
     if nxt is None:
         errors.append(f"no line after {line} in fork/calendar.yaml: add the next one first")
+    if not rehearsal:
+        errors += soft
     return {
         "errors": errors,
+        "warnings": soft if rehearsal else [],
         "version": version,
         "line": line,
         "skip_range": f">={lower} <{version}",
@@ -89,6 +94,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--calendar", default="fork/calendar.yaml")
     p.add_argument("--date", help="YYYY-MM-DD, default today")
     p.add_argument("--min-days", type=int, default=7)
+    p.add_argument("--rehearsal", action="store_true", help="age, freeze and canary checks only warn")
     p.add_argument("--out")
     a = p.parse_args(argv)
     import yaml
@@ -98,7 +104,7 @@ def main(argv: list[str] | None = None) -> None:
     today = dt.date.fromisoformat(a.date) if a.date else dt.date.today()
     version = a.version.removeprefix("v")
     tags = git("tag", "-l", "v*", "operator-v*").split()
-    result = plan(version, calendar, tag_info(version), tags, today, a.canary, a.min_days)
+    result = plan(version, calendar, tag_info(version), tags, today, a.canary, a.min_days, a.rehearsal)
     text = json.dumps(result, indent=2)
     if a.out:
         with open(a.out, "w") as f:
@@ -109,6 +115,9 @@ def main(argv: list[str] | None = None) -> None:
             for e in result["errors"]:
                 print(f"::error::{e}", file=sys.stderr)
         raise SystemExit(1)
+    if os.environ.get("GITHUB_ACTIONS"):
+        for w in result.get("warnings", []):
+            print(f"::warning::rehearsal: {w}")
     if result.get("newer") and os.environ.get("GITHUB_ACTIONS"):
         print(f"::warning::newer releases of line {result['line']} exist and stay on alpha only: "
               f"{', '.join(result['newer'])}")

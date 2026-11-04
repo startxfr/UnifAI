@@ -135,6 +135,21 @@ Requirements before the first run: the settings of the GitHub bot, the environme
    it keeps the alpha releases of the next line), as a GitHub release that is not marked latest. The bot commits the
    bundle and the next patch `VERSION` to `release-X.Y`, and the stable entry to `devel`'s catalog.
 
+**Rehearsal** of both, any time before the freeze, nothing published to the real repositories and `devel` untouched:
+
+1. Actions → promote → Run workflow on `devel`: `version` = an existing weekly or manual `X.Y.N`, tick `rehearsal`
+   (`canary` optional), approve `quay-release`. The age, freeze and canary checks only warn. The bot pushes
+   devel's promotion commit to `promote-rehearsal-X.Y` and opens `release-X.Y-rehearsal` at `vX.Y.N`
+   (`VERSION` = the hotfix patch); publish-images builds its operator as `release-X.Y-rehearsal-<sha>`;
+2. once publish-images is green on it: Actions → cut-release → Run workflow on **`release-X.Y-rehearsal`**,
+   `kind` = `rc`. The tag `vX.Y.N+1-rc.1` carries kind `rc-hotfix`: release.yml runs the e2e, publishes to
+   `quay.io/zuno/test-unifai-*` on the `stable` channel with the catalog of `promote-rehearsal-X.Y`'s template, as a
+   pre-release, and commits nothing back;
+3. check: `opm render` of the test catalog shows `vX.Y.N+1` on stable replacing `vX.Y.N`, whose entry has the
+   `skipRange`; cosign verifies against `release.yml@refs/tags/vX.Y.N+1-rc.1`;
+4. clean up (an admin, in GitHub): delete the branches `promote-rehearsal-X.Y` and `release-X.Y-rehearsal`. The rc
+   tag and pre-release may stay.
+
 **Transition (decided by zuno-demo, 2026-11-03), done at v0.1.54:** the `operator-vX.Y.Z` flow
 (`unifai-operator-release.yml`, `make release-files`) carried 0.1.29 → 0.1.53; v0.1.54 is the first unified release
 (alpha only, stable channel left at 0.1.53 until the 0.1 promotion). zuno-demo (da) accepts the `release.yml` identity
@@ -153,7 +168,7 @@ in phases; releases go through them since v0.1.54 (2026-11-03, first unified rel
 | 1 (done: rehearsal v0.1.53-rc.2 green and cosign-verified, 2026-11-03) | `cut-release.yml` + `release.yml`: six digests promoted, bundle/catalog in CI (`alpha` only), notes, `release.json`, bot commit; new signing identity agreed with zuno-demo before the first unified release | Nov 2026 |
 | 2 (done: the kind e2e gate passed inside the v0.1.53-rc.2 release) | e2e on kind in CI (`e2e-kind.yml`, `unifai-operator/hack/kind/e2e.sh`: mock LLM, Route CRD without router, static RWX volumes, service-CA stand-in, restore test skipped), called by `release.yml` before anything is published | Nov–Dec 2026 |
 | 3 (built 2026-11-03, to prove on the first Thursday and Friday) | `upstream-sync.yml` (Thursday) and `weekly-release.yml` (Friday, skips when nothing changed or during a freeze) | Dec 2026 |
-| 4 (built 2026-11-03, to prove before 2026-12-15) | `promote.yml` and hotfix releases on `release-0.X`; first promotion of the 0.1 line | 2026-12-15 |
+| 4 (built 2026-11-03; rehearsal mode 2026-11-04, to run before the 2026-12-01 freeze) | `promote.yml` and hotfix releases on `release-0.X`; first promotion of the 0.1 line | 2026-12-15 |
 | 5 (optional) | self-hosted runner in demo333 to automate the canary before a promotion; CD only if zuno-demo asks | 2027 |
 
 The signing identity of the operator, bundle and catalog moved from `unifai-operator-release.yml@refs/tags/operator-v…`

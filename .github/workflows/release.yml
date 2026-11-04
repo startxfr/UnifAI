@@ -13,6 +13,8 @@
 # promoted line, cut on release-X.Y, OLM channel `stable` only). After a weekly or manual release, the bot commits the
 # release files and the next patch VERSION to devel; after a hotfix, the bundle and the next patch VERSION to
 # release-X.Y and the catalog (rendered from devel's template, the one catalog of every channel) to devel.
+# Kind `rc-hotfix` (cut-release kind rc on a release branch) rehearses a hotfix: test repositories, `stable` channel,
+# catalog from the template of promote-rehearsal-X.Y (a promote.yml rehearsal) or devel, pre-release, no commit back.
 #
 # Actions are pinned by commit SHA (the publish job holds an OIDC token that signs).
 name: release
@@ -39,6 +41,7 @@ jobs:
       prefix: ${{ steps.plan.outputs.prefix }}
       branch: ${{ steps.plan.outputs.branch }}
       channel: ${{ steps.plan.outputs.channel }}
+      template: ${{ steps.plan.outputs.template }}
       operator: ${{ steps.plan.outputs.operator }}
       apps: ${{ steps.plan.outputs.apps }}
     steps:
@@ -60,19 +63,30 @@ jobs:
           [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]] || { echo "::error::$tag is not vX.Y.Z or vX.Y.Z-rc.N"; exit 1; }
           base="${BASH_REMATCH[1]}"
           rc="${BASH_REMATCH[2]}"
-          branch=devel channel=alpha
+          branch=devel channel=alpha template=
           case "$kind" in
             weekly) env=quay-weekly prefix=unifai ;;
             manual) env=quay-release prefix=unifai ;;
             rc) env=quay-test prefix=test-unifai ;;
-            hotfix) env=quay-release prefix=unifai branch="release-${base%.*}" channel=stable ;;
+            hotfix) env=quay-release prefix=unifai branch="release-${base%.*}" channel=stable template=devel ;;
+            rc-hotfix) env=quay-test prefix=test-unifai channel=stable branch= ;;
             *) echo "::error::unknown kind '$kind' in the message of $tag"; exit 1 ;;
           esac
-          [[ ( "$kind" = rc && -n "$rc" ) || ( "$kind" != rc && -z "$rc" ) ]] || { echo "::error::kind $kind does not match $tag"; exit 1; }
+          [[ ( "$kind" = rc* && -n "$rc" ) || ( "$kind" != rc* && -z "$rc" ) ]] || { echo "::error::kind $kind does not match $tag"; exit 1; }
           grep -qx "VERSION ?= $base" fork/unifai-operator/Makefile || { echo "::error::the Makefile VERSION of $tag is not $base"; exit 1; }
           if [ "$kind" = hotfix ]; then
             git fetch --force origin "+refs/heads/$branch:refs/remotes/origin/$branch"
             git merge-base --is-ancestor "$GITHUB_SHA" "origin/$branch" || { echo "::error::$tag is not on $branch"; exit 1; }
+          elif [ "$kind" = rc-hotfix ]; then
+            # The release branch it was cut on: a rehearsal's (its catalog template is promote-rehearsal-X.Y's) or the
+            # real one (devel's template, as a hotfix).
+            for b in "release-${base%.*}-rehearsal" "release-${base%.*}"; do
+              git fetch --force origin "+refs/heads/$b:refs/remotes/origin/$b" 2>/dev/null || continue
+              if git merge-base --is-ancestor "$GITHUB_SHA" "origin/$b"; then branch="$b"; break; fi
+            done
+            [ -n "$branch" ] || { echo "::error::$tag is on no release-${base%.*} branch"; exit 1; }
+            template=devel
+            [ "$branch" = "release-${base%.*}" ] || template="promote-rehearsal-${base%.*}"
           elif [ "$kind" != rc ]; then
             git merge-base --is-ancestor "$GITHUB_SHA" origin/stable || { echo "::error::$tag is not on stable"; exit 1; }
           fi
@@ -89,6 +103,7 @@ jobs:
             echo "prefix=$prefix"
             echo "branch=$branch"
             echo "channel=$channel"
+            echo "template=$template"
           } >> "$GITHUB_OUTPUT"
           echo "### $tag: $kind release, environment $env, repositories quay.io/zuno/$prefix-*" >> "$GITHUB_STEP_SUMMARY"
 
@@ -116,6 +131,7 @@ jobs:
       KIND: ${{ needs.plan.outputs.kind }}
       BRANCH: ${{ needs.plan.outputs.branch }}
       CHANNEL: ${{ needs.plan.outputs.channel }}
+      TEMPLATE: ${{ needs.plan.outputs.template }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -216,11 +232,11 @@ jobs:
         run: |
           set -euo pipefail
           base="quay.io/zuno/$PREFIX-operator"
-          if [ "$KIND" = hotfix ]; then
+          if [ -n "$TEMPLATE" ]; then
             # One catalog carries every channel: a hotfix adds itself to stable in devel's template, so the catalog
-            # it publishes keeps the alpha releases of the next line.
-            git fetch --no-tags origin "+refs/heads/devel:refs/remotes/origin/devel"
-            git show origin/devel:fork/unifai-operator/catalog-template.yaml > catalog-template.yaml
+            # it publishes keeps the alpha releases of the next line (a rehearsal: promote-rehearsal-X.Y's template).
+            git fetch --no-tags origin "+refs/heads/$TEMPLATE:refs/remotes/origin/$TEMPLATE"
+            git show "origin/$TEMPLATE:fork/unifai-operator/catalog-template.yaml" > catalog-template.yaml
           fi
           make catalog-add VERSION="$VERSION" IMAGE_TAG_BASE="$base" CHANNELS="$CHANNEL"
           make catalog-build catalog-push VERSION="$VERSION" IMAGE_TAG_BASE="$base" CONTAINER_TOOL=docker
@@ -291,14 +307,14 @@ jobs:
         run: |
           set -euo pipefail
           pre=""
-          [ "$KIND" = rc ] && pre="--prerelease"
+          [[ "$KIND" = rc* ]] && pre="--prerelease"
           [ "$KIND" = hotfix ] && pre="--latest=false"  # the newest line stays the latest release
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag $pre \
             --title "UnifAI ${GITHUB_REF_NAME#v}" --notes-file out/notes.md out/release.json
 
   post-release:
     needs: [plan, publish]
-    if: needs.plan.outputs.kind != 'rc'
+    if: needs.plan.outputs.kind != 'rc' && needs.plan.outputs.kind != 'rc-hotfix'
     runs-on: ubuntu-latest
     environment: release-bot
     timeout-minutes: 15

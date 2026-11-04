@@ -47,6 +47,15 @@ class Plan(unittest.TestCase):
         last = dict(TAG, date="2027-06-05T18:00:00+01:00")
         self.assertIn("no line after", promote.plan("0.3.2", CAL, last, [], dt.date(2027, 6, 15), True)["errors"][0])
 
+    def test_rehearsal_warns_where_a_promotion_refuses(self):
+        young = dict(TAG, date="2026-11-04T18:00:00+01:00")
+        got = promote.plan("0.1.58", CAL, young, ["v0.1.58"], dt.date(2026, 11, 5), False, rehearsal=True)
+        self.assertEqual(got["errors"], [])
+        self.assertEqual(len(got["warnings"]), 3)  # age, freeze, canary
+        self.assertEqual((got["skip_range"], got["next_devel"], got["hotfix"]), (">=0.1.0 <0.1.58", "0.2.0", "0.1.59"))
+        rc = dict(young, kind="rc")  # what a rehearsal still refuses: not a published weekly or manual release
+        self.assertEqual(len(promote.plan("0.1.58", CAL, rc, [], dt.date(2026, 11, 5), True, rehearsal=True)["errors"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

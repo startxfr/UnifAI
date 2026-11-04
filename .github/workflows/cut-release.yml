@@ -7,7 +7,9 @@
 # - kind `weekly`: the same, published without approval (called by weekly-release.yml);
 # - kind `rc`: a rehearsal vVERSION-rc.N into the quay.io/zuno/test-unifai-* repositories, `stable` untouched;
 # - kind `hotfix`: run on `release-X.Y` (not devel), the Makefile VERSION of that branch on the OLM `stable` channel,
-#   from its release-X.Y-<sha> images; `stable` (the branch) untouched.
+#   from its release-X.Y-<sha> images; `stable` (the branch) untouched;
+# - kind `rc` on a release branch (`release-X.Y-rehearsal` of a promote.yml rehearsal, or `release-X.Y`): a hotfix
+#   rehearsal vVERSION-rc.N, kind `rc-hotfix` in the tag, into the test repositories on the `stable` channel.
 #
 # The tag is pushed with the release bot's GitHub App token: a tag pushed with GITHUB_TOKEN would start no workflow,
 # and the `release-tags` ruleset lets only the bot create v* tags, so release.yml can trust the kind in the message.
@@ -72,7 +74,7 @@ jobs:
           set -euo pipefail
           branch="$GITHUB_REF_NAME"
           case "$KIND/$branch" in
-            manual/devel|weekly/devel|rc/devel|hotfix/release-*) ;;
+            manual/devel|weekly/devel|rc/devel|rc/release-*|hotfix/release-*) ;;
             hotfix/*) echo "::error::a hotfix is cut on release-X.Y, not on $branch"; exit 1 ;;
             *) echo "::error::kind '$KIND' is cut on devel, not on $branch"; exit 1 ;;
           esac
@@ -80,6 +82,12 @@ jobs:
           [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Makefile VERSION '$base' is not X.Y.Z"; exit 1; }
           if [ "$KIND" = hotfix ] && [ "release-${base%.*}" != "$branch" ]; then
             echo "::error::VERSION $base is not a version of $branch"; exit 1
+          fi
+          tagkind="$KIND"
+          if [[ "$KIND" = rc && "$branch" = release-* ]]; then
+            [[ "$branch" = "release-${base%.*}" || "$branch" = "release-${base%.*}-rehearsal" ]] || {
+              echo "::error::VERSION $base is not a version of $branch"; exit 1; }
+            tagkind=rc-hotfix
           fi
           git fetch --tags --force origin
           if [ "$KIND" = rc ]; then
@@ -98,6 +106,7 @@ jobs:
               echo "SKIP=1" >> "$GITHUB_ENV"
             fi
           fi
+          echo "TAGKIND=$tagkind" >> "$GITHUB_ENV"
           echo "BASE=$base" >> "$GITHUB_ENV"
           echo "BRANCH=$branch" >> "$GITHUB_ENV"
           echo "VERSION=$version" >> "$GITHUB_ENV"
@@ -120,7 +129,7 @@ jobs:
           set -euo pipefail
           git config user.name "unifai-release-bot[bot]"
           git config user.email "unifai-release-bot[bot]@users.noreply.github.com"
-          { printf 'kind: %s\n\n' "$KIND"; cat "$RUNNER_TEMP/images.json"; } > "$RUNNER_TEMP/tag-message"
+          { printf 'kind: %s\n\n' "$TAGKIND"; cat "$RUNNER_TEMP/images.json"; } > "$RUNNER_TEMP/tag-message"
           git tag -a "v$VERSION" -F "$RUNNER_TEMP/tag-message" HEAD
           if [ "$KIND" = manual ] || [ "$KIND" = weekly ]; then
             # A plain push: refused unless it is a fast-forward of stable.
@@ -128,6 +137,6 @@ jobs:
           fi
           git push origin "refs/tags/v$VERSION"
           {
-            echo "### v$VERSION ($KIND) cut at $(git rev-parse --short=9 HEAD)"
+            echo "### v$VERSION ($TAGKIND) cut at $(git rev-parse --short=9 HEAD)"
             echo '```json'; cat "$RUNNER_TEMP/images.json"; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
