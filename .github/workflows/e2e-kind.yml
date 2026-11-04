@@ -94,9 +94,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$OPERATOR" ] || [ -z "$VERSION_IN" ]; then
-            # A push that also changes an image's build paths races publish-images: wait for its images (90 min max: the app images took 61 min for 61dac374c).
+            # A push that also changes an image's build paths races publish-images: wait for its images (90 min max).
             for i in $(seq 45); do
-              missing="$(python3 fork/ci/release_images.py --missing | tr '\n' ' ')"
+              missing="$(python3 fork/ci/release_images.py --missing | xargs)"  # xargs: one line, empty when nothing is missing
               [ -z "$missing" ] && break
               echo "waiting for publish-images: $missing"
               sleep 120
