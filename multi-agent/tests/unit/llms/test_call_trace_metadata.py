@@ -44,13 +44,13 @@ def _llm(seen, max_tokens=None, headers=None):
 def test_the_ceiling_and_the_header_are_in_the_span_metadata():
     seen = []
     _llm(seen, max_tokens=64, headers={"X-Zuno-Max-Tokens": "64"}).chat(MESSAGES)
-    assert seen == [{"max_tokens": 64, "tool_names": "", "x_zuno_max_tokens": "64"}]
+    assert seen == [{"max_tokens": 64, "tool_names": "(none)", "x_zuno_max_tokens": "64"}]
 
 
 def test_no_header_no_entry():
     seen = []
     _llm(seen).chat(MESSAGES)
-    assert seen == [{"max_tokens": None, "tool_names": ""}]
+    assert seen == [{"max_tokens": None, "tool_names": "(none)"}]
 
 
 def test_the_end_of_a_call_reports_why_it_stopped_and_how_much_text_it_gave():

@@ -334,7 +334,8 @@ class OpenAICompatibleLLM(BaseLLM):
         """What this call sends that bounds it, for the trace: the generation ceiling and the X-Zuno-Max-Tokens header (R-519)."""
         meta: Dict[str, Any] = {"max_tokens": self._max_tokens}
         # The tools this call offers, as sent: a turn without delegation says whether delegate_task was among them.
-        meta["tool_names"] = ",".join(t["function"]["name"] for t in (self._tools or []))[:2000]
+        # "(none)" when the request offers no tool: an empty value is dropped by trace backends and reads as a missing attribute.
+        meta["tool_names"] = ",".join(t["function"]["name"] for t in (self._tools or []))[:2000] or "(none)"
         sent = (self._request_options(request_id).get("extra_headers") or {})
         for name, value in sent.items():
             if name.lower() == "x-zuno-max-tokens":
