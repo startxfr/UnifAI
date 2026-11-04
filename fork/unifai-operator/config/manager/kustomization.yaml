@@ -3,6 +3,6 @@ resources:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
-- digest: sha256:fdf0e78963e37a248fd490f40b7ba221a9d8015dc8575e27d7237782a308f2f0
+- digest: sha256:6787a525f8b575493faae934a57db1b6a0925c33df72f9e99404e5c533f5e94b
   name: controller
   newName: quay.io/zuno/unifai-operator
