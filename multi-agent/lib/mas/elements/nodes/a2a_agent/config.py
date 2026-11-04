@@ -117,10 +117,12 @@ class A2AAgentNodeConfig(NodeBaseConfig):
         ),
     )
 
-    timeout_seconds: float = Field(
-        default=30.0,
+    timeout_seconds: Optional[float] = Field(
+        default=None,
         gt=0,
-        description="How long to wait for the remote agent's answer; past it the remote task is cancelled",
+        description=("How long to wait for the remote agent's answer; past it the remote task is cancelled. Set, the "
+                     "message is sent without blocking and polled until this bound. Unset: the server holds the "
+                     "request until the task is done"),
         title="Timeout (seconds)",
     )
 

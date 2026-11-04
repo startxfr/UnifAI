@@ -123,6 +123,7 @@ class A2AProvider:
             raise_on_error: bool = False,
             poll_interval: float = 0.5,
             max_poll_attempts: int = 60,
+            blocking: Optional[bool] = None,
     ) -> Tuple[ChatMessage, Dict[str, Any]]:
         """
         Send message and get response.
@@ -138,6 +139,8 @@ class A2AProvider:
             raise_on_error: Raise exception on failure (default: return error in message)
             poll_interval: Seconds between polls
             max_poll_attempts: Maximum polling attempts
+            blocking: False makes the send return the task at once, so that the polling above (and its bound) is what
+                waits for the answer; None keeps the server's default (the request is held until the task is done)
             
         Returns:
             Tuple of (response ChatMessage, metadata dict)
@@ -156,7 +159,7 @@ class A2AProvider:
                 part_metadata=part_metadata,
             )
 
-            result = await client.send(a2a_message)
+            result = await client.send(a2a_message, blocking=blocking)
 
             if raise_on_error and result.is_failure:
                 raise A2ATaskError(

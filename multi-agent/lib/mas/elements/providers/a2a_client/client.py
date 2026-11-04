@@ -19,6 +19,7 @@ from a2a.types import (
     SendMessageSuccessResponse,
     SendStreamingMessageRequest,
     SendStreamingMessageSuccessResponse,
+    MessageSendConfiguration,
     MessageSendParams,
     GetTaskRequest,
     GetTaskResponse,
@@ -140,12 +141,14 @@ class A2AClient:
             return []
         return [s.name for s in self._agent_card.skills if s.name]
 
-    async def send(self, message: Message) -> A2AResult:
+    async def send(self, message: Message, blocking: Optional[bool] = None) -> A2AResult:
         """
         Send message and get response.
         
         Args:
             message: SDK Message to send
+            blocking: False asks the server to answer at once with the task (the caller then polls it); None keeps the
+                server's default, which is to hold the request until the task is done
             
         Returns:
             A2AResult wrapping response
@@ -154,7 +157,10 @@ class A2AClient:
 
         request = SendMessageRequest(
             id=str(uuid4()),
-            params=MessageSendParams(message=message),
+            params=MessageSendParams(
+                message=message,
+                configuration=None if blocking is None else MessageSendConfiguration(blocking=blocking),
+            ),
         )
 
         response: SendMessageResponse = await self._sdk.send_message(request)

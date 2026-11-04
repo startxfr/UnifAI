@@ -64,3 +64,34 @@ def test_a_failing_cancel_does_not_hide_the_timeout():
     client = _Client(["working"] * 5, cancel_error=RuntimeError("gateway down"))
     with pytest.raises(A2ATimeoutError):
         asyncio.run(_poll(client))
+
+
+def test_a_non_blocking_send_asks_the_server_for_the_task_at_once():
+    from unittest.mock import MagicMock
+    from a2a.types import Message, Part, Role, TextPart
+    from mas.elements.providers.a2a_client.client import A2AClient
+
+    sent = []
+
+    class _Sdk:
+        async def send_message(self, request):
+            sent.append(request)
+            return MagicMock()
+
+    for blocking, want in ((None, None), (False, False), (True, True)):
+        client = A2AClient.__new__(A2AClient)
+        client._sdk = _Sdk()
+        client._handle_send_response = lambda _r: "result"
+        message = Message(message_id="m1", role=Role.user, parts=[Part(root=TextPart(text="hi"))])
+        asyncio.run(client.send(message, blocking=blocking))
+        configuration = sent[-1].params.configuration
+        assert (configuration.blocking if configuration else None) is want
+
+
+def test_the_node_timeout_is_optional_and_positive():
+    import pytest as _pytest
+    from mas.elements.nodes.a2a_agent.config import A2AAgentNodeConfig
+    field = A2AAgentNodeConfig.model_fields["timeout_seconds"]
+    assert field.default is None
+    with _pytest.raises(Exception):
+        A2AAgentNodeConfig(base_url="http://gw:8080/agents/tekos", timeout_seconds=0)

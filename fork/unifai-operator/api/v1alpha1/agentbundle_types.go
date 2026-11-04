@@ -87,8 +87,9 @@ type BundleDelegation struct {
 	// +kubebuilder:default=5
 	// +optional
 	MaxRounds int32 `json:"maxRounds,omitempty"`
-	// Seconds the A2A node waits for a target's answer; past it the remote task is cancelled (ADR-0406). Unset: the
-	// engine's own 30 s.
+	// Seconds the A2A node waits for a target's answer; past it the remote task is cancelled (ADR-0406). Set, the
+	// message is sent without blocking and polled until then. Unset: the server holds the request until the task is
+	// done (the engine's fixed read timeout).
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=900
 	// +optional

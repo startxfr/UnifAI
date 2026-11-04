@@ -24,7 +24,7 @@ from global_utils.utils.async_bridge import get_async_bridge
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_TIMEOUT_SECONDS = 30.0
+DEFAULT_POLL_ATTEMPTS = 60  # x 0.5 s: the bound when the node declares no timeout
 
 
 class A2AAgentNode(
@@ -70,7 +70,7 @@ class A2AAgentNode(
             bearer_token: Optional[str] = None,
             auth_credential: Optional[AuthCredential] = None,
             retriever: Any = None,
-            timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+            timeout_seconds: Optional[float] = None,
             **kwargs: Any
     ):
         """
@@ -82,7 +82,8 @@ class A2AAgentNode(
             bearer_token: Optional bearer token for authentication
             auth_credential: Optional bound credential for OAuth token refresh
             retriever: Optional retriever for context augmentation
-            timeout_seconds: How long to wait for the remote answer before cancelling the remote task
+            timeout_seconds: How long to wait for the remote answer before cancelling the remote task. Set, the send
+                does not block and this bound is what waits; unset, the server holds the request (as before)
         """
         super().__init__(
             retriever=retriever,
@@ -113,7 +114,9 @@ class A2AAgentNode(
         self._max_context_messages = 20
         self._wait_for_completion = True
         self._poll_interval = 0.5
-        self._max_poll_attempts = max(1, math.ceil(timeout_seconds / self._poll_interval))
+        self._blocking_send: Optional[bool] = None if timeout_seconds is None else False
+        self._max_poll_attempts = (DEFAULT_POLL_ATTEMPTS if timeout_seconds is None
+                                   else max(1, math.ceil(timeout_seconds / self._poll_interval)))
 
     @staticmethod
     def _resolve_initial_headers(
@@ -409,7 +412,8 @@ class A2AAgentNode(
             context_id=task.thread_id,
             wait_for_completion=self._wait_for_completion,
             poll_interval=self._poll_interval,
-            max_poll_attempts=self._max_poll_attempts
+            max_poll_attempts=self._max_poll_attempts,
+            blocking=self._blocking_send,
         )
 
         return response, metadata
