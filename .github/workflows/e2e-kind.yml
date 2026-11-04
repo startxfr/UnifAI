@@ -41,7 +41,7 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -94,8 +94,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$OPERATOR" ] || [ -z "$VERSION_IN" ]; then
-            # A push that also changes an image's build paths races publish-images: wait for its images (60 min max).
-            for i in $(seq 30); do
+            # A push that also changes an image's build paths races publish-images: wait for its images (90 min max: the app images took 61 min for 61dac374c).
+            for i in $(seq 45); do
               missing="$(python3 fork/ci/release_images.py --missing | tr '\n' ' ')"
               [ -z "$missing" ] && break
               echo "waiting for publish-images: $missing"
