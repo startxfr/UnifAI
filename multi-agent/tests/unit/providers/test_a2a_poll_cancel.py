@@ -95,3 +95,65 @@ def test_the_node_timeout_is_optional_and_positive():
     assert field.default is None
     with _pytest.raises(Exception):
         A2AAgentNodeConfig(base_url="http://gw:8080/agents/tekos", timeout_seconds=0)
+
+
+def test_the_timeout_says_what_became_of_the_remote_task():
+    client = _Client(["working"] * 5)
+    with pytest.raises(A2ATimeoutError) as info:
+        asyncio.run(_poll(client))
+    assert (info.value.task_id, info.value.cancelled, info.value.timeout_seconds) == ("t1", True, 0.0)
+
+    failing = _Client(["working"] * 5, cancel_error=RuntimeError("gateway down"))
+    with pytest.raises(A2ATimeoutError) as info:
+        asyncio.run(_poll(failing))
+    assert info.value.cancelled is False
+
+
+def _node(tracing=None):
+    from mas.elements.nodes.a2a_agent.a2a_agent_node import A2AAgentNode
+    class _Node(A2AAgentNode):
+        uid = "tekos"
+        display_name = "Tekos"
+
+    node = _Node.__new__(_Node)
+    node._tracing = tracing
+    return node
+
+
+def _timeout(cancelled):
+    e = A2ATimeoutError("Polling timeout after 5.0s")
+    e.task_id, e.timeout_seconds, e.cancelled = "t1", 5.0, cancelled
+    return e
+
+
+def test_the_orchestrator_is_told_plainly_that_the_delegation_timed_out_and_was_cancelled():
+    text = _node()._error_text(_timeout(True))
+    assert "timed out after 5s" in text and "remote task was cancelled" in text
+    assert "may still be running" in _node()._error_text(_timeout(False))
+    assert _node()._error_text(RuntimeError("x")) == "Error delegating to remote agent: x"
+
+
+def test_the_timeout_is_recorded_on_the_delegation_span():
+    from contextlib import contextmanager
+    from mas.core.tracing.models import ObservationHandle
+
+    updates, spans = [], []
+
+    class _Tracing:
+        @contextmanager
+        def trace_node(self, node_uid, node_type, display_name=""):
+            spans.append((node_uid, node_type))
+            yield ObservationHandle(_update_fn=lambda **kw: updates.append(kw))
+
+    node = _node(_Tracing())
+
+    def boom(ctx, task):
+        raise _timeout(True)
+
+    node._delegate_to_remote_agent = boom
+    with pytest.raises(A2ATimeoutError):
+        node._delegate_traced([], None)
+    assert spans == [("tekos/delegation", "a2a_delegation")]
+    assert updates[0]["level"] == "ERROR"
+    assert updates[0]["metadata"] == {"a2a_timeout": True, "a2a_timeout_seconds": 5.0,
+                                      "a2a_task_id": "t1", "a2a_cancel": "cancelled"}

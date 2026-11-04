@@ -16,6 +16,7 @@ from mas.elements.nodes.common.capabilities.retriever_capable import RetrieverCa
 from mas.elements.nodes.common.capabilities.workload_capable import WorkloadCapableMixin
 from mas.elements.nodes.common.workload import Task, AgentResult
 from mas.elements.providers.a2a_client import A2AProvider
+from mas.elements.providers.a2a_client.provider import A2ATimeoutError
 from mas.core.auth.credentials.credential import AuthCredential
 from mas.core.auth.errors import AuthError
 from mas.core.identity_forwarding import IdentityTokenUnavailable
@@ -172,10 +173,7 @@ class A2AAgentNode(
             conversation_context = self._build_conversation_context(task)
 
             # 2. Delegate to remote agent (handles streaming automatically)
-            remote_response, metadata = self._delegate_to_remote_agent(
-                conversation_context,
-                task
-            )
+            remote_response, metadata = self._delegate_traced(conversation_context, task)
 
             # 3. Create agent result from remote response
             agent_result = self._create_agent_result(
@@ -196,7 +194,7 @@ class A2AAgentNode(
             logger.error("a2a.task_error", extra={"node_uid": self.uid, "error": str(e)})
             # Create error agent result
             error_result = AgentResult(
-                content=f"Error delegating to remote agent: {str(e)}",
+                content=self._error_text(e),
                 agent_id=self.uid,
                 agent_name=self.display_name,
                 success=False,
@@ -205,6 +203,45 @@ class A2AAgentNode(
             if task.thread_id:
                 self.workspaces.add_result(task.thread_id, error_result)
             self._route_response(task, error_result, packet)
+
+    def _delegate_traced(self, conversation_context, task):
+        """Delegate inside a span; a timeout and what became of the remote task are recorded on it."""
+        tracing = getattr(self, "_tracing", None)
+        if not tracing:
+            return self._delegate_to_remote_agent(conversation_context, task)
+        with tracing.trace_node(
+            node_uid=f"{self.uid}/delegation",
+            node_type="a2a_delegation",
+            display_name=f"A2A: {self.display_name}",
+        ) as handle:
+            try:
+                return self._delegate_to_remote_agent(conversation_context, task)
+            except A2ATimeoutError as e:
+                handle.update(
+                    level="ERROR",
+                    status_message=self._error_text(e),
+                    metadata={
+                        "a2a_timeout": True,
+                        "a2a_timeout_seconds": e.timeout_seconds,
+                        "a2a_task_id": e.task_id,
+                        "a2a_cancel": {True: "cancelled", False: "cancel_failed"}.get(e.cancelled, "unknown"),
+                    },
+                )
+                raise
+
+    def _error_text(self, exc: Exception) -> str:
+        """The text the orchestrator receives as the delegation's result."""
+        if isinstance(exc, A2ATimeoutError):
+            if exc.cancelled:
+                outcome = "the remote task was cancelled"
+            elif exc.cancelled is False:
+                outcome = "cancelling the remote task failed, it may still be running"
+            else:
+                outcome = "the remote task state is unknown"
+            waited = f" after {exc.timeout_seconds:g}s" if exc.timeout_seconds else ""
+            return (f"The delegation to remote agent '{self.display_name}' timed out{waited} and no answer was "
+                    f"received: {outcome}. Do not wait for it; answer without it or tell the user it did not answer.")
+        return f"Error delegating to remote agent: {exc}"
 
     # ========== CONTEXT BUILDING ==========
 

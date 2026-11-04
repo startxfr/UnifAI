@@ -43,8 +43,11 @@ class A2ATaskError(A2AClientError):
 
 
 class A2ATimeoutError(A2AClientError):
-    """Polling timeout."""
-    pass
+    """Polling timeout. ``_poll`` fills in what happened to the remote task once we stopped waiting."""
+
+    task_id: Optional[str] = None
+    timeout_seconds: Optional[float] = None
+    cancelled: Optional[bool] = None  # True: the remote acknowledged tasks/cancel; False: the cancel failed
 
 
 class A2AProvider:
@@ -193,18 +196,26 @@ class A2AProvider:
             return await self._poll_loop(client, task_id, interval, max_attempts, raise_on_error)
         except A2ATaskError:
             raise  # the task ended on its own (failed, input or auth required): nothing left to cancel
+        except A2ATimeoutError as e:
+            e.task_id = task_id
+            e.timeout_seconds = max_attempts * interval
+            logger.warning("a2a.timeout", extra={"task_id": task_id, "timeout_seconds": e.timeout_seconds})
+            e.cancelled = await self._cancel_remote(client, task_id)
+            raise
         except BaseException:
             await self._cancel_remote(client, task_id)
             raise
 
     @staticmethod
-    async def _cancel_remote(client: A2AClient, task_id: str) -> None:
-        """Best effort: tell the remote agent we no longer wait for task_id. Never raises."""
+    async def _cancel_remote(client: A2AClient, task_id: str) -> bool:
+        """Best effort: tell the remote agent we no longer wait for task_id. Never raises; True if it was cancelled."""
         try:
             await asyncio.wait_for(client.cancel_task(task_id), timeout=CANCEL_TIMEOUT_SECONDS)
             logger.info("a2a.task_cancelled", extra={"task_id": task_id})
+            return True
         except BaseException as e:  # a second cancellation or a failing gateway must not hide the first error
             logger.warning("a2a.task_cancel_failed", extra={"task_id": task_id, "error": f"{type(e).__name__}: {e}"})
+            return False
 
     async def _poll_loop(
             self,

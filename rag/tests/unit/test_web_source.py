@@ -397,3 +397,37 @@ def test_an_isolated_refusal_does_not_stop_the_crawl():
     site = {SEED: (200, index, {}), **{u: (403 if i % 2 == 0 else 200, "x", {}) for i, u in enumerate(pages)}}
     out = dict(_connector(site, []).iter_pages([SEED], {}, max_pages=50))
     assert sum(1 for p in out.values() if p is not None) == 7  # the seed and the six readable pages
+
+
+def _store(total, doomed):
+    store = MagicMock()
+    store.count.side_effect = lambda filters, exact=False: doomed if "metadata.page_id" in filters else total
+    return store
+
+
+def test_the_store_guard_refuses_a_sync_that_would_delete_most_of_the_chunks_of_a_cut_down_manifest():
+    # The manifest lists 3 pages (no manifest guard under 5) but the store holds 400 chunks, 380 of them theirs.
+    from core.data_sources.types.web.pipeline_handler import WebCrawlDegraded
+    handler = _handler(_many(3), [])
+    handler.collect(CTX)
+    with pytest.raises(WebCrawlDegraded, match="nothing was changed"):
+        handler.guard_stale(CTX, _store(400, 380))
+
+
+def test_the_store_guard_lets_a_small_share_and_a_small_store_through():
+    handler = _handler(_many(3), [])
+    handler.collect(CTX)
+    handler.guard_stale(CTX, _store(400, 40))
+    handler.guard_stale(CTX, _store(10, 10))  # fewer chunks than the guard looks at
+    quiet = _handler(_many(3), [(u, None) for u in _many(3)])
+    quiet.collect(CTX)
+    store = _store(400, 400)
+    quiet.guard_stale(CTX, store)  # nothing vanished: the store is not even asked
+    store.count.assert_not_called()
+
+
+def test_the_store_guard_follows_the_switch_of_the_manifest_guard():
+    handler = _handler(_many(3), [])
+    handler._max_deleted_ratio = 0.0
+    handler.collect(CTX)
+    handler.guard_stale(CTX, _store(400, 400))

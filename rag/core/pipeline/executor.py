@@ -148,6 +148,10 @@ class PipelineExecutor:
             self._pipeline_svc.update_status(context.pipeline_id, current_step)
             with start_span("rag.pipeline.collect", tracer_name=_TRACER):
                 collected = handler.collect(context)
+                # A source may refuse the sync, once it knows what it would delete, before anything is embedded.
+                guard = getattr(handler, "guard_stale", None)
+                if guard:
+                    guard(context, vector_repo)
             
             # Step 2: Process
             current_step = PipelineStatus.PROCESSING

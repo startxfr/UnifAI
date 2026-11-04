@@ -53,6 +53,8 @@ class A2AAgentNodeFactory(BaseFactory[A2AAgentNodeConfig, A2AAgentNode]):
         try:
             auth_credential: Optional[AuthCredential] = deps.pop("auth_credential", None)
             retriever = deps.pop("retriever")
+            element_deps = deps.pop("deps", None)
+            tracing_service = element_deps.tracing_service if element_deps else None
 
             bearer_token = None
             if (
@@ -70,6 +72,7 @@ class A2AAgentNodeFactory(BaseFactory[A2AAgentNodeConfig, A2AAgentNode]):
                 retriever=retriever,
                 retries=cfg.retries,
                 timeout_seconds=cfg.timeout_seconds,
+                tracing_service=tracing_service,
             )
         except Exception as e:
             raise PluginConfigurationError(
