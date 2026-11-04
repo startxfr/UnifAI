@@ -1,0 +1,53 @@
+# The demo objects of unifai-devel on demo333: the generic examples, owned by the stack's UnifAI admin (ai-ops-01)
+# instead of the CRD default `admin`, so a signed-in admin sees them. Only what runs without an external key is kept:
+# the in-namespace mock LLM and MCP server (examples/demo-backends), no Gemini, OpenAI or placeholder vLLM.
+# No secret here: demo-mcp-token and the oc/ssh tools read unifai-demo-secrets, which already exists in the namespace.
+#
+# The resources live outside this directory, so build with the load restrictor off:
+#   oc kustomize --load-restrictor LoadRestrictionsNone examples/overlays/unifai-devel-demo333 | oc apply -n unifai-devel -f -
+# An object's owner is its workspace: switching an existing object from `admin` means deleting it first (the UnifAI
+# resource of the old owner goes with it), then applying this overlay.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: unifai-devel
+resources:
+  - ../../llm/llms.yaml
+  - ../../provider/providers.yaml
+  - ../../tool/tools.yaml
+  - ../../condition/conditions.yaml
+  - ../../agent/agents.yaml
+  - ../../retriever/retrievers.yaml
+  - ../../workflow/workflows.yaml
+  - ../../template/templates.yaml
+  - ../../chat/chat.yaml
+  - ../../schedule/schedules.yaml
+patches:
+  # Every UnifAI object: owned by the stack admin.
+  - target: {group: unifai.startx.fr}
+    patch: |-
+      - op: add
+        path: /spec/owner
+        value: ai-ops-01
+  # Objects that need an external key or endpoint.
+  - patch: |-
+      $patch: delete
+      apiVersion: unifai.startx.fr/v1alpha1
+      kind: UnifaiLLM
+      metadata: {name: demo-gemini}
+  - patch: |-
+      $patch: delete
+      apiVersion: unifai.startx.fr/v1alpha1
+      kind: UnifaiLLM
+      metadata: {name: demo-openai}
+  - patch: |-
+      $patch: delete
+      apiVersion: unifai.startx.fr/v1alpha1
+      kind: UnifaiLLM
+      metadata: {name: demo-vllm}
+  - patch: |-
+      $patch: delete
+      apiVersion: unifai.startx.fr/v1alpha1
+      kind: UnifaiRetriever
+      metadata: {name: demo-docs-wide}
+  # The catalog templates: on the mock LLM and MCP server, nothing to fill in.
+  - path: templates-keyless.yaml

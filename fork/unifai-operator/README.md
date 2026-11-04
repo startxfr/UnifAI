@@ -285,7 +285,9 @@ objects created after the backup are recreated by their custom resources at the 
 ### Taking over a helmfile deployment
 
 A `UnifaiStack` created in a namespace deployed by the upstream helmfile adopts it in place (done for `unifai-devel`,
-see [`examples/stack/stack-unifai-devel.yaml`](examples/stack/stack-unifai-devel.yaml)):
+see [`examples/stack/stack-unifai-devel.yaml`](examples/stack/stack-unifai-devel.yaml); its demo objects, owned by the
+stack admin and runnable without any external key, are the overlay
+[`examples/overlays/unifai-devel-demo333`](examples/overlays/unifai-devel-demo333/kustomization.yaml)):
 
 1. Put the OIDC client secret in a Secret (`identity-secret` holds it as `client_secret`) and reference it in
    `identity.external.clientSecret`.
