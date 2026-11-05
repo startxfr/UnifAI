@@ -150,6 +150,10 @@ Requirements before the first run: the settings of the GitHub bot, the environme
 4. clean up (an admin, in GitHub): delete the branches `promote-rehearsal-X.Y` and `release-X.Y-rehearsal`. The rc
    tag and pre-release may stay.
 
+The version rehearsed must already carry these workflows: a workflow runs from the branch it is dispatched on (and
+release.yml from its tag), and `release-X.Y-rehearsal` starts at `vX.Y.N`. A first try on v0.1.58 (older than the
+rehearsal mode) was refused by its own cut-release; v0.1.59 and later are fine, and so is every real promotion.
+
 **Transition (decided by zuno-demo, 2026-11-03), done at v0.1.54:** the `operator-vX.Y.Z` flow
 (`unifai-operator-release.yml`, `make release-files`) carried 0.1.29 → 0.1.53; v0.1.54 is the first unified release
 (alpha only, stable channel left at 0.1.53 until the 0.1 promotion). zuno-demo (da) accepts the `release.yml` identity
@@ -168,7 +172,7 @@ in phases; releases go through them since v0.1.54 (2026-11-03, first unified rel
 | 1 (done: rehearsal v0.1.53-rc.2 green and cosign-verified, 2026-11-03) | `cut-release.yml` + `release.yml`: six digests promoted, bundle/catalog in CI (`alpha` only), notes, `release.json`, bot commit; new signing identity agreed with zuno-demo before the first unified release | Nov 2026 |
 | 2 (done: the kind e2e gate passed inside the v0.1.53-rc.2 release) | e2e on kind in CI (`e2e-kind.yml`, `unifai-operator/hack/kind/e2e.sh`: mock LLM, Route CRD without router, static RWX volumes, service-CA stand-in, restore test skipped), called by `release.yml` before anything is published | Nov–Dec 2026 |
 | 3 (built 2026-11-03, to prove on the first Thursday and Friday) | `upstream-sync.yml` (Thursday) and `weekly-release.yml` (Friday, skips when nothing changed or during a freeze) | Dec 2026 |
-| 4 (built 2026-11-03; rehearsal mode 2026-11-04, to run before the 2026-12-01 freeze) | `promote.yml` and hotfix releases on `release-0.X`; first promotion of the 0.1 line | 2026-12-15 |
+| 4 (built 2026-11-03; rehearsal green 2026-11-05: v0.1.59 promoted on throwaway branches, hotfix v0.1.60-rc.1 on stable of the test catalog, cosign 8/8) | `promote.yml` and hotfix releases on `release-0.X`; first promotion of the 0.1 line | 2026-12-15 |
 | 5 (optional) | self-hosted runner in demo333 to automate the canary before a promotion; CD only if zuno-demo asks | 2027 |
 
 The signing identity of the operator, bundle and catalog moved from `unifai-operator-release.yml@refs/tags/operator-v…`
