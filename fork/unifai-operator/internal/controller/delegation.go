@@ -188,6 +188,9 @@ func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, level okf.Level,
 		if d.TimeoutSeconds > 0 { // unset keeps the node config, and so the blueprint hash, of the earlier releases
 			config["timeout_seconds"] = d.TimeoutSeconds
 		}
+		if d.Approval != "" { // unset keeps the node config, and so the blueprint hash, of the earlier releases
+			config["approval_mode"] = d.Approval
+		}
 		out = append(out, map[string]any{"rid": tg.nodeUID(), "name": tg.Title, "type": a2aNodeType, "config": config})
 	}
 	return out

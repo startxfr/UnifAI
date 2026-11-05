@@ -94,6 +94,13 @@ type BundleDelegation struct {
 	// +kubebuilder:validation:Maximum=900
 	// +optional
 	TimeoutSeconds int32 `json:"timeoutSeconds,omitempty"`
+	// What the A2A node does when a target asks for an approval before a write (input-required, zuno.approval; R-535):
+	// ask relays it to the human of the session, whatever the session's auto-approve rules say; dynamic does so only
+	// when the session has human approval enabled; skip rejects it, so the write does not run. Unset behaves as skip
+	// and leaves the emitted node unchanged.
+	// +kubebuilder:validation:Enum=skip;ask;dynamic
+	// +optional
+	Approval string `json:"approval,omitempty"`
 }
 
 // BundleLLM is the template of the LLM emitted for every task: the bundle adds the Zuno headers

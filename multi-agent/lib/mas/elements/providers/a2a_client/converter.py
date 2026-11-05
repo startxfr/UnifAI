@@ -103,6 +103,25 @@ class A2AConverter:
             context_id=context_id,
         )
 
+    def to_approval_message(
+            self,
+            task_id: str,
+            context_id: Optional[str],
+            request_id: str,
+            decision: str,
+            feedback: str = "",
+    ) -> Message:
+        """The answer to an approval request: a new message on the same task and context carrying a data part
+        ``{"zuno.approval": {request_id, decision, feedback}}``."""
+        data = {"zuno.approval": {"request_id": request_id, "decision": decision, "feedback": feedback}}
+        return Message(
+            role=A2ARole.user,
+            parts=[Part(root=DataPart(data=data))],
+            message_id=uuid4().hex,
+            task_id=task_id,
+            context_id=context_id,
+        )
+
     def to_chat_message(self, result: A2AResult) -> ConversionResult:
         """
         Convert A2AResult to ChatMessage with full metadata.

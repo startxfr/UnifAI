@@ -255,3 +255,16 @@ func TestA2ANodeCarriesTheRunClassification(t *testing.T) {
 		t.Errorf("no level, no header: %v", h)
 	}
 }
+
+func TestA2ANodeCarriesTheApprovalMode(t *testing.T) {
+	config := func(approval string) map[string]any {
+		d := &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080", Approval: approval}
+		return a2aNodes(d, "arkos", "draft", okf.C2, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})[0]["config"].(map[string]any)
+	}
+	if c := config("ask"); c["approval_mode"] != "ask" {
+		t.Errorf("a declared mode follows the node: %v", c)
+	}
+	if c := config(""); c["approval_mode"] != nil {
+		t.Errorf("no declared mode, no field (existing blueprints keep their hash): %v", c)
+	}
+}

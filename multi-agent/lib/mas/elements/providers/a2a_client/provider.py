@@ -8,7 +8,7 @@ Orchestrates client, converter, and polling.
 import asyncio
 import logging
 import threading
-from typing import Optional, Dict, Any, AsyncIterator, Iterator, Tuple
+from typing import Callable, Optional, Dict, Any, AsyncIterator, Iterator, Set, Tuple
 
 import anyio
 from pydantic import HttpUrl
@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 
 # How long we wait for the remote agent to acknowledge a cancellation.
 CANCEL_TIMEOUT_SECONDS = 5.0
+
+# Approvals one delegation may relay (R-535 step 5); beyond that the remote task is cancelled.
+MAX_APPROVALS_PER_DELEGATION = 5
+
+# Decides an approval request of the remote agent: (zuno.approval payload) -> (decision, feedback).
+# Blocking (it may wait for a human); the provider runs it in a worker thread. v1 sends "approve" or "reject" only.
+ApprovalHandler = Callable[[Dict[str, Any]], Tuple[str, str]]
 
 
 class A2ATaskError(A2AClientError):
@@ -144,6 +151,7 @@ class A2AProvider:
             max_poll_attempts: int = 60,
             blocking: Optional[bool] = None,
             progress: Optional[A2AProgress] = None,
+            on_approval: Optional[ApprovalHandler] = None,
     ) -> Tuple[ChatMessage, Dict[str, Any]]:
         """
         Send message and get response.
@@ -161,6 +169,8 @@ class A2AProvider:
             max_poll_attempts: Maximum polling attempts
             blocking: False makes the send return the task at once, so that the polling above (and its bound) is what
                 waits for the answer; None keeps the server's default (the request is held until the task is done)
+            on_approval: decides the approval requests of the remote agent (input-required with ``zuno.approval``);
+                without it every request is rejected (fail closed)
             
         Returns:
             Tuple of (response ChatMessage, metadata dict)
@@ -191,17 +201,81 @@ class A2AProvider:
             if wait_for_completion and not result.is_complete and not result.is_failure:
                 if progress is not None:
                     progress.task_id = result.task_id
-                result = await self._poll(
-                    client,
-                    result.task_id,
-                    poll_interval,
-                    max_poll_attempts,
-                    raise_on_error,
-                    progress,
+                result = await self._await_result(
+                    client, result, poll_interval, max_poll_attempts, raise_on_error, progress, on_approval,
                 )
 
             conversion = self._converter.to_chat_message(result)
             return conversion.message, conversion.metadata
+
+    async def _await_result(
+            self,
+            client: A2AClient,
+            result: A2AResult,
+            interval: float,
+            max_attempts: int,
+            raise_on_error: bool,
+            progress: Optional[A2AProgress],
+            on_approval: Optional[ApprovalHandler],
+    ) -> A2AResult:
+        """Poll the task to its end, relaying the approval requests of the remote agent on the way (R-535 step 5).
+
+        An input-required task carrying ``zuno.approval`` is answered by a new message on the same task and context,
+        then polled again. Authentication required is an error. More than MAX_APPROVALS_PER_DELEGATION requests
+        cancel the remote task.
+        """
+        task_id = result.task_id
+        answered: Set[str] = set()
+        while True:
+            result = await self._poll(client, task_id, interval, max_attempts, raise_on_error, progress, answered)
+            if result.requires_auth:
+                await self._cancel_remote(client, task_id)
+                raise A2ATaskError(
+                    "The remote agent requires authentication that the delegation cannot provide",
+                    task_id=task_id, state=result.state,
+                )
+            approval = result.approval if result.requires_input else None
+            if approval is None:
+                return result
+            if len(answered) >= MAX_APPROVALS_PER_DELEGATION:
+                await self._cancel_remote(client, task_id)
+                raise A2ATaskError(
+                    f"The remote agent asked for more than {MAX_APPROVALS_PER_DELEGATION} approvals in one delegation",
+                    task_id=task_id, state=result.state,
+                )
+            request_id = str(approval["request_id"])
+            decision, feedback = await self._decide(client, task_id, approval, on_approval, progress)
+            answered.add(request_id)
+            logger.info("a2a.approval_answered", extra={"task_id": task_id, "request_id": request_id,
+                                                        "decision": decision})
+            answer = self._converter.to_approval_message(task_id, result.context_id, request_id, decision, feedback)
+            result = await client.send(answer, blocking=False)
+            if result.is_complete or result.is_failure:
+                return result
+
+    async def _decide(
+            self,
+            client: A2AClient,
+            task_id: str,
+            approval: Dict[str, Any],
+            on_approval: Optional[ApprovalHandler],
+            progress: Optional[A2AProgress],
+    ) -> Tuple[str, str]:
+        """Ask the handler (in a worker thread: it may wait for a human); fail closed on absence or error."""
+        if on_approval is None:
+            return "reject", "No approval channel is available to the delegating agent"
+        try:
+            decision, feedback = await asyncio.to_thread(on_approval, approval)
+        except Exception as e:  # a failing handler must not approve anything
+            logger.warning("a2a.approval_handler_failed", extra={"task_id": task_id, "error": f"{type(e).__name__}: {e}"})
+            return "reject", "The approval could not be obtained"
+        except BaseException:  # interrupted while a human was being asked: stop the remote task
+            cancelled = await self._cancel_remote(client, task_id)
+            if progress is not None:
+                progress.cancel = "cancelled" if cancelled else "cancel_failed"
+                progress.settled.set()
+            raise
+        return ("approve" if decision == "approve" else "reject"), feedback or ""
 
     async def _poll(
             self,
@@ -211,10 +285,13 @@ class A2AProvider:
             max_attempts: int,
             raise_on_error: bool,
             progress: Optional[A2AProgress] = None,
+            answered: Optional[Set[str]] = None,
     ) -> A2AResult:
-        """Poll until completion or timeout; the remote task is cancelled when we stop waiting for it (ADR-0406)."""
+        """Poll until completion or timeout; the remote task is cancelled when we stop waiting for it (ADR-0406).
+
+        ``answered``: request ids already answered; the task may still show them for a moment, they are not asked again."""
         try:
-            return await self._poll_loop(client, task_id, interval, max_attempts, raise_on_error)
+            return await self._poll_loop(client, task_id, interval, max_attempts, raise_on_error, answered)
         except A2ATaskError:
             raise  # the task ended on its own (failed, input or auth required): nothing left to cancel
         except A2ATimeoutError as e:
@@ -250,6 +327,7 @@ class A2AProvider:
             interval: float,
             max_attempts: int,
             raise_on_error: bool,
+            answered: Optional[Set[str]] = None,
     ) -> A2AResult:
         for _ in range(max_attempts):
             await asyncio.sleep(interval)
@@ -267,7 +345,10 @@ class A2AProvider:
                 return result
 
             if result.requires_input:
-                if raise_on_error:
+                pending = result.approval
+                if pending is not None and str(pending["request_id"]) in (answered or ()):
+                    continue  # our answer is not reflected yet
+                if raise_on_error and pending is None:
                     raise A2ATaskError("Input required", task_id=task_id, state=result.state)
                 return result
 

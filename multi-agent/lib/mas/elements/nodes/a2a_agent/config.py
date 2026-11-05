@@ -22,6 +22,7 @@ Authentication uses the same hint-driven OAuth flow as MCP providers:
 from mas.elements.nodes.common.base_config import NodeBaseConfig
 from pydantic import Field, HttpUrl
 from typing import Dict, Optional, Literal
+from mas.core.hitl.models import HITLMode
 from a2a.types import AgentCard
 from .identifiers import Identifier
 from mas.core.ref.models import RetrieverRef
@@ -124,6 +125,15 @@ class A2AAgentNodeConfig(NodeBaseConfig):
                      "message is always sent without blocking and polled until this bound (so an interrupted turn "
                      "can cancel the remote task). Unset: 900 seconds"),
         title="Timeout (seconds)",
+    )
+
+    approval_mode: HITLMode = Field(
+        default=HITLMode.SKIP,
+        description=("What happens when the remote agent asks for an approval before a write (input-required with "
+                     "zuno.approval): ask relays it to the human of the session, skip rejects it (the remote agent "
+                     "does not run the write), dynamic relays it only when the session has human approval enabled. "
+                     "Session auto-approve rules never answer it"),
+        title="Approval mode",
     )
 
     bearer_token: Optional[str] = Field(

@@ -12,6 +12,7 @@ from a2a.types import AgentCard
 from mas.graph.state.state_view import StateView
 from mas.elements.llms.common.chat.message import ChatMessage, Role
 from mas.elements.nodes.common.base_node import BaseNode
+from mas.elements.nodes.common.capabilities.hitl_capable import HITLCapableMixin
 from mas.elements.nodes.common.capabilities.iem_capable import IEMCapableMixin
 from mas.elements.nodes.common.capabilities.retriever_capable import RetrieverCapableMixin
 from mas.elements.nodes.common.capabilities.workload_capable import WorkloadCapableMixin
@@ -20,6 +21,9 @@ from mas.elements.providers.a2a_client import A2AProvider
 from mas.elements.providers.a2a_client.provider import A2AProgress, A2ATimeoutError
 from mas.core.auth.credentials.credential import AuthCredential
 from mas.core.auth.errors import AuthError
+from mas.core.hitl.models import (
+    ApprovalDecision, ApprovalRequest, ApprovalType, RequestOrigin, ToolAccessMode,
+)
 from mas.core.identity_forwarding import IdentityTokenUnavailable
 from global_utils.utils.async_bridge import get_async_bridge
 
@@ -37,6 +41,7 @@ DEFAULT_TIMEOUT_SECONDS = 900.0  # the bound when the node declares no timeout (
 
 class A2AAgentNode(
     WorkloadCapableMixin,
+    HITLCapableMixin,
     IEMCapableMixin,
     RetrieverCapableMixin,
     BaseNode
@@ -485,6 +490,7 @@ class A2AAgentNode(
             max_poll_attempts=self._max_poll_attempts,
             blocking=self._blocking_send,
             progress=_progress.get(),
+            on_approval=self._on_remote_approval,
         )
 
         return response, metadata
@@ -559,6 +565,33 @@ class A2AAgentNode(
         }
 
         return final_message, metadata
+
+    def _on_remote_approval(self, approval: Dict[str, Any]) -> tuple[str, str]:
+        """Decide an approval the remote agent asks for before a write (R-535 step 5): relay it to the human of
+        the session, never to the auto-approve rules. Fail closed: no human to ask means reject. v1 sends approve or
+        reject only (modify and redirect are not understood by the gateway)."""
+        operation = str(approval.get("operation") or "unknown")
+        if not self._should_activate_hitl():
+            logger.info("a2a.approval_unavailable", extra={"node_uid": self.uid, "operation": operation})
+            return "reject", (f"{self.display_name} asked to run {operation} and no human approval is available "
+                              f"for this delegation")
+        request = ApprovalRequest(
+            request_id=str(approval["request_id"]),
+            type=ApprovalType.AGENT_ACTION,
+            origin=RequestOrigin(node_uid=self.uid, node_display_name=self.display_name or self.uid,
+                                 session_id=self.hitl_session_id),
+            tool_name=operation,
+            tool_args=dict(approval.get("args") or {}),
+            tool_description=f"Requested by remote agent {self.display_name}",
+            tool_access_mode=ToolAccessMode.WRITE,
+            reasoning=str(approval.get("reasoning") or ""),
+        )
+        response = self._approval_gate.request_human_approval(request)
+        if response.decision == ApprovalDecision.APPROVE:
+            return "approve", response.feedback
+        if response.decision != ApprovalDecision.REJECT:
+            return "reject", f"{response.decision.value} is not supported for a remote agent's request"
+        return "reject", response.feedback
 
     def _combine_context_messages(self, messages: List[ChatMessage]) -> str:
         """

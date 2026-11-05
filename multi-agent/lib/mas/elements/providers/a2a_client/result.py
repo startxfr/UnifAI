@@ -114,6 +114,17 @@ class A2AResult(BaseModel):
         return None
 
     @property
+    def approval(self) -> Optional[Dict[str, Any]]:
+        """The approval the remote agent asks for (``zuno.approval`` in the metadata of the status message of an
+        input-required task: request_id, operation, args, reasoning); None when absent or without a request_id."""
+        sources = [getattr(self.status_message_obj, "metadata", None), getattr(self.task, "metadata", None)]
+        for metadata in sources:
+            value = (metadata or {}).get("zuno.approval")
+            if isinstance(value, dict) and value.get("request_id"):
+                return value
+        return None
+
+    @property
     def is_canceled(self) -> bool:
         """True if task was canceled."""
         return self.state == TaskState.canceled

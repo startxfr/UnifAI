@@ -44,6 +44,13 @@ class ApprovalGate(ABC):
         """
         ...
 
+    def request_human_approval(self, request: ApprovalRequest) -> ApprovalResponse:
+        """Ask a human whatever the session's auto-approval rules say.
+
+        For requests that rules written for tools must never answer (an approval relayed from a remote agent). The
+        default is ``request_approval``; decorators that auto-resolve override it to go straight to the human."""
+        return self.request_approval(request)
+
     def request_approval(self, request: ApprovalRequest) -> ApprovalResponse:
         """Template method — delegates to ``_send_and_wait`` then applies
         the timeout policy from ``HITLConfig`` if no response arrives."""

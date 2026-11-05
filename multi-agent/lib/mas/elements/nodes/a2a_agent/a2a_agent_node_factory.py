@@ -55,6 +55,7 @@ class A2AAgentNodeFactory(BaseFactory[A2AAgentNodeConfig, A2AAgentNode]):
             retriever = deps.pop("retriever")
             element_deps = deps.pop("deps", None)
             tracing_service = element_deps.tracing_service if element_deps else None
+            execution_holder = element_deps.execution_ctx if element_deps else None
 
             bearer_token = None
             if (
@@ -73,6 +74,8 @@ class A2AAgentNodeFactory(BaseFactory[A2AAgentNodeConfig, A2AAgentNode]):
                 retries=cfg.retries,
                 timeout_seconds=cfg.timeout_seconds,
                 tracing_service=tracing_service,
+                hitl_mode=cfg.approval_mode,
+                execution_holder=execution_holder,
             )
         except Exception as e:
             raise PluginConfigurationError(

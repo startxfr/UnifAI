@@ -73,6 +73,10 @@ class AutoResolvingApprovalGate(ApprovalGate):
         )
         return self._inner.request_approval(request)
 
+    def request_human_approval(self, request: ApprovalRequest) -> ApprovalResponse:
+        """Skip the rules: they are written for tools, not for what a remote agent asks."""
+        return self._inner.request_human_approval(request)
+
     def _send_and_wait(
         self,
         request: ApprovalRequest,
