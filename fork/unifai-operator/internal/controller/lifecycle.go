@@ -154,3 +154,52 @@ func withReason(cr *unifaiv1.UnifaiAgentBundle) string {
 	}
 	return ""
 }
+
+// condFunc sets one condition of the reconcile in progress.
+type condFunc func(typ string, ok bool, reason, msg string)
+
+// checkRevocation withdraws a bundle the platform's revocation list names, whatever the bundle says: nothing it
+// emitted stays. An unreadable list admits nothing new and leaves what is emitted as it is. A nil result means the
+// bundle is not revoked and the reconcile goes on.
+func (r *AgentBundleReconciler) checkRevocation(ctx context.Context, cr *unifaiv1.UnifaiAgentBundle, cond condFunc) error {
+	st := &cr.Status
+	revoked, err := r.revocationOf(ctx, cr)
+	if err != nil {
+		cond(ConditionValid, false, "RevocationListUnreadable", err.Error())
+		return permanent("revocation list unreadable, nothing admitted: %v", err)
+	}
+	if revoked == nil {
+		return nil
+	}
+	reason, actor := strings.TrimSpace(revoked.Reason), strings.TrimSpace(revoked.Actor)
+	if reason == "" {
+		reason = "no reason given in the revocation list" // a revocation always takes effect
+	}
+	if actor == "" {
+		actor = unknownActor
+	}
+	msg := fmt.Sprintf("revoked by the platform: %s (actor %s)", reason, actor)
+	if err := r.prune(ctx, cr, nil); err != nil {
+		return err
+	}
+	st.Children, st.Tasks, st.Agent, st.PrimaryTask, st.Display = nil, nil, "", "", nil
+	cond(ConditionValid, false, reasonRevoked, msg)
+	cond(ConditionEmitted, false, reasonRevoked, msg)
+	return &notServedError{msg: msg}
+}
+
+// retire handles zuno.status retired (ADR-0584 clause 3): no entry and no objects; a state change always has a reason.
+func (r *AgentBundleReconciler) retire(ctx context.Context, cr *unifaiv1.UnifaiAgentBundle, cond condFunc) error {
+	st := &cr.Status
+	if reasonOf(cr) == "" {
+		cond(ConditionValid, false, "MissingReason", "zuno.status is retired: set the annotation "+AnnotationReason+" (the pull request that retires the agent says why)")
+		return permanent("retired agent without the annotation %s, nothing changed", AnnotationReason)
+	}
+	if err := r.prune(ctx, cr, nil); err != nil {
+		return err
+	}
+	st.Children, st.Tasks, st.Agent, st.PrimaryTask, st.Display = nil, nil, "", "", nil
+	cond(ConditionValid, true, "Retired", "zuno.status is retired: "+reasonOf(cr))
+	cond(ConditionEmitted, false, "Retired", "retired agent: no entry, no objects")
+	return &notServedError{msg: "retired: " + reasonOf(cr)}
+}

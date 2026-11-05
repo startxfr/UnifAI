@@ -151,29 +151,9 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 		return &PermanentError{Err: err}
 	}
 
-	// 0. The platform's revocation list (ADR-0584 clause 5): a listed agent is not admitted, whatever the bundle says,
-	// and nothing it emitted stays. An unreadable list admits nothing new and leaves what is emitted as it is.
-	revoked, err := r.revocationOf(ctx, cr)
-	if err != nil {
-		cond(ConditionValid, false, "RevocationListUnreadable", err.Error())
-		return permanent("revocation list unreadable, nothing admitted: %v", err)
-	}
-	if revoked != nil {
-		reason, actor := strings.TrimSpace(revoked.Reason), strings.TrimSpace(revoked.Actor)
-		if reason == "" {
-			reason = "no reason given in the revocation list" // a revocation always takes effect
-		}
-		if actor == "" {
-			actor = unknownActor
-		}
-		msg := fmt.Sprintf("revoked by the platform: %s (actor %s)", reason, actor)
-		if err := r.prune(ctx, cr, nil); err != nil {
-			return err
-		}
-		st.Children, st.Tasks, st.Agent, st.PrimaryTask, st.Display = nil, nil, "", "", nil
-		cond(ConditionValid, false, reasonRevoked, msg)
-		cond(ConditionEmitted, false, reasonRevoked, msg)
-		return &notServedError{msg: msg}
+	// 0. The platform's revocation list (ADR-0584 clause 5).
+	if err := r.checkRevocation(ctx, cr, cond); err != nil {
+		return err
 	}
 
 	verifier, err := r.verifierFor(ctx, cr)
@@ -223,19 +203,7 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 	}
 	st.OKFVersion = b.OKFVersion
 	if b.Status == statusRetired {
-		// ADR-0584 clause 3: a retired agent has no entry and no objects; a state change always has a reason.
-		if reasonOf(cr) == "" {
-			cond(ConditionValid, false, "MissingReason", "zuno.status is retired: set the annotation "+AnnotationReason+" (the pull request that retires the agent says why)")
-			return permanent("retired agent without the annotation %s, nothing changed", AnnotationReason)
-		}
-		if err := r.prune(ctx, cr, nil); err != nil {
-			return err
-		}
-		st.Children, st.Tasks, st.Agent, st.PrimaryTask, st.Display = nil, nil, "", "", nil
-		msg := "zuno.status is retired: " + reasonOf(cr)
-		cond(ConditionValid, true, "Retired", msg)
-		cond(ConditionEmitted, false, "Retired", "retired agent: no entry, no objects")
-		return &notServedError{msg: "retired: " + reasonOf(cr)}
+		return r.retire(ctx, cr, cond)
 	}
 	if b.Status == statusPlaceholder && !cr.Spec.ServePlaceholder {
 		// ADR-0007: a placeholder agent is not served. Objects emitted while it was served are removed.
