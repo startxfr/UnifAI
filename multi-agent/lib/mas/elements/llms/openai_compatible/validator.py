@@ -2,7 +2,10 @@
 Validator for OpenAI-compatible LLM — checks API connectivity and model availability.
 """
 
+import socket
+import ssl
 from typing import List
+from urllib.parse import urlsplit
 
 import httpx
 from openai import (
@@ -137,6 +140,21 @@ class OpenAICompatibleLLMValidator(BaseElementValidator):
 
         return self._build_report(messages=messages)
 
+    @staticmethod
+    def _connect(base_url: str, verify_ssl: bool, timeout: float) -> None:
+        """Open (and close) a connection to the endpoint's host and port, TLS included for https."""
+        parts = urlsplit(base_url)
+        https = parts.scheme == "https"
+        host, port = parts.hostname, parts.port or (443 if https else 80)
+        with socket.create_connection((host, port), timeout=timeout) as raw:
+            if https:
+                ctx = ssl.create_default_context()
+                if not verify_ssl:
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+                with ctx.wrap_socket(raw, server_hostname=host):
+                    pass
+
     def _validate_forwarded(
         self,
         config: OpenAICompatibleConfig,
@@ -144,29 +162,26 @@ class OpenAICompatibleLLMValidator(BaseElementValidator):
     ) -> ValidatorReport:
         """Reachability-only check for an LLM that forwards the user's token.
 
-        Any HTTP answer (a 401 from an authenticating gateway included) proves
-        the endpoint is up; only a connection failure or a timeout is an error.
+        The endpoint is only connected to (TCP, and the TLS handshake for https), never sent a request: a request
+        without a token is a 401 in the gateway's logs on every reconcile. Only a connection failure or a timeout
+        is an error.
         """
         messages: List[ValidationMessage] = []
         try:
-            with httpx.Client(
-                verify=config.verify_ssl,
-                timeout=context.timeout_seconds,
-            ) as http_client:
-                http_client.get(str(config.base_url).rstrip("/") + "/models")
+            self._connect(str(config.base_url), config.verify_ssl, context.timeout_seconds)
             messages.append(self._info(
                 "MODEL_CHECK_SKIPPED",
                 "Endpoint reachable; the model is not probed because requests "
                 "carry the acting user's token, which only exists at run time",
                 field="model_name",
             ))
-        except httpx.TimeoutException:
+        except (socket.timeout, TimeoutError):
             messages.append(self._error(
                 ValidationCode.NETWORK_TIMEOUT.value,
                 f"Connection timed out after {context.timeout_seconds}s",
                 field="base_url",
             ))
-        except httpx.HTTPError:
+        except (OSError, ssl.SSLError):
             messages.append(self._error(
                 ValidationCode.ENDPOINT_UNREACHABLE.value,
                 "Cannot connect to API endpoint",

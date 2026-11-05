@@ -120,9 +120,9 @@ class A2AAgentNodeConfig(NodeBaseConfig):
     timeout_seconds: Optional[float] = Field(
         default=None,
         gt=0,
-        description=("How long to wait for the remote agent's answer; past it the remote task is cancelled. Set, the "
-                     "message is sent without blocking and polled until this bound. Unset: the server holds the "
-                     "request until the task is done"),
+        description=("How long to wait for the remote agent's answer; past it the remote task is cancelled. The "
+                     "message is always sent without blocking and polled until this bound (so an interrupted turn "
+                     "can cancel the remote task). Unset: 900 seconds"),
         title="Timeout (seconds)",
     )
 

@@ -25,7 +25,7 @@ from global_utils.utils.async_bridge import get_async_bridge
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_POLL_ATTEMPTS = 60  # x 0.5 s: the bound when the node declares no timeout
+DEFAULT_TIMEOUT_SECONDS = 900.0  # the bound when the node declares no timeout (the longest the bundle accepts)
 
 
 class A2AAgentNode(
@@ -83,8 +83,9 @@ class A2AAgentNode(
             bearer_token: Optional bearer token for authentication
             auth_credential: Optional bound credential for OAuth token refresh
             retriever: Optional retriever for context augmentation
-            timeout_seconds: How long to wait for the remote answer before cancelling the remote task. Set, the send
-                does not block and this bound is what waits; unset, the server holds the request (as before)
+            timeout_seconds: How long to wait for the remote answer before cancelling the remote task. The send never
+                blocks (the task id is known at once, so an interruption can cancel the remote task) and this bound
+                is what waits; unset, DEFAULT_TIMEOUT_SECONDS (900 s)
         """
         super().__init__(
             retriever=retriever,
@@ -115,9 +116,8 @@ class A2AAgentNode(
         self._max_context_messages = 20
         self._wait_for_completion = True
         self._poll_interval = 0.5
-        self._blocking_send: Optional[bool] = None if timeout_seconds is None else False
-        self._max_poll_attempts = (DEFAULT_POLL_ATTEMPTS if timeout_seconds is None
-                                   else max(1, math.ceil(timeout_seconds / self._poll_interval)))
+        self._blocking_send: Optional[bool] = False
+        self._max_poll_attempts = max(1, math.ceil((timeout_seconds or DEFAULT_TIMEOUT_SECONDS) / self._poll_interval))
 
     @staticmethod
     def _resolve_initial_headers(

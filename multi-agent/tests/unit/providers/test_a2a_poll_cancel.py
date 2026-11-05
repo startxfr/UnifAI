@@ -195,3 +195,13 @@ def test_an_activity_cancelled_while_waiting_for_the_remote_agent_cancels_the_re
     while not client.cancelled and time.time() < deadline:
         time.sleep(0.05)
     assert client.cancelled == ["t1"]
+
+
+def test_the_node_always_sends_without_blocking_and_bounds_the_wait():
+    from mas.elements.nodes.a2a_agent.a2a_agent_node import A2AAgentNode, DEFAULT_TIMEOUT_SECONDS
+    from unittest.mock import MagicMock, patch
+    for timeout, want in ((None, DEFAULT_TIMEOUT_SECONDS), (5, 5)):
+        with patch.object(A2AProvider, "create_sync", return_value=MagicMock()):
+            node = A2AAgentNode(base_url="http://gw:8080/agents/tekos", timeout_seconds=timeout)
+        assert node._blocking_send is False
+        assert node._max_poll_attempts * node._poll_interval == want
