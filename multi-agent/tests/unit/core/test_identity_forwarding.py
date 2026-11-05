@@ -385,3 +385,52 @@ def test_delegation_depth_is_one_more_than_the_depth_that_started_the_run():
         with bind_current_node("n1", "Researcher", "CustomAgentNode"):
             assert fwd.headers({"X-Zuno-Delegation-Depth": "{delegation_depth}"}) == {
                 "X-Zuno-Delegation-Depth": want}
+
+
+def test_a_run_raised_by_a_delegated_answer_never_sends_a_lower_classification():
+    holder = _holder()
+    fwd = IdentityForwarder(StaticSource(), holder)
+    templates = {"X-Zuno-Data-Classification": "C2", "X-Other": "v"}
+    with bind_current_node("n1", "Researcher", "CustomAgentNode"):
+        assert fwd.headers(templates)["X-Zuno-Data-Classification"] == "C2"
+        assert fwd.raise_classification("C3") is True
+        assert fwd.headers(templates) == {"X-Zuno-Data-Classification": "C3", "X-Other": "v"}
+        # monotone: a lower, equal, missing or malformed level changes nothing
+        for level in ("C1", "C3", "", None, "secret"):
+            assert fwd.raise_classification(level) is False
+        assert fwd.headers(templates)["X-Zuno-Data-Classification"] == "C3"
+        # a header already above the floor is left alone, and no header is invented
+        assert fwd.headers({"X-Zuno-Data-Classification": "C4"})["X-Zuno-Data-Classification"] == "C4"
+        assert fwd.headers({"X-Other": "v"}) == {"X-Other": "v"}
+
+
+def test_the_node_raises_the_run_with_the_level_the_remote_agent_answered_at():
+    from mas.elements.nodes.a2a_agent.a2a_agent_node import A2AAgentNode
+
+    holder = _holder()
+    cred = ForwardedIdentityCredential(IdentityForwarder(StaticSource(), holder), {})
+
+    class _Node(A2AAgentNode):
+        uid = "tekos"
+
+    node = _Node.__new__(_Node)
+    node._auth_credential = cred
+    node._raise_run_classification({"classification": None})   # no key from the gateway: no raise
+    assert holder.run_classification() == ""
+    node._raise_run_classification({"classification": "C3"})
+    assert holder.run_classification() == "C3"
+    node._raise_run_classification({"classification": "C2"})
+    assert holder.run_classification() == "C3"
+    node._auth_credential = None                               # no forwarded identity: nothing to raise
+    node._raise_run_classification({"classification": "C4"})
+
+
+def test_the_result_reads_the_classification_from_the_task_metadata():
+    from types import SimpleNamespace
+    from mas.elements.providers.a2a_client.result import A2AResult, ResultKind
+
+    done = A2AResult(kind=ResultKind.TASK)
+    done.task = SimpleNamespace(metadata={"zuno.classification": "C3"}, status=None)
+    assert done.classification == "C3"
+    done.task = SimpleNamespace(metadata={}, status=None)
+    assert done.classification is None

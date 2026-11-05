@@ -31,9 +31,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from mas.core.auth.target_policy import forwarding_target_allowed
-from mas.core.execution_context import SESSION_TAGS_TAG, ExecutionContextHolder
+from mas.core.execution_context import SESSION_TAGS_TAG, ExecutionContextHolder, classification_rank
 
 logger = logging.getLogger(__name__)
+
+#: The header carrying the run's data classification (a run raised by a delegated answer never sends less).
+CLASSIFICATION_HEADER = "x-zuno-data-classification"
 
 #: ``auth_method`` value that presents the acting user's own platform token to a downstream server.
 FORWARD_USER_TOKEN = "forward_user_token"
@@ -220,8 +223,21 @@ class IdentityForwarder:
             )
         return self._source.get_access_token(ctx.session_id, user)
 
+    def raise_classification(self, level: str | None) -> bool:
+        """A delegated agent answered at ``level``: from now on this run's calls carry at least that level."""
+        return self._holder.raise_classification(level) if self._holder is not None else False
+
+    def _raise_to_floor(self, out: dict[str, str]) -> None:
+        floor = self._holder.run_classification() if self._holder is not None else ""
+        if not floor:
+            return
+        for name, value in out.items():
+            if name.lower() == CLASSIFICATION_HEADER and classification_rank(floor) > classification_rank(value):
+                out[name] = floor
+
     def headers(self, templates: Mapping[str, Any] | None = None, forward_token: bool = False) -> dict[str, str]:
         out = render_header_templates(templates or {}, self.variables())
+        self._raise_to_floor(out)
         if forward_token:
             out["Authorization"] = f"Bearer {self.access_token()}"
         return out
@@ -255,6 +271,9 @@ class ForwardedIdentityCredential:
     async def get_headers(self) -> dict[str, str]:
         self._check_target()
         return await asyncio.to_thread(self._forwarder.headers, self._templates, True)
+
+    def raise_classification(self, level: str | None) -> bool:
+        return self._forwarder.raise_classification(level)
 
     async def get_token(self) -> str:
         self._check_target()

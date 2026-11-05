@@ -104,6 +104,16 @@ class A2AResult(BaseModel):
         return state in (TaskState.failed, TaskState.rejected) if state else False
 
     @property
+    def classification(self) -> Optional[str]:
+        """Data classification the remote agent answered at (``zuno.classification`` in the metadata of a completed
+        task, ADR-0403 clause 5); None when absent."""
+        for source in (self.task, self.message):
+            value = (getattr(source, "metadata", None) or {}).get("zuno.classification") if source else None
+            if value:
+                return str(value)
+        return None
+
+    @property
     def is_canceled(self) -> bool:
         """True if task was canceled."""
         return self.state == TaskState.canceled

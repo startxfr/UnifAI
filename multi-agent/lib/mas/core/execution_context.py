@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -15,6 +17,16 @@ HITL_ENABLED_TAG = "hitl_enabled"
 
 # Session metadata tags mirrored at staging (see ``with_session_tags``).
 SESSION_TAGS_TAG = "session_tags"
+
+# Floor of the run's data classification, raised when a delegated agent answers at a higher level (monotone, never lowered).
+RUN_CLASSIFICATION_TAG = "run_classification"
+_LEVEL = re.compile(r"^C([1-9])$")
+
+
+def classification_rank(level: Optional[str]) -> int:
+    """C1..C9 -> 1..9; anything else (missing, malformed) -> 0, which raises nothing."""
+    match = _LEVEL.match(str(level or "").strip().upper())
+    return int(match.group(1)) if match else 0
 
 
 class ExecutionContext(BaseModel):
@@ -130,10 +142,11 @@ class ExecutionContextHolder:
     silent defaults.
     """
 
-    __slots__ = ("_ctx",)
+    __slots__ = ("_ctx", "_lock")
 
     def __init__(self) -> None:
         self._ctx: Optional[ExecutionContext] = None
+        self._lock = threading.Lock()
 
     @property
     def context(self) -> ExecutionContext:
@@ -147,6 +160,21 @@ class ExecutionContextHolder:
     @context.setter
     def context(self, value: ExecutionContext) -> None:
         self._ctx = value
+
+    def run_classification(self) -> str:
+        """The floor the run was raised to ("" when never raised or not initialised)."""
+        return str(((self._ctx.tags if self._ctx else None) or {}).get(RUN_CLASSIFICATION_TAG) or "")
+
+    def raise_classification(self, level: Optional[str]) -> bool:
+        """Raise the run's classification floor to ``level`` if it is higher; True when it was raised."""
+        wanted = classification_rank(level)
+        with self._lock:
+            if self._ctx is None or wanted <= classification_rank(self.run_classification()):
+                return False
+            tags = dict(self._ctx.tags or {})
+            tags[RUN_CLASSIFICATION_TAG] = str(level).strip().upper()
+            self._ctx = self._ctx.model_copy(update={"tags": tags})
+            return True
 
     @property
     def scope(self) -> str:

@@ -182,6 +182,8 @@ class A2AAgentNode(
             # 2. Delegate to remote agent (handles streaming automatically)
             remote_response, metadata = self._delegate_traced(conversation_context, task)
 
+            self._raise_run_classification(metadata)
+
             # 3. Create agent result from remote response
             agent_result = self._create_agent_result(
                 remote_response,
@@ -210,6 +212,13 @@ class A2AAgentNode(
             if task.thread_id:
                 self.workspaces.add_result(task.thread_id, error_result)
             self._route_response(task, error_result, packet)
+
+    def _raise_run_classification(self, metadata) -> None:
+        """Monotone classification (ADR-0403 clause 5): the run is at least as classified as the agent that answered."""
+        level = (metadata or {}).get("classification")
+        raise_to = getattr(self._auth_credential, "raise_classification", None)
+        if level and raise_to is not None and raise_to(level):
+            logger.info("a2a.classification_raised", extra={"node_uid": self.uid, "classification": level})
 
     def _delegate_traced(self, conversation_context, task):
         """Delegate inside a span; a timeout and what became of the remote task are recorded on it."""

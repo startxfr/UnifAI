@@ -258,6 +258,7 @@ class A2AConverter:
             "requires_auth": result.requires_auth,
             "error_message": result.error_message,
             "error_code": result.error_code,
+            "classification": result.classification,
             "has_files": bool(files),
             "has_data": bool(data),
             "file_count": len(files),
