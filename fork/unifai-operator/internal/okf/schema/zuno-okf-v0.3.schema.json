@@ -104,7 +104,9 @@
           "type": "string",
           "enum": [
             "active",
-            "placeholder"
+            "placeholder",
+            "deprecated",
+            "retired"
           ]
         },
         "tasks": {

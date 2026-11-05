@@ -459,6 +459,103 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		}, timeout, interval).Should(BeZero())
 	})
 
+	stateFiles := func(state string) okf.Files {
+		files := tekosFiles()
+		files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "  status: active\n", "  status: "+state+"\n", 1))
+		Expect(string(files["agent.okf.md"])).To(ContainSubstring("status: " + state))
+		return files
+	}
+	validReason := func(ns string) string {
+		var b unifaiv1.UnifaiAgentBundle
+		_ = k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos"}, &b)
+		if c := meta.FindStatusCondition(b.Status.Conditions, ConditionValid); c != nil {
+			return c.Reason
+		}
+		return ""
+	}
+	count := func(ns string) int {
+		var l unifaiv1.UnifaiWorkflowList
+		Expect(k8sClient.List(ctx, &l, client.InNamespace(ns))).To(Succeed())
+		return len(l.Items)
+	}
+	revocations := func(ns, data string) {
+		cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: RevocationConfigMap, Namespace: ns, Labels: map[string]string{"app.kubernetes.io/part-of": "unifai"}}, Data: map[string]string{"revoked": data}}
+		Expect(k8sClient.Create(ctx, cm)).To(Succeed())
+	}
+
+	It("keeps serving a deprecated agent and says so on the sheet and in the condition (ADR-0584)", func() {
+		ns := setup("bundle-deprecated")
+		files := stateFiles("deprecated")
+		Expect(k8sClient.Create(ctx, newBundle(ns, fakeBundles.put(files, sign(key, files)), nil))).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"))
+		Expect(validReason(ns)).To(Equal("Deprecated"))
+		Expect(status(ns)().Display.State).To(Equal("deprecated"))
+		Expect(count(ns)).To(BeNumerically(">", 0))
+	})
+
+	It("removes the entry and the objects of a retired agent, which needs a reason (ADR-0584)", func() {
+		ns := setup("bundle-retired")
+		files := stateFiles("active")
+		ref := fakeBundles.put(files, sign(key, files))
+		Expect(k8sClient.Create(ctx, newBundle(ns, ref, nil))).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"))
+		Expect(count(ns)).To(BeNumerically(">", 0))
+
+		retired := stateFiles("retired")
+		var cur unifaiv1.UnifaiAgentBundle
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos"}, &cur)).To(Succeed())
+		cur.Spec.Source.OCI.Reference = fakeBundles.put(retired, sign(key, retired))
+		Expect(k8sClient.Update(ctx, &cur)).To(Succeed())
+		Eventually(func() string { return validReason(ns) }, timeout, interval).Should(Equal("MissingReason"))
+		Expect(count(ns)).To(BeNumerically(">", 0), "a refused state change leaves what is emitted")
+
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos"}, &cur)).To(Succeed())
+		cur.Annotations = map[string]string{AnnotationReason: "replaced by arkos", AnnotationActor: "alice"}
+		Expect(k8sClient.Update(ctx, &cur)).To(Succeed())
+		Eventually(func() string { return validReason(ns) }, timeout, interval).Should(Equal("Retired"))
+		Eventually(func() int { return count(ns) }, timeout, interval).Should(BeZero())
+		st := status(ns)()
+		Expect(st.Phase).To(Equal("Pending"))
+		Expect(st.Display).To(BeNil())
+		Expect(st.Agent).To(BeEmpty())
+		Expect(st.Message).To(ContainSubstring("replaced by arkos"))
+	})
+
+	It("withdraws an agent listed in the revocation list without a new release, and serves it again when it is unlisted", func() {
+		ns := setup("bundle-revoked")
+		files := tekosFiles()
+		Expect(k8sClient.Create(ctx, newBundle(ns, fakeBundles.put(files, sign(key, files)), nil))).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"))
+		Expect(count(ns)).To(BeNumerically(">", 0))
+
+		revocations(ns, "- bundle: other\n  reason: x\n- bundle: tekos\n  reason: signing workflow compromised\n  actor: bob\n")
+		Eventually(func() string { return validReason(ns) }, timeout, interval).Should(Equal("Revoked"))
+		Eventually(func() int { return count(ns) }, timeout, interval).Should(BeZero())
+		st := status(ns)()
+		Expect(st.Message).To(And(ContainSubstring("signing workflow compromised"), ContainSubstring("bob")))
+		Expect(st.Display).To(BeNil())
+
+		var cm corev1.ConfigMap
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: RevocationConfigMap}, &cm)).To(Succeed())
+		cm.Data["revoked"] = "[]"
+		Expect(k8sClient.Update(ctx, &cm)).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"))
+		Eventually(func() int { return count(ns) }, timeout, interval).Should(BeNumerically(">", 0))
+	})
+
+	It("admits nothing new when the revocation list is unreadable and leaves what is emitted alone", func() {
+		ns := setup("bundle-revocation-unreadable")
+		files := tekosFiles()
+		Expect(k8sClient.Create(ctx, newBundle(ns, fakeBundles.put(files, sign(key, files)), nil))).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"))
+		before := count(ns)
+
+		revocations(ns, "- bundle: [not, a, string]\n")
+		Eventually(func() string { return validReason(ns) }, timeout, interval).Should(Equal("RevocationListUnreadable"))
+		Expect(status(ns)().Phase).To(Equal("Error"))
+		Expect(count(ns)).To(Equal(before))
+	})
+
 	It("emits a v0.3 bundle with its skills in the system prompt and the skill-declared tools within the ceilings", func() {
 		ns := setup("bundle-v03")
 		files := okf.Files{}

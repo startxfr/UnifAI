@@ -74,7 +74,7 @@
         "status": {
           "description": "Lifecycle status of this agent instance in the current release. `active` means a real Agent Runtime task graph, FE and BFF are deployed and reachable. `placeholder` means only this declarative definition and a reserved namespace exist (ADR-0007): the portal renders an access-gated \"coming soon\" tile and no FE/BFF Deployment is applied. See platform/architecture/agent-platform-separation.md.",
           "type": "string",
-          "enum": ["active", "placeholder"]
+          "enum": ["active", "placeholder", "deprecated", "retired"]
         },
         "tasks": {
           "description": "Ordered list of task names this agent exposes, each resolved to agents/<name>/tasks/<task>.md (zuno-okf-task-v0.2.schema.json). A `placeholder` agent declares exactly one stub task with an empty tool list.",

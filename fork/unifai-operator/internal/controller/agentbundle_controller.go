@@ -19,9 +19,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/recorder"
 
 	unifaiv1 "github.com/startxfr/unifai-operator/api/v1alpha1"
 	"github.com/startxfr/unifai-operator/internal/okf"
@@ -40,8 +45,11 @@ type AgentBundleReconciler struct {
 	// FetchSignatures pulls the cosign signatures of an artifact for keyless verification (okf.FetchKeylessSignatures
 	// by default; replaced in tests).
 	FetchSignatures func(ctx context.Context, ref string, cred *okf.Credential) ([]okf.KeylessSignature, error)
+	// Recorder records the admission Events of ADR-0584 (nil: none).
+	Recorder recorder.EventRecorder
 }
 
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups=unifai.startx.fr,resources=unifaiagentbundles,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=unifai.startx.fr,resources=unifaiagentbundles/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=unifai.startx.fr,resources=unifaiagentbundles/finalizers,verbs=update
@@ -94,6 +102,7 @@ func (r *AgentBundleReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	orig := cr.DeepCopy()
 	var requeue time.Duration
 	err := r.reconcile(ctx, cr)
+	audit(r.Recorder, cr, orig.Status.Conditions)
 	st := &cr.Status
 	now := metav1.Now()
 	st.LastReconciled = &now
@@ -141,6 +150,32 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 	if _, _, err := okf.SplitDigestRef(ref); err != nil {
 		return &PermanentError{Err: err}
 	}
+
+	// 0. The platform's revocation list (ADR-0584 clause 5): a listed agent is not admitted, whatever the bundle says,
+	// and nothing it emitted stays. An unreadable list admits nothing new and leaves what is emitted as it is.
+	revoked, err := r.revocationOf(ctx, cr)
+	if err != nil {
+		cond(ConditionValid, false, "RevocationListUnreadable", err.Error())
+		return permanent("revocation list unreadable, nothing admitted: %v", err)
+	}
+	if revoked != nil {
+		reason, actor := strings.TrimSpace(revoked.Reason), strings.TrimSpace(revoked.Actor)
+		if reason == "" {
+			reason = "no reason given in the revocation list" // a revocation always takes effect
+		}
+		if actor == "" {
+			actor = unknownActor
+		}
+		msg := fmt.Sprintf("revoked by the platform: %s (actor %s)", reason, actor)
+		if err := r.prune(ctx, cr, nil); err != nil {
+			return err
+		}
+		st.Children, st.Tasks, st.Agent, st.PrimaryTask, st.Display = nil, nil, "", "", nil
+		cond(ConditionValid, false, reasonRevoked, msg)
+		cond(ConditionEmitted, false, reasonRevoked, msg)
+		return &notServedError{msg: msg}
+	}
+
 	verifier, err := r.verifierFor(ctx, cr)
 	if err != nil {
 		return err
@@ -187,6 +222,21 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 		return permanent("invalid OKF bundle: %v", err)
 	}
 	st.OKFVersion = b.OKFVersion
+	if b.Status == statusRetired {
+		// ADR-0584 clause 3: a retired agent has no entry and no objects; a state change always has a reason.
+		if reasonOf(cr) == "" {
+			cond(ConditionValid, false, "MissingReason", "zuno.status is retired: set the annotation "+AnnotationReason+" (the pull request that retires the agent says why)")
+			return permanent("retired agent without the annotation %s, nothing changed", AnnotationReason)
+		}
+		if err := r.prune(ctx, cr, nil); err != nil {
+			return err
+		}
+		st.Children, st.Tasks, st.Agent, st.PrimaryTask, st.Display = nil, nil, "", "", nil
+		msg := "zuno.status is retired: " + reasonOf(cr)
+		cond(ConditionValid, true, "Retired", msg)
+		cond(ConditionEmitted, false, "Retired", "retired agent: no entry, no objects")
+		return &notServedError{msg: "retired: " + reasonOf(cr)}
+	}
 	if b.Status == statusPlaceholder && !cr.Spec.ServePlaceholder {
 		// ADR-0007: a placeholder agent is not served. Objects emitted while it was served are removed.
 		if err := r.prune(ctx, cr, nil); err != nil {
@@ -219,7 +269,13 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 		cond(ConditionValid, false, reason, msg)
 		return permanent("%s", msg)
 	}
-	cond(ConditionValid, true, "Valid", fmt.Sprintf("OKF %s, %d tasks, shape %s", b.OKFVersion, len(b.Tasks), b.GraphShape))
+	if b.Status == statusDeprecated {
+		// Still usable; the sheet (Display.State) says so.
+		cond(ConditionValid, true, "Deprecated", fmt.Sprintf("zuno.status is deprecated, still served; OKF %s, %d tasks, shape %s%s",
+			b.OKFVersion, len(b.Tasks), b.GraphShape, withReason(cr)))
+	} else {
+		cond(ConditionValid, true, "Valid", fmt.Sprintf("OKF %s, %d tasks, shape %s", b.OKFVersion, len(b.Tasks), b.GraphShape))
+	}
 
 	// 4. A bundle can narrow its ceilings, never widen them.
 	if err := checkCeilings(cr, b); err != nil {
@@ -836,7 +892,21 @@ func (r *AgentBundleReconciler) pullCredential(ctx context.Context, cr *unifaiv1
 
 // SetupWithManager registers the controller; changes to emitted objects re-trigger the bundle.
 func (r *AgentBundleReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// The revocation list: any change to it re-evaluates every bundle of its namespace within one reconcile.
+	revocations := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+		var bundles unifaiv1.UnifaiAgentBundleList
+		if err := r.List(ctx, &bundles, client.InNamespace(o.GetNamespace())); err != nil {
+			return nil
+		}
+		out := make([]reconcile.Request, 0, len(bundles.Items))
+		for _, b := range bundles.Items {
+			out = append(out, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: b.Namespace, Name: b.Name}})
+		}
+		return out
+	})
+	onlyRevocations := predicate.NewPredicateFuncs(func(o client.Object) bool { return o.GetName() == RevocationConfigMap })
 	return ctrl.NewControllerManagedBy(mgr).For(&unifaiv1.UnifaiAgentBundle{}, specChanges).
+		Watches(&corev1.ConfigMap{}, revocations, builder.WithPredicates(onlyRevocations)).
 		Owns(&unifaiv1.UnifaiLLM{}).Owns(&unifaiv1.UnifaiAgent{}).
 		Owns(&unifaiv1.UnifaiCondition{}).Owns(&unifaiv1.UnifaiWorkflow{}).Owns(&unifaiv1.UnifaiProvider{}).Owns(&unifaiv1.UnifaiTeam{}).
 		Named("unifaiagentbundle").Complete(r)
