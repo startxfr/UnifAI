@@ -146,6 +146,14 @@ def render_header_templates(
 # Forwarder (bound per session at build time)
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _incoming_depth(raw: str | None) -> int:
+    """Depth of the delegation that started this run; a missing or malformed tag counts as 0 (a run nobody delegated to)."""
+    try:
+        return max(0, int(raw)) if raw else 0
+    except ValueError:
+        return 0
+
+
 class IdentityForwarder:
     """Builds forwarded headers for the session an element runs in.
 
@@ -153,8 +161,11 @@ class IdentityForwarder:
 
     ``session_id``, ``user`` (acting human), ``identity`` / ``identity_type``
     (workspace owner: user or team), ``scope``, ``node_uid``, ``node_name``,
-    ``node_type``, and ``tag.<key>`` for every session metadata tag stamped at
-    submission (see :data:`SESSION_TAGS_TAG`).
+    ``node_type``, ``delegation_depth`` (the depth of the call this run is about to
+    make: the depth of the delegation that started the run, from the session tag
+    ``delegation_depth``, plus one; 1 for a run no delegation started), and
+    ``tag.<key>`` for every session metadata tag stamped at submission (see
+    :data:`SESSION_TAGS_TAG`).
     """
 
     def __init__(
@@ -188,6 +199,7 @@ class IdentityForwarder:
         tags = ctx.tags or {}
         for key, value in (tags.get(SESSION_TAGS_TAG) or {}).items():
             out[f"tag.{key}"] = "" if value is None else str(value)
+        out["delegation_depth"] = str(_incoming_depth(out.get("tag.delegation_depth")) + 1)
         return out
 
     def access_token(self) -> str:

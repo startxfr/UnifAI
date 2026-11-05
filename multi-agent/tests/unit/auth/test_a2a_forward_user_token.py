@@ -104,3 +104,20 @@ def test_node_init_defers_when_no_session_can_supply_the_token_yet():
     cred.get_headers = AsyncMock(side_effect=IdentityTokenUnavailable("no running session"))
     with _bridge():
         assert A2AAgentNode._resolve_initial_headers(None, cred) is None
+
+
+def test_a_delegation_without_the_user_token_is_refused_and_nothing_is_sent():
+    """Fail closed: no identity binding -> the delegation ends with an error result, no request goes out."""
+    cred = MagicMock()
+    cred.get_headers = AsyncMock(side_effect=IdentityTokenUnavailable("no identity binding for session s-1"))
+    class _Node(A2AAgentNode):
+        uid = "tekos"
+
+    node = _Node.__new__(_Node)
+    node._auth_credential = cred
+    node.a2a_provider = MagicMock()
+    with _bridge():
+        with pytest.raises(IdentityTokenUnavailable):
+            node._refresh_auth_headers()
+    node.a2a_provider.send_message_sync.assert_not_called()
+    assert "no identity binding" in node._error_text(IdentityTokenUnavailable("no identity binding for session s-1"))

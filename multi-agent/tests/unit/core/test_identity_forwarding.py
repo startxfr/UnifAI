@@ -376,3 +376,12 @@ def test_mcp_validator_reports_an_unreachable_forwarding_endpoint(monkeypatch):
     )
     report, _ = _validate_mcp(cfg, monkeypatch, get=refuse)
     assert [m.severity.value for m in report.messages] == ["error"]
+
+
+def test_delegation_depth_is_one_more_than_the_depth_that_started_the_run():
+    for tags, want in ((None, "1"), ({"delegation_depth": "1"}, "2"), ({"delegation_depth": "3"}, "4"),
+                       ({"delegation_depth": "oops"}, "1"), ({"delegation_depth": "-5"}, "1")):
+        fwd = IdentityForwarder(StaticSource(), _holder(tags=tags))
+        with bind_current_node("n1", "Researcher", "CustomAgentNode"):
+            assert fwd.headers({"X-Zuno-Delegation-Depth": "{delegation_depth}"}) == {
+                "X-Zuno-Delegation-Depth": want}
