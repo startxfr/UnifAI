@@ -205,3 +205,60 @@ def test_the_node_always_sends_without_blocking_and_bounds_the_wait():
             node = A2AAgentNode(base_url="http://gw:8080/agents/tekos", timeout_seconds=timeout)
         assert node._blocking_send is False
         assert node._max_poll_attempts * node._poll_interval == want
+
+
+def test_an_interrupted_poll_reports_the_task_and_the_outcome_of_the_cancel():
+    from mas.elements.providers.a2a_client.provider import A2AProgress
+
+    for error, want in ((None, "cancelled"), (RuntimeError("gateway down"), "cancel_failed")):
+        client = _Client([asyncio.CancelledError()], cancel_error=error)
+        progress = A2AProgress()
+        provider = A2AProvider.__new__(A2AProvider)
+        with pytest.raises(asyncio.CancelledError):
+            asyncio.run(provider._poll(client, "t1", 0.0, 3, False, progress))
+        assert progress.settled.is_set() and progress.cancel == want
+
+
+def test_the_span_of_an_interrupted_delegation_names_the_task_and_the_cancel():
+    from contextlib import contextmanager
+    from mas.core.tracing.models import ObservationHandle
+    from mas.elements.nodes.a2a_agent import a2a_agent_node as mod
+
+    updates = []
+
+    class _Tracing:
+        @contextmanager
+        def trace_node(self, node_uid, node_type, display_name=""):
+            yield ObservationHandle(_update_fn=lambda **kw: updates.append(kw))
+
+    node = _node(_Tracing())
+
+    def interrupted(ctx, task):
+        progress = mod._progress.get()
+        progress.task_id, progress.cancel = "t1", "cancelled"
+        progress.settled.set()
+        raise _Interrupted()
+
+    node._delegate_to_remote_agent = interrupted
+    with pytest.raises(_Interrupted):
+        node._delegate_traced([], None)
+    assert updates[0]["level"] == "ERROR"
+    assert updates[0]["metadata"] == {"a2a_interrupted": True, "a2a_task_id": "t1", "a2a_cancel": "cancelled"}
+
+
+def test_an_exception_before_the_remote_task_exists_adds_nothing_to_the_span():
+    from contextlib import contextmanager
+    from mas.core.tracing.models import ObservationHandle
+
+    updates = []
+
+    class _Tracing:
+        @contextmanager
+        def trace_node(self, node_uid, node_type, display_name=""):
+            yield ObservationHandle(_update_fn=lambda **kw: updates.append(kw))
+
+    node = _node(_Tracing())
+    node._delegate_to_remote_agent = lambda ctx, task: (_ for _ in ()).throw(RuntimeError("no card"))
+    with pytest.raises(RuntimeError):
+        node._delegate_traced([], None)
+    assert updates == []

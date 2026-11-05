@@ -7,6 +7,7 @@ Orchestrates client, converter, and polling.
 
 import asyncio
 import logging
+import threading
 from typing import Optional, Dict, Any, AsyncIterator, Iterator, Tuple
 
 import anyio
@@ -49,6 +50,20 @@ class A2ATimeoutError(A2AClientError):
     task_id: Optional[str] = None
     timeout_seconds: Optional[float] = None
     cancelled: Optional[bool] = None  # True: the remote acknowledged tasks/cancel; False: the cancel failed
+
+
+class A2AProgress:
+    """What a caller that may be interrupted can learn about a delegation (filled by ``send_message``).
+
+    ``task_id`` is set once the remote task exists; when the wait is interrupted, ``cancel`` becomes "cancelled" or
+    "cancel_failed" and ``settled`` is set once the cleanup (tasks/cancel) has run, which happens on the bridge's
+    loop, after the interrupted thread has already left.
+    """
+
+    def __init__(self) -> None:
+        self.task_id: Optional[str] = None
+        self.cancel: Optional[str] = None
+        self.settled = threading.Event()
 
 
 class A2AProvider:
@@ -128,6 +143,7 @@ class A2AProvider:
             poll_interval: float = 0.5,
             max_poll_attempts: int = 60,
             blocking: Optional[bool] = None,
+            progress: Optional[A2AProgress] = None,
     ) -> Tuple[ChatMessage, Dict[str, Any]]:
         """
         Send message and get response.
@@ -173,12 +189,15 @@ class A2AProvider:
                 )
 
             if wait_for_completion and not result.is_complete and not result.is_failure:
+                if progress is not None:
+                    progress.task_id = result.task_id
                 result = await self._poll(
                     client,
                     result.task_id,
                     poll_interval,
                     max_poll_attempts,
                     raise_on_error,
+                    progress,
                 )
 
             conversion = self._converter.to_chat_message(result)
@@ -191,6 +210,7 @@ class A2AProvider:
             interval: float,
             max_attempts: int,
             raise_on_error: bool,
+            progress: Optional[A2AProgress] = None,
     ) -> A2AResult:
         """Poll until completion or timeout; the remote task is cancelled when we stop waiting for it (ADR-0406)."""
         try:
@@ -204,7 +224,10 @@ class A2AProvider:
             e.cancelled = await self._cancel_remote(client, task_id)
             raise
         except BaseException:
-            await self._cancel_remote(client, task_id)
+            cancelled = await self._cancel_remote(client, task_id)
+            if progress is not None:
+                progress.cancel = "cancelled" if cancelled else "cancel_failed"
+                progress.settled.set()
             raise
 
     @staticmethod

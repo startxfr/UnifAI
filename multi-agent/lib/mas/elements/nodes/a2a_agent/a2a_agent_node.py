@@ -4,6 +4,7 @@ A2A Agent Node - Delegates work to remote agent via A2A protocol
 
 import math
 import logging
+from contextvars import ContextVar
 from typing import Optional, Any, List, ClassVar, Dict
 from copy import deepcopy
 from pydantic import HttpUrl
@@ -16,13 +17,19 @@ from mas.elements.nodes.common.capabilities.retriever_capable import RetrieverCa
 from mas.elements.nodes.common.capabilities.workload_capable import WorkloadCapableMixin
 from mas.elements.nodes.common.workload import Task, AgentResult
 from mas.elements.providers.a2a_client import A2AProvider
-from mas.elements.providers.a2a_client.provider import A2ATimeoutError
+from mas.elements.providers.a2a_client.provider import A2AProgress, A2ATimeoutError
 from mas.core.auth.credentials.credential import AuthCredential
 from mas.core.auth.errors import AuthError
 from mas.core.identity_forwarding import IdentityTokenUnavailable
 from global_utils.utils.async_bridge import get_async_bridge
 
 logger = logging.getLogger(__name__)
+
+# The progress of the delegation running in this thread/context (read by the send, filled by the provider).
+_progress: ContextVar[Optional[A2AProgress]] = ContextVar("a2a_progress", default=None)
+
+# How long an interrupted delegation waits for the outcome of tasks/cancel before closing its span.
+INTERRUPT_SETTLE_SECONDS = 2.0
 
 
 DEFAULT_TIMEOUT_SECONDS = 900.0  # the bound when the node declares no timeout (the longest the bundle accepts)
@@ -214,6 +221,8 @@ class A2AAgentNode(
             node_type="a2a_delegation",
             display_name=f"A2A: {self.display_name}",
         ) as handle:
+            progress = A2AProgress()
+            token = _progress.set(progress)
             try:
                 return self._delegate_to_remote_agent(conversation_context, task)
             except A2ATimeoutError as e:
@@ -228,6 +237,21 @@ class A2AAgentNode(
                     },
                 )
                 raise
+            except BaseException as e:
+                if progress.task_id is not None:  # the wait was interrupted (cancelled turn): the poll cancels the task
+                    progress.settled.wait(INTERRUPT_SETTLE_SECONDS)
+                    handle.update(
+                        level="ERROR",
+                        status_message=f"A2A delegation interrupted ({type(e).__name__})",
+                        metadata={
+                            "a2a_interrupted": True,
+                            "a2a_task_id": progress.task_id,
+                            "a2a_cancel": progress.cancel or "requested",
+                        },
+                    )
+                raise
+            finally:
+                _progress.reset(token)
 
     def _error_text(self, exc: Exception) -> str:
         """The text the orchestrator receives as the delegation's result."""
@@ -451,6 +475,7 @@ class A2AAgentNode(
             poll_interval=self._poll_interval,
             max_poll_attempts=self._max_poll_attempts,
             blocking=self._blocking_send,
+            progress=_progress.get(),
         )
 
         return response, metadata
