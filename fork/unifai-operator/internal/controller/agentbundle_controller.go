@@ -468,7 +468,7 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...dele
 		blueprint := stagedBlueprint(cond, stages)
 		if len(targets) > 0 {
 			var orch client.Object
-			orch, blueprint = delegatingTask(cr, b, t, common, cond, name, stages, targets)
+			orch, blueprint = delegatingTask(cr, b, t, common, cond, name, level, stages, targets)
 			objs = append(objs, orch)
 		}
 

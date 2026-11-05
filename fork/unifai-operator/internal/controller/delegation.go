@@ -116,13 +116,13 @@ func workStage(b *okf.Bundle) int {
 // delegatingTask is the orchestrator of a delegating task and the blueprint of its workflow. stages are the agents
 // of the task in order (taskName-plan, -draft, -write for plan_draft_write).
 func delegatingTask(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, common unifaiv1.CommonSpec, cond, taskName string,
-	stages []string, targets []delegationTarget) (client.Object, map[string]any) {
+	level okf.Level, stages []string, targets []delegationTarget) (client.Object, map[string]any) {
 	orch := taskName + "-orchestrator"
 	at := workStage(b)
 	obj := &unifaiv1.UnifaiAgent{ObjectMeta: childMeta(cr, orch), Spec: unifaiv1.UnifaiAgentSpec{
 		CommonSpec: common, Type: "orchestrator_node",
 		ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(orchestratorConfig(cr, b, t, taskName, stageUID(at), targets))}}}
-	return obj, delegatingBlueprint(cond, orch, stages, at, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, generationCeiling(b.Tokens(t), cr.Spec.LLM.MaxTokens), targets))
+	return obj, delegatingBlueprint(cond, orch, stages, at, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, level, generationCeiling(b.Tokens(t), cr.Spec.LLM.MaxTokens), targets))
 }
 
 // orchestratorConfig coordinates a delegating task: its own agent does the task's work, and a target is called whenever the request names it or asks for what it provides (never answered in its place).
@@ -163,8 +163,8 @@ func agentTitle(b *okf.Bundle) string {
 
 // a2aNodes are the inline blueprint nodes of the targets. They carry the user's own token and the delegation chain
 // (<caller agent>:<task>, depth 1) that the gateway verifies; X-Zuno-Task names the target task for when the gateway
-// reads it (it is the primary task today).
-func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, maxTokens int, targets []delegationTarget) []map[string]any {
+// reads it (it is the primary task today). They also carry the run's classification, as the LLM and MCP calls do.
+func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, level okf.Level, maxTokens int, targets []delegationTarget) []map[string]any {
 	out := make([]map[string]any, 0, len(targets))
 	for _, tg := range targets {
 		headers := map[string]any{
@@ -172,6 +172,9 @@ func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, maxTokens int, t
 			headerDelegatedBy:     agent + ":" + task,
 			headerDelegationDepth: "1",
 			headerTargetTask:      tg.Task,
+		}
+		if level > 0 { // the run's classification (raised by its targets) goes with the call; the gateway takes the higher of it and the target's
+			headers[headerClassification] = level.String()
 		}
 		if maxTokens > 0 { // the caller's generation ceiling follows the hop (R-519); the gateway forwards it
 			headers[headerMaxTokens] = strconv.Itoa(maxTokens)
