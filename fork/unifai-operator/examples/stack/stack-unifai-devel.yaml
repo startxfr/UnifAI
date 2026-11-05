@@ -1,4 +1,4 @@
-# unifai-devel on demo333: the helmfile deployment taken over by the operator (existing volumes and keys are kept).
+# unifai-devel on demo333 (retired in November 2026, demo333 now runs one instance, zuno-unifai; kept as a reference): the helmfile deployment taken over by the operator (existing volumes and keys are kept).
 # Identity on the zuno Keycloak realm, groups read from the token (oidc-claims); ai-ops-01 is the UnifAI admin.
 # Live, the images are also pinned by digest (spec.images); the demo objects come from
 # examples/overlays/unifai-devel-demo333.

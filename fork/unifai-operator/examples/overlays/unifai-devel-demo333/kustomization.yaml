@@ -1,4 +1,4 @@
-# The demo objects of unifai-devel on demo333: the generic examples, owned by the stack's UnifAI admin (ai-ops-01)
+# The demo objects of unifai-devel on demo333 (namespace retired in November 2026; a reference for any namespace): the generic examples, owned by the stack's UnifAI admin (ai-ops-01)
 # instead of the CRD default `admin`, so a signed-in admin sees them. Only what runs without an external key is kept:
 # the in-namespace mock LLM and MCP server (examples/demo-backends), no Gemini, OpenAI or placeholder vLLM.
 # No secret here: demo-mcp-token and the oc/ssh tools read unifai-demo-secrets, which already exists in the namespace.
