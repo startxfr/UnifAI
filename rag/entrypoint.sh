@@ -25,7 +25,10 @@ case "$ROLE" in
       CELERY_POOL="${CELERY_POOL:-solo}"
     fi
     echo "🔧 Starting Celery worker: concurrency=$CELERY_WORKER, pool=$CELERY_POOL, queues=$CELERY_QUEUES"
-    exec venv/bin/celery -A infrastructure.celery.app worker -c $CELERY_WORKER --pool=$CELERY_POOL --loglevel=info -Q $CELERY_QUEUES -n data_sources
+    # -n NAME@%h: a name without "@" is read by Celery as the host part, so every pod got the node name
+    # celery@data_sources and the same exclusive pidbox queue; two pods alive together (a rolling update) collided
+    # with ResourceLocked (fork/ROADMAP.md R-537). %h is the pod hostname, expanded by Celery.
+    exec venv/bin/celery -A infrastructure.celery.app worker -c $CELERY_WORKER --pool=$CELERY_POOL --loglevel=info -Q $CELERY_QUEUES -n data_sources@%h
     ;;
 
   debug)
