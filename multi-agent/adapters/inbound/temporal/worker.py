@@ -57,6 +57,7 @@ async def run_worker(
         node_executor=node_executor,
         channel_factory=container.channel_factory,
         gate_factory=container.gate_factory,
+        session_meta_loader=container.session_service.get_meta,
     )
 
     lifecycle = SessionLifecycle(repository=container.session_repo)

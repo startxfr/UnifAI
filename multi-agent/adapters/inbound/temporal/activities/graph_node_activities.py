@@ -14,7 +14,8 @@ activity body runs.  Cancellation is handled at the workflow level.
 pydantic_data_converter handles GraphState serialization/deserialization
 automatically — no manual .serialize()/.deserialize() calls needed.
 """
-from typing import Optional
+import logging
+from typing import Any, Callable, Optional
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -28,6 +29,8 @@ from mas.session.domain.exceptions import SessionBuildError
 from global_utils.utils.logging_config import bind_correlation_ids
 from inbound.temporal.activities.heartbeat import heartbeat
 from temporal.models import ExecuteNodeParams, EvaluateConditionParams
+
+logger = logging.getLogger(__name__)
 
 
 class GraphNodeActivities:
@@ -45,10 +48,12 @@ class GraphNodeActivities:
         node_executor: NodeExecutor,
         channel_factory: Optional[ChannelFactory] = None,
         gate_factory: Optional[ApprovalGateFactory] = None,
+        session_meta_loader: Optional[Callable[[str], Any]] = None,
     ) -> None:
         self._executor = node_executor
         self._channel_factory = channel_factory
         self._gate_factory = gate_factory
+        self._session_meta_loader = session_meta_loader
 
     @activity.defn(name="execute_graph_node")
     @heartbeat(interval=3)
@@ -85,6 +90,18 @@ class GraphNodeActivities:
 
     # ── Bindings construction ────────────────────────────────────
 
+    def _load_session_meta(self, session_id: str) -> Any:
+        """The session metadata, which carries the auto-approval rules set through the API (R-539). The gate is
+        rebuilt for every node activity and seeded from it: without it every activity starts with no rule. A failure
+        means no rule, so the human is asked."""
+        if self._session_meta_loader is None:
+            return None
+        try:
+            return self._session_meta_loader(session_id)
+        except Exception:  # noqa: BLE001
+            logger.warning("Session metadata unavailable for the HITL gate: session=%s", session_id, exc_info=True)
+            return None
+
     def _build_bindings(self, session_id: str) -> Optional[NodeRuntimeBindings]:
         """Build a ``NodeRuntimeBindings`` from the channel factory.
 
@@ -101,7 +118,7 @@ class GraphNodeActivities:
             if self._gate_factory is not None:
                 gate, policy = self._gate_factory.create(
                     channel=channel,
-                    session_metadata=None,
+                    session_metadata=self._load_session_meta(session_id),
                     run_id=session_id,
                 )
         else:

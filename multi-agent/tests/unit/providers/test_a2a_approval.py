@@ -173,7 +173,7 @@ def test_the_node_rejects_when_no_human_can_be_asked_or_the_decision_is_not_supp
 
 
 def test_the_auto_resolving_gate_does_not_apply_its_rules_to_a_relayed_request():
-    from adapters.outbound.hitl.auto_resolving_gate import AutoResolvingApprovalGate
+    from outbound.hitl.auto_resolving_gate import AutoResolvingApprovalGate
     from mas.core.hitl.models import ApprovalDecision, HITLConfig
 
     inner = _Gate(ApprovalDecision.APPROVE)
@@ -207,8 +207,8 @@ def test_past_the_session_cap_the_human_is_not_asked_and_the_remote_task_is_canc
 
 
 def test_the_count_is_per_session_and_shared_by_every_gate_of_the_session():
-    from adapters.outbound.hitl.auto_resolving_gate import AutoResolvingApprovalGate
-    from adapters.outbound.hitl.redis_overrides_store import RedisOverridesStore
+    from outbound.hitl.auto_resolving_gate import AutoResolvingApprovalGate
+    from outbound.hitl.redis_overrides_store import RedisOverridesStore
     from mas.core.hitl.models import HITLConfig
 
     class _Redis:
