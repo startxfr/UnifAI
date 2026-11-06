@@ -5,6 +5,8 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -123,12 +125,29 @@ func podLogs(t *testing.T, ns, prefix string) string {
 	return out.String()
 }
 
+// redHatPageReachable tells whether the real documentation page answers the e2e runner with a success. docs.redhat.com
+// answers 403 to some networks (v0.1.60 canary, 2026-11-05): the check then proves nothing about the RAG service, so it
+// is skipped, not failed. E2E_RH_REQUIRED=1 makes it blocking again.
+func redHatPageReachable(url string) (bool, string) {
+	hc := &http.Client{Timeout: 30 * time.Second}
+	resp, err := hc.Get(url)
+	if err != nil {
+		return false, err.Error()
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK, resp.Status
+}
+
 // checkRedHatSource ingests one real Red Hat documentation page (needs Internet access from the cluster).
 func checkRedHatSource(t *testing.T, ns string) {
+	pageURL := env("E2E_RH_URL",
+		"https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.17/html-single/understanding_openshift_gitops/index")
+	if ok, why := redHatPageReachable(pageURL); !ok && os.Getenv("E2E_RH_REQUIRED") != "1" {
+		t.Skipf("%s is not reachable from the e2e runner (%s): not a verdict on the RAG service (E2E_RH_REQUIRED=1 to fail)", pageURL, why)
+	}
 	src := &unifaiv1.UnifaiRAGSource{ObjectMeta: metav1.ObjectMeta{Name: "e2e-rh", Namespace: ns}, Spec: unifaiv1.UnifaiRAGSourceSpec{
 		Type: "web", Tags: []string{"product:openshift-gitops"}, Classification: "C2",
-		Web: &unifaiv1.RAGWebSource{URLs: []string{env("E2E_RH_URL",
-			"https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.17/html-single/understanding_openshift_gitops/index")},
+		Web: &unifaiv1.RAGWebSource{URLs: []string{pageURL},
 			Crawl: "none", MaxPages: 1}}}
 	start := time.Now()
 	create(t, src)
