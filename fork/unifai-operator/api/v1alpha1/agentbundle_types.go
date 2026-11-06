@@ -101,6 +101,13 @@ type BundleDelegation struct {
 	// +kubebuilder:validation:Enum=skip;ask;dynamic
 	// +optional
 	Approval string `json:"approval,omitempty"`
+
+	// How many approval requests of the target agents the whole session may relay, whatever their outcome and across
+	// delegations (R-538). Past it the request is refused without asking the human and the remote task is cancelled.
+	// Unset leaves the emitted node unchanged and the node applies its own default of 3.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MaxApprovals int32 `json:"maxApprovals,omitempty"`
 }
 
 // BundleLLM is the template of the LLM emitted for every task: the bundle adds the Zuno headers

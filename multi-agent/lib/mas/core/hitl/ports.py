@@ -44,6 +44,11 @@ class ApprovalGate(ABC):
         """
         ...
 
+    def count_remote_approval(self) -> int:
+        """Count one approval request relayed from a remote agent in this session and return the total so far
+        (this one included). Gates with no per-session memory return 0, which no cap ever reaches (R-538)."""
+        return 0
+
     def request_human_approval(self, request: ApprovalRequest) -> ApprovalResponse:
         """Ask a human whatever the session's auto-approval rules say.
 
@@ -127,3 +132,12 @@ class OverridesStore(ABC):
     def remove(self, session_id: str) -> None:
         """Delete overrides for a session (cleanup after run completes)."""
         ...
+
+    def count_remote_approval(self, session_id: str) -> int:
+        """Count one approval request relayed from a remote agent in a session; return the total (this one included).
+
+        Survives ``remove`` (the gate is rebuilt for every node activity): it lives as long as its own TTL. This
+        default is per process; the Redis store shares it across workers (R-538)."""
+        counts = self.__dict__.setdefault("_remote_approvals", {})
+        counts[session_id] = counts.get(session_id, 0) + 1
+        return counts[session_id]

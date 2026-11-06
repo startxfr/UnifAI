@@ -136,6 +136,15 @@ class A2AAgentNodeConfig(NodeBaseConfig):
         title="Approval mode",
     )
 
+    max_approvals_per_session: int = Field(
+        default=3,
+        ge=1,
+        description=("How many approval requests of remote agents the whole session may relay (approved, rejected or "
+                     "timed out, across delegations). Past it the request is refused without asking the human and the "
+                     "remote task is cancelled; a single delegation is also limited to 5"),
+        title="Approvals per session",
+    )
+
     bearer_token: Optional[str] = Field(
         default=None,
         description="Bearer token for authentication",

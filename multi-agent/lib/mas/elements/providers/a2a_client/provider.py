@@ -51,6 +51,11 @@ class A2ATaskError(A2AClientError):
         self.state = state
 
 
+class A2AApprovalCapReached(A2ATaskError):
+    """The session has used all the approval requests it may relay (R-538): the remote task is cancelled and the
+    human is not asked."""
+
+
 class A2ATimeoutError(A2AClientError):
     """Polling timeout. ``_poll`` fills in what happened to the remote task once we stopped waiting."""
 
@@ -266,6 +271,11 @@ class A2AProvider:
             return "reject", "No approval channel is available to the delegating agent"
         try:
             decision, feedback = await asyncio.to_thread(on_approval, approval)
+        except A2AApprovalCapReached as e:
+            await self._cancel_remote(client, task_id)
+            logger.warning("a2a.approval_cap_reached", extra={"task_id": task_id})
+            e.task_id = task_id
+            raise
         except Exception as e:  # a failing handler must not approve anything
             logger.warning("a2a.approval_handler_failed", extra={"task_id": task_id, "error": f"{type(e).__name__}: {e}"})
             return "reject", "The approval could not be obtained"

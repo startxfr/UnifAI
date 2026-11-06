@@ -18,7 +18,7 @@ from mas.elements.nodes.common.capabilities.retriever_capable import RetrieverCa
 from mas.elements.nodes.common.capabilities.workload_capable import WorkloadCapableMixin
 from mas.elements.nodes.common.workload import Task, AgentResult
 from mas.elements.providers.a2a_client import A2AProvider
-from mas.elements.providers.a2a_client.provider import A2AProgress, A2ATimeoutError
+from mas.elements.providers.a2a_client.provider import A2AApprovalCapReached, A2AProgress, A2ATimeoutError
 from mas.core.auth.credentials.credential import AuthCredential
 from mas.core.auth.errors import AuthError
 from mas.core.hitl.models import (
@@ -36,6 +36,7 @@ _progress: ContextVar[Optional[A2AProgress]] = ContextVar("a2a_progress", defaul
 INTERRUPT_SETTLE_SECONDS = 2.0
 
 
+DEFAULT_MAX_APPROVALS_PER_SESSION = 3
 DEFAULT_TIMEOUT_SECONDS = 900.0  # the bound when the node declares no timeout (the longest the bundle accepts)
 
 
@@ -84,6 +85,7 @@ class A2AAgentNode(
             auth_credential: Optional[AuthCredential] = None,
             retriever: Any = None,
             timeout_seconds: Optional[float] = None,
+            max_approvals_per_session: int = DEFAULT_MAX_APPROVALS_PER_SESSION,
             **kwargs: Any
     ):
         """
@@ -98,12 +100,14 @@ class A2AAgentNode(
             timeout_seconds: How long to wait for the remote answer before cancelling the remote task. The send never
                 blocks (the task id is known at once, so an interruption can cancel the remote task) and this bound
                 is what waits; unset, DEFAULT_TIMEOUT_SECONDS (900 s)
+            max_approvals_per_session: approval requests of remote agents the whole session may relay (R-538)
         """
         super().__init__(
             retriever=retriever,
             **kwargs
         )
 
+        self._max_approvals_per_session = max_approvals_per_session
         self._auth_credential = auth_credential
         headers = self._resolve_initial_headers(bearer_token, auth_credential)
 
@@ -575,6 +579,13 @@ class A2AAgentNode(
             logger.info("a2a.approval_unavailable", extra={"node_uid": self.uid, "operation": operation})
             return "reject", (f"{self.display_name} asked to run {operation} and no human approval is available "
                               f"for this delegation")
+        count = self._approval_gate.count_remote_approval()
+        if count > self._max_approvals_per_session:
+            logger.warning("a2a.approval_cap_reached", extra={"node_uid": self.uid, "operation": operation,
+                                                              "count": count})
+            raise A2AApprovalCapReached(
+                f"Approval cap reached for this session ({self._max_approvals_per_session} requests): "
+                f"{operation} was refused without asking the human and the remote task was cancelled")
         request = ApprovalRequest(
             request_id=str(approval["request_id"]),
             type=ApprovalType.AGENT_ACTION,

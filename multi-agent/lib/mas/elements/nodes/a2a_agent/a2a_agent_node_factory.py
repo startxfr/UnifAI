@@ -75,6 +75,7 @@ class A2AAgentNodeFactory(BaseFactory[A2AAgentNodeConfig, A2AAgentNode]):
                 timeout_seconds=cfg.timeout_seconds,
                 tracing_service=tracing_service,
                 hitl_mode=cfg.approval_mode,
+                max_approvals_per_session=cfg.max_approvals_per_session,
                 execution_holder=execution_holder,
             )
         except Exception as e:

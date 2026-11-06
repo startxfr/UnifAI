@@ -268,3 +268,16 @@ func TestA2ANodeCarriesTheApprovalMode(t *testing.T) {
 		t.Errorf("no declared mode, no field (existing blueprints keep their hash): %v", c)
 	}
 }
+
+func TestA2ANodeCarriesTheApprovalCapOfTheSession(t *testing.T) {
+	config := func(max int32) map[string]any {
+		d := &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080", MaxApprovals: max}
+		return a2aNodes(d, "arkos", "draft", okf.C2, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})[0]["config"].(map[string]any)
+	}
+	if c := config(2); c["max_approvals_per_session"] != int32(2) {
+		t.Errorf("a declared cap follows the node: %v", c)
+	}
+	if c := config(0); c["max_approvals_per_session"] != nil {
+		t.Errorf("no declared cap, no field (existing blueprints keep their hash): %v", c)
+	}
+}

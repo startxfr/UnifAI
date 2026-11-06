@@ -130,13 +130,18 @@ def _node(mode, gate=None, active=True):
 
     node = _Node.__new__(_Node)
     node._approval_gate = gate
+    node._max_approvals_per_session = 3
     node._should_activate_hitl = lambda: active
     return node
 
 
 class _Gate:
     def __init__(self, decision):
-        self.decision, self.requests = decision, []
+        self.decision, self.requests, self.count = decision, [], 0
+
+    def count_remote_approval(self):
+        self.count += 1
+        return self.count
 
     def request_human_approval(self, request):
         from mas.core.hitl.models import ApprovalResponse
@@ -175,3 +180,61 @@ def test_the_auto_resolving_gate_does_not_apply_its_rules_to_a_relayed_request()
     gate = AutoResolvingApprovalGate(inner=inner, overrides_store=None, session_id="s", config=HITLConfig())
     assert gate.request_human_approval(SimpleNamespace(request_id="r1")).feedback == "fb"
     assert len(inner.requests) == 1
+
+
+def test_past_the_session_cap_the_human_is_not_asked_and_the_remote_task_is_cancelled():
+    from mas.core.hitl.models import ApprovalDecision
+    from mas.elements.providers.a2a_client.provider import A2AApprovalCapReached
+
+    gate = _Gate(ApprovalDecision.REJECT)
+    node = _node("ask", gate)
+    for _ in range(3):  # approved, rejected or timed out: every request counts
+        node._on_remote_approval(REQUEST)
+    with pytest.raises(A2AApprovalCapReached, match="Approval cap reached for this session"):
+        node._on_remote_approval(REQUEST)
+    assert len(gate.requests) == 3
+
+    client = _Client([_state("input", REQUEST)])
+    provider = A2AProvider.__new__(A2AProvider)
+    provider._converter = A2AConverter()
+
+    def capped(_a):
+        raise A2AApprovalCapReached("Approval cap reached for this session")
+
+    with pytest.raises(A2ATaskError, match="cap reached"):
+        asyncio.run(provider._await_result(client, _state("working"), 0.0, 20, False, None, capped))
+    assert client.cancelled == ["t1"] and client.answers == []
+
+
+def test_the_count_is_per_session_and_shared_by_every_gate_of_the_session():
+    from adapters.outbound.hitl.auto_resolving_gate import AutoResolvingApprovalGate
+    from adapters.outbound.hitl.redis_overrides_store import RedisOverridesStore
+    from mas.core.hitl.models import HITLConfig
+
+    class _Redis:
+        counts, ttl = {}, {}
+
+        def incr(self, key):
+            self.counts[key] = self.counts.get(key, 0) + 1
+            return self.counts[key]
+
+        def expire(self, key, ttl):
+            self.ttl[key] = ttl
+
+    redis = _Redis()
+    store = RedisOverridesStore.__new__(RedisOverridesStore)
+    store._ttl = 86_400
+    store._redis = lambda: redis
+
+    def gate(session):  # a gate is rebuilt for every node activity
+        return AutoResolvingApprovalGate(inner=None, overrides_store=store, session_id=session, config=HITLConfig())
+
+    assert [gate("s1").count_remote_approval() for _ in range(3)] == [1, 2, 3]
+    assert gate("s2").count_remote_approval() == 1
+    assert set(redis.ttl.values()) == {86_400}
+
+    class _Local(type(store).__mro__[1]):  # the port's default, used when there is no Redis
+        load = save = remove = None
+
+    local = _Local()
+    assert [local.count_remote_approval("a"), local.count_remote_approval("a"), local.count_remote_approval("b")] == [1, 2, 1]

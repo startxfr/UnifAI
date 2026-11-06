@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _PREFIX = "hitl:overrides:"
 _DEFAULT_TTL = 86_400  # 24 hours
+_APPROVALS_PREFIX = "hitl:remote-approvals:"
 
 
 class RedisOverridesStore(OverridesStore):
@@ -50,3 +51,10 @@ class RedisOverridesStore(OverridesStore):
     def remove(self, session_id: str) -> None:
         self._redis().delete(f"{_PREFIX}{session_id}")
         logger.debug("Overrides removed from Redis: session=%s", session_id)
+
+    def count_remote_approval(self, session_id: str) -> int:
+        key = f"{_APPROVALS_PREFIX}{session_id}"
+        redis = self._redis()
+        count = int(redis.incr(key))
+        redis.expire(key, self._ttl)
+        return count
