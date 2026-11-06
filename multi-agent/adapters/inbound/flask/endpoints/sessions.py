@@ -516,6 +516,12 @@ def submit_approval(identity, session_id, request_id, decision, feedback, modifi
             "error": f"No active HITL channel for session {session_id}",
         }), 404
 
+    if not channel.is_pending(request_id):
+        return jsonify({
+            "error": f"Request {request_id} is no longer pending (answered, timed out or abandoned)",
+            "code": "approval_not_pending",
+        }), 409
+
     channel.submit(request_id, {
         "decision": decision,
         "feedback": feedback,

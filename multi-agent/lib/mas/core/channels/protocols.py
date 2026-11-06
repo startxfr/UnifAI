@@ -35,6 +35,18 @@ class SessionChannel(ABC):
     @abstractmethod
     def close(self, *, cancelled: bool = False) -> None: ...
 
+    def mark_pending(self, request_id: str, ttl: float) -> None:
+        """Record that a human is expected to answer *request_id* (for at most *ttl* seconds). Called before the
+        request is announced, so that no answer can arrive for a request not yet recorded (R-540)."""
+
+    def clear_pending(self, request_id: str) -> None:
+        """Forget *request_id*: answered, timed out or abandoned."""
+
+    def is_pending(self, request_id: str) -> bool:
+        """True while somebody waits for an answer to *request_id*. Channels that do not record it answer True, so an
+        answer is never refused for want of a record."""
+        return True
+
     def supports_input(self) -> bool:
         return False
 

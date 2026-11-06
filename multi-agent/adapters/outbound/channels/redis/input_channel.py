@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 _GATE_TTL_S = 300
 _HITL_KEY_PREFIX = "mas:hitl:"
 _HITL_RESPONSE_TTL_S = 600
+_PENDING_GRACE_S = 30  # the pending record outlives the wait a little; the gate clears it as soon as the wait ends
 _BLPOP_SLICE_S = 5
 
 
@@ -111,12 +112,24 @@ class RedisInputCapableChannel(InputCapableChannel):
 
         return None
 
+    def mark_pending(self, request_id: str, ttl: float) -> None:
+        self._redis.set(self._pending_key(request_id), "1", ex=int(ttl) + _PENDING_GRACE_S)
+
+    def clear_pending(self, request_id: str) -> None:
+        self._redis.delete(self._pending_key(request_id))
+
+    def is_pending(self, request_id: str) -> bool:
+        return bool(self._redis.exists(self._pending_key(request_id)))
+
     def submit(self, request_id: str, data: dict) -> None:
         key = self._hitl_key(request_id)
         self._redis.lpush(key, json.dumps(data, default=pydantic_encoder))
         self._redis.expire(key, _HITL_RESPONSE_TTL_S)
 
     # -- Internal -----------------------------------------------------------
+
+    def _pending_key(self, request_id: str) -> str:
+        return f"hitl:pending:{self._session_id}:{request_id}"
 
     def _hitl_key(self, request_id: str) -> str:
         return f"{_HITL_KEY_PREFIX}{self._session_id}:{request_id}"

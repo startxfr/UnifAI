@@ -33,6 +33,7 @@ class LocalInputCapableChannel(InputCapableChannel):
         self._pending_lock = threading.Lock()
         self._pending_events: dict[str, threading.Event] = {}
         self._pending_responses: dict[str, dict] = {}
+        self._pending_ids: set[str] = set()
 
     # -- SessionChannel (outbound) -----------------------------------------
 
@@ -70,6 +71,18 @@ class LocalInputCapableChannel(InputCapableChannel):
                 return self._pending_responses.pop(request_id, None)
             self._pending_responses.pop(request_id, None)
             return None
+
+    def mark_pending(self, request_id: str, ttl: float) -> None:
+        with self._pending_lock:
+            self._pending_ids.add(request_id)
+
+    def clear_pending(self, request_id: str) -> None:
+        with self._pending_lock:
+            self._pending_ids.discard(request_id)
+
+    def is_pending(self, request_id: str) -> bool:
+        with self._pending_lock:
+            return request_id in self._pending_ids
 
     def submit(self, request_id: str, data: dict) -> None:
         with self._pending_lock:

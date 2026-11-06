@@ -59,6 +59,33 @@ class ChannelApprovalGate(ApprovalGate):
             args_str,
         )
 
+        self._channel.mark_pending(request.request_id, timeout)
+        answered = False
+        try:
+            raw = self._announce_and_wait(request, timeout)
+            answered = raw is not None
+        finally:
+            self._end_pending(request, answered)
+        if raw is None:
+            logger.info(
+                "HITL timeout: request_id=%s, applying default=%s",
+                request.request_id,
+                self._config.timeout_decision.value,
+            )
+            return None
+        return self._response(request, raw)
+
+    def _end_pending(self, request: ApprovalRequest, answered: bool) -> None:
+        """The wait is over: the request can no longer be answered. Never hides the outcome of the wait itself."""
+        try:
+            self._channel.clear_pending(request.request_id)
+            if not answered:  # timed out or interrupted: tell the clients that still show the request
+                self._channel.emit({"type": "approval_expired", "request_id": request.request_id,
+                                    "node": request.origin.node_uid})
+        except Exception:  # noqa: BLE001
+            logger.warning("HITL pending cleanup failed: request_id=%s", request.request_id, exc_info=True)
+
+    def _announce_and_wait(self, request: ApprovalRequest, timeout: float) -> Optional[dict]:
         self._channel.emit({
             "type": "approval_required",
             "node": request.origin.node_uid,
@@ -73,15 +100,10 @@ class ChannelApprovalGate(ApprovalGate):
             "reasoning": request.reasoning,
         })
 
-        raw = self._channel.wait_for(request.request_id, timeout=timeout)
-        if raw is None:
-            logger.info(
-                "HITL timeout: request_id=%s, applying default=%s",
-                request.request_id,
-                self._config.timeout_decision.value,
-            )
-            return None
+        return self._channel.wait_for(request.request_id, timeout=timeout)
 
+    @staticmethod
+    def _response(request: ApprovalRequest, raw: dict) -> ApprovalResponse:
         decision = raw.get("decision", "reject")
         logger.info(
             "HITL response: request_id=%s, decision=%s, feedback=%s",
