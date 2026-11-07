@@ -9,7 +9,7 @@ UnifaiRAGSource reads a public GitHub repository at a ref from its archive, keep
 |---|---|---|---|---|
 | OpenShift Container Platform 4.22 | `openshift/openshift-docs`, `enterprise-4.22` | 1859 (OCP dirs of the topic map, without `rest_api`) | 32 MB | one repo serves OCP, OKD, ROSA, OSD, MicroShift: the distro attributes and the `paths` choose OCP. Apache-2.0. Archive about 150 MB, read in 40 s, 150 MB of memory |
 | Red Hat Advanced Cluster Management | `stolostron/rhacm-docs`, `2.17_prod` (latest production branch; `5.0_stage` is the next) | 1056 | 4.4 MB | common attributes in `modules/common-attributes.adoc`. The repository has **no LICENSE file**: ask Red Hat before publishing the content to users |
-| Red Hat OpenShift AI | `opendatahub-io/opendatahub-documentation`, `v3.3` | 25 books | 0.4 MB | this is the **upstream Open Data Hub** documentation, archived since 2026-03; the RHOAI wording is produced by the `self-managed` attribute. The official RHOAI source is not public: expect differences with docs.redhat.com. Apache-2.0 |
+| Red Hat OpenShift AI | `opendatahub-io/opendatahub-documentation`, `main` (last commit 2026-03-24, after `v3.3` of 2026-03-11; the repository is archived and no newer public RHOAI source exists) | 25 books | 1.9 MB | this is the **upstream Open Data Hub** documentation, archived since 2026-03; the RHOAI wording is produced by the `self-managed` attribute. The official RHOAI source is not public: expect differences with docs.redhat.com. Apache-2.0 |
 
 ```yaml
 apiVersion: unifai.startx.fr/v1alpha1
@@ -62,8 +62,8 @@ spec:
   visibility: public
   git:
     url: https://github.com/opendatahub-io/opendatahub-documentation
-    ref: v3.3
-    metadata: {product: Red Hat OpenShift AI Self-Managed (from the Open Data Hub docs), version: "3.3", language: en}
+    ref: main
+    metadata: {product: Red Hat OpenShift AI Self-Managed (from the Open Data Hub docs), version: "3.x (main, March 2026)", language: en}
     attributes: {upstream!: "", self-managed: ""}
     include: ["*.adoc"]
     exclude: ["modules/*", "assemblies/*", "examples/*", "scripts/*", "_artifacts/*", "README.adoc"]
