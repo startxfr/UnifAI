@@ -107,6 +107,57 @@ spec:
                 - baseUrl
                 - spaceKey
                 type: object
+              git:
+                description: |-
+                  RAGGitSource scopes a git source: the AsciiDoc, Markdown and text files of a public GitHub repository at a ref, read
+                  without credentials from the repository archive. AsciiDoc include:: of files of the same repository are resolved, so an
+                  assembly reads as one document. A sync whose ref still points at the commit of the last one downloads nothing.
+                properties:
+                  exclude:
+                    items:
+                      type: string
+                    type: array
+                  include:
+                    description: Shell-style patterns a document path must match (empty
+                      = all) and must not match.
+                    items:
+                      type: string
+                    type: array
+                  maxFiles:
+                    default: 2000
+                    description: Limit on documents read.
+                    maximum: 10000
+                    minimum: 1
+                    type: integer
+                  metadata:
+                    additionalProperties:
+                      type: string
+                    description: Fields stamped on every chunk of the source (e.g.
+                      product, version, language).
+                    type: object
+                  paths:
+                    description: |-
+                      Directories whose files are documents (empty = the whole repository). The files they include from elsewhere in
+                      the repository are still read.
+                    items:
+                      type: string
+                    maxItems: 100
+                    type: array
+                  ref:
+                    default: main
+                    description: Branch, tag or commit to read.
+                    pattern: ^[A-Za-z0-9._/-]{1,200}$
+                    type: string
+                  url:
+                    description: Public repository, https://github.com/<owner>/<repo>.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: a git source is a public https://github.com/<owner>/<repo>
+                        repository
+                      rule: self.matches('^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?$')
+                required:
+                - url
+                type: object
               owner:
                 default: admin
                 description: UnifAI user owning the object (workspace identity).
@@ -147,6 +198,7 @@ spec:
                 enum:
                 - confluence
                 - web
+                - git
                 type: string
               unifaiName:
                 description: Name in UnifAI (defaults to metadata.name).
@@ -223,6 +275,8 @@ spec:
               rule: self.type != 'confluence' || has(self.confluence)
             - message: web settings are required for type web
               rule: self.type != 'web' || has(self.web)
+            - message: git settings are required for type git
+              rule: self.type != 'git' || has(self.git)
             - message: a shared source needs at least one ACL group
               rule: self.visibility != 'shared' || (has(self.aclGroups) && size(self.aclGroups)
                 > 0)

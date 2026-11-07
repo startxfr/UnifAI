@@ -40,6 +40,7 @@ const (
 	syncClockSkew        = 30 * time.Second
 	sourceTypeConfluence = "confluence"
 	sourceTypeWeb        = "web"
+	sourceTypeGit        = "git"
 )
 
 func (r *RAGSourceReconciler) now() time.Time {
@@ -109,6 +110,21 @@ func ragSourceInstance(obj *unifaiv1.UnifaiRAGSource) (string, map[string]any, e
 		instance["maxPages"] = w.MaxPages
 		instance["metadata"] = w.Metadata
 		return sourceTypeWeb, instance, nil
+	case sourceTypeGit:
+		g := obj.Spec.Git
+		if g == nil {
+			return "", nil, permanent("spec.git is required for type git")
+		}
+		ref := g.Ref
+		if ref == "" {
+			ref = "main"
+		}
+		instance["url"], instance["ref"] = g.URL, ref
+		instance["paths"] = append([]string{}, g.Paths...)
+		instance["include"], instance["exclude"] = append([]string{}, g.Include...), append([]string{}, g.Exclude...)
+		instance["maxFiles"] = g.MaxFiles
+		instance["metadata"] = g.Metadata
+		return sourceTypeGit, instance, nil
 	}
 	return "", nil, permanent("unsupported source type %q", obj.Spec.Type)
 }

@@ -650,6 +650,26 @@ def web_pipeline_handler():
     )
 
 
+def git_pipeline_handler():
+    """Git pipeline handler for public GitHub repositories (no credentials, R-530)."""
+    from core.data_sources.types.git.pipeline_handler import GitPipelineHandler
+    import requests
+    from infrastructure.sources.git.connector import GitConnector
+    from global_utils.utils.net_guard_requests import guard_session
+    from config.app_config import AppConfig
+    cfg = AppConfig.get_instance()
+
+    return GitPipelineHandler(
+        connector_factory=lambda: GitConnector(session=guard_session(requests.Session()), timeout=cfg.web_timeout_seconds),
+        chunker=pdf_chunker(),
+        embedder=embedding_generator(),
+        data_source_service=data_source_service(),
+        min_chunk_chars=cfg.web_min_chunk_chars,
+        index_version=cfg.index_version(),
+        max_deleted_ratio=cfg.web_max_deleted_ratio,
+    )
+
+
 def get_pipeline_handler(source_type: str):
     """
     Resolve the appropriate pipeline handler for a source type.
@@ -668,6 +688,7 @@ def get_pipeline_handler(source_type: str):
         "DOCUMENT": document_pipeline_handler,
         "CONFLUENCE": confluence_pipeline_handler,
         "WEB": web_pipeline_handler,
+        "GIT": git_pipeline_handler,
     }
     
     factory = handlers.get(source_type.upper())

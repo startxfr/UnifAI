@@ -91,6 +91,13 @@ func Fixtures() []Fixture {
 			s.Web.URLs = []string{"ftp://x", "not a url"}
 		}), []string{"spec.syncInterval", "spec.web.urls"}},
 
+		{"git source valid", src(func(s *unifaiv1.UnifaiRAGSourceSpec) {
+			s.Type, s.Web, s.Git = "git", nil, &unifaiv1.RAGGitSource{URL: "https://github.com/openshift/openshift-docs", Ref: "main"}
+		}), nil},
+		{"git source not a github repository", src(func(s *unifaiv1.UnifaiRAGSourceSpec) {
+			s.Type, s.Web, s.Git = "git", nil, &unifaiv1.RAGGitSource{URL: "https://gitlab.com/o/r"}
+		}), []string{"spec.git.url"}},
+
 		{"pipeline valid", pipeline(unifaiv1.RAGDocument{Name: "a.md", Source: unifaiv1.DocumentSource{Inline: "x"}},
 			unifaiv1.RAGDocument{Name: "b.PDF", Source: unifaiv1.DocumentSource{URL: "https://x/b.pdf"}}), nil},
 		{"pipeline duplicate name and bad url", pipeline(unifaiv1.RAGDocument{Name: "a.md", Source: unifaiv1.DocumentSource{Inline: "x"}},

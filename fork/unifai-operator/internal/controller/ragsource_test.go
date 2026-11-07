@@ -141,6 +141,39 @@ var _ = Describe("UnifaiRAGSource controller", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
+	It("registers a public git source with its repository, ref, paths and metadata (R-530)", func() {
+		s := newSource("ns", "unused", func(s *unifaiv1.UnifaiRAGSource) {
+			s.Spec.Type, s.Spec.Confluence = sourceTypeGit, nil
+			s.Spec.Owner, s.Spec.Visibility = testPublisher, visibilityPublic
+			s.Spec.Git = &unifaiv1.RAGGitSource{
+				URL: "https://github.com/openshift/openshift-docs", Paths: []string{"installing", "networking"}, MaxFiles: 2000,
+				Exclude: []string{"*/_attributes/*"}, Metadata: map[string]string{"product": "OCP", "version": "4.22"},
+			}
+		})
+		typ, instance, err := ragSourceInstance(s)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(typ).To(Equal(sourceTypeGit))
+		Expect(instance).To(HaveKeyWithValue("url", "https://github.com/openshift/openshift-docs"))
+		Expect(instance).To(HaveKeyWithValue("ref", "main"), "an unset ref reads main")
+		Expect(instance["paths"]).To(Equal([]string{"installing", "networking"}))
+		Expect(instance["metadata"]).To(Equal(map[string]string{"product": "OCP", "version": "4.22"}))
+
+		s.Spec.Git = nil
+		_, _, err = ragSourceInstance(s)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("rejects a git source that is not a public GitHub repository at admission", func() {
+		ns := newNamespace("ragsrc-git")
+		bad := newSource(ns, "git", func(s *unifaiv1.UnifaiRAGSource) {
+			s.Spec.Type, s.Spec.Confluence = sourceTypeGit, nil
+			s.Spec.Git = &unifaiv1.RAGGitSource{URL: "https://gitlab.com/o/r"}
+		})
+		Expect(k8sClient.Create(ctx, bad)).To(MatchError(ContainSubstring("spec.git.url")))
+		missing := newSource(ns, "git2", func(s *unifaiv1.UnifaiRAGSource) { s.Spec.Type, s.Spec.Confluence = sourceTypeGit, nil })
+		Expect(k8sClient.Create(ctx, missing)).To(MatchError(ContainSubstring("git settings are required for type git")))
+	})
+
 	It("ingests a web source and reports its pages", func() {
 		ns := newNamespace("ragsrc-web")
 		s := newSource(ns, "unused", func(s *unifaiv1.UnifaiRAGSource) {

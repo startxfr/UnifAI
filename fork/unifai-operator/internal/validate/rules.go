@@ -59,6 +59,7 @@ var (
 
 var (
 	dnsName      = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	githubRepo   = regexp.MustCompile(`^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?$`)
 	isoDuration  = regexp.MustCompile(`^P(T(\d+H)?(\d+M)?(\d+S)?|\d+D(T(\d+H)?(\d+M)?(\d+S)?)?)$`)
 	cronFields   = regexp.MustCompile(`^\S+(\s+\S+){4}$`)
 	iconPattern  = regexp.MustCompile(`^[a-z0-9-]+$`)
@@ -223,6 +224,11 @@ var Rules = map[string][]Rule{
 			check: func(obj client.Object) bool {
 				i := obj.(*unifaiv1.UnifaiRAGSource).Spec.SyncInterval
 				return i == nil || i.Duration >= 10*time.Minute
+			}},
+		{Field: "spec.git.url", Message: "a git source is a public https://github.com/<owner>/<repo> repository",
+			check: func(obj client.Object) bool {
+				g := obj.(*unifaiv1.UnifaiRAGSource).Spec.Git
+				return g == nil || githubRepo.MatchString(g.URL)
 			}},
 		{Field: "spec.web.urls", Message: "web urls are http(s) URLs",
 			check: func(obj client.Object) bool {

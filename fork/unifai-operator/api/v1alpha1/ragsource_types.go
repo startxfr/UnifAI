@@ -50,22 +50,58 @@ type RAGWebSource struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
+// RAGGitSource scopes a git source: the AsciiDoc, Markdown and text files of a public GitHub repository at a ref, read
+// without credentials from the repository archive. AsciiDoc include:: of files of the same repository are resolved, so an
+// assembly reads as one document. A sync whose ref still points at the commit of the last one downloads nothing.
+type RAGGitSource struct {
+	// Public repository, https://github.com/<owner>/<repo>.
+	// +kubebuilder:validation:XValidation:rule="self.matches('^https://github\\\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?$')",message="a git source is a public https://github.com/<owner>/<repo> repository"
+	URL string `json:"url"`
+	// Branch, tag or commit to read.
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9._/-]{1,200}$`
+	// +kubebuilder:default=main
+	// +optional
+	Ref string `json:"ref,omitempty"`
+	// Directories whose files are documents (empty = the whole repository). The files they include from elsewhere in
+	// the repository are still read.
+	// +kubebuilder:validation:MaxItems=100
+	// +optional
+	Paths []string `json:"paths,omitempty"`
+	// Shell-style patterns a document path must match (empty = all) and must not match.
+	// +optional
+	Include []string `json:"include,omitempty"`
+	// +optional
+	Exclude []string `json:"exclude,omitempty"`
+	// Limit on documents read.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10000
+	// +kubebuilder:default=2000
+	// +optional
+	MaxFiles int `json:"maxFiles,omitempty"`
+	// Fields stamped on every chunk of the source (e.g. product, version, language).
+	// +optional
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
 // UnifaiRAGSourceSpec is a RAG source kept in sync on a schedule. Credentials are stack-wide
 // (UnifaiStack.spec.rag.confluence).
 // +kubebuilder:validation:XValidation:rule="self.type != 'confluence' || has(self.confluence)",message="confluence settings are required for type confluence"
 // +kubebuilder:validation:XValidation:rule="self.type != 'web' || has(self.web)",message="web settings are required for type web"
+// +kubebuilder:validation:XValidation:rule="self.type != 'git' || has(self.git)",message="git settings are required for type git"
 // +kubebuilder:validation:XValidation:rule="self.visibility != 'shared' || (has(self.aclGroups) && size(self.aclGroups) > 0)",message="a shared source needs at least one ACL group"
 // +kubebuilder:validation:XValidation:rule="!has(self.teamId) || !has(self.teamRef) || size(self.teamId) == 0 || size(self.teamRef) == 0",message="teamId and teamRef are exclusive"
 type UnifaiRAGSourceSpec struct {
 	// Owner is the UnifAI user registering the source; a shared source needs it in
 	// UnifaiStack.spec.rag.sharedPublishers.
 	CommonSpec `json:",inline"`
-	// +kubebuilder:validation:Enum=confluence;web
+	// +kubebuilder:validation:Enum=confluence;web;git
 	Type string `json:"type"`
 	// +optional
 	Confluence *RAGConfluenceSource `json:"confluence,omitempty"`
 	// +optional
 	Web *RAGWebSource `json:"web,omitempty"`
+	// +optional
+	Git *RAGGitSource `json:"git,omitempty"`
 	// private (owner only), shared (owner + members of aclGroups) or public (every signed-in user; for
 	// public documentation). Shared and public need the owner in UnifaiStack.spec.rag.sharedPublishers.
 	// +kubebuilder:validation:Enum=private;shared;public
