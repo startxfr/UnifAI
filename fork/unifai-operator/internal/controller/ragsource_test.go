@@ -157,6 +157,13 @@ var _ = Describe("UnifaiRAGSource controller", func() {
 		Expect(instance).To(HaveKeyWithValue("ref", "main"), "an unset ref reads main")
 		Expect(instance["paths"]).To(Equal([]string{"installing", "networking"}))
 		Expect(instance["metadata"]).To(Equal(map[string]string{"product": "OCP", "version": "4.22"}))
+		Expect(instance).NotTo(HaveKey("attributes"), "unset attributes keep the hash of a source registered before they existed")
+		s.Spec.Git.Attributes = map[string]string{"product-title": "OpenShift Container Platform", "openshift-enterprise": ""}
+		s.Spec.Git.AttributeFiles = []string{"_attributes/common-attributes.adoc"}
+		_, instance, err = ragSourceInstance(s)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(instance["attributes"]).To(HaveKeyWithValue("openshift-enterprise", ""))
+		Expect(instance["attributeFiles"]).To(Equal([]string{"_attributes/common-attributes.adoc"}))
 
 		s.Spec.Git = nil
 		_, _, err = ragSourceInstance(s)

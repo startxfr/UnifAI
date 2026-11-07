@@ -49,7 +49,8 @@ class GitPipelineHandler(WebPipelineHandler):
             logger.info(f"Git source {context.source_name}: ref still at {commit[:12]}, nothing to do")
             return []
         files = connector.fetch(settings["url"], settings.get("ref", "main"), settings.get("paths", []),
-                                settings.get("include", []), settings.get("exclude", []), int(settings.get("max_files", 2000)))
+                                settings.get("include", []), settings.get("exclude", []), int(settings.get("max_files", 2000)),
+                                dict(settings.get("attributes") or {}), settings.get("attribute_files", []))
         self._files = {f.url: f for f in files}
         manifest = {f.url: {"content_hash": f.content_hash, "title": f.title, "path": f.path} for f in files}
         changed = [f for f in files if reingest or f.url not in previous or previous[f.url].get("content_hash") != f.content_hash]

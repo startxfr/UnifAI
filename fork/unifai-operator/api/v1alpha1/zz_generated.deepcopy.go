@@ -723,6 +723,18 @@ func (in *RAGGitSource) DeepCopyInto(out *RAGGitSource) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.Attributes != nil {
+		in, out := &in.Attributes, &out.Attributes
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.AttributeFiles != nil {
+		in, out := &in.AttributeFiles, &out.AttributeFiles
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.Metadata != nil {
 		in, out := &in.Metadata, &out.Metadata
 		*out = make(map[string]string, len(*in))

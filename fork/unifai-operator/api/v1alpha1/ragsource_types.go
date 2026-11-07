@@ -72,6 +72,17 @@ type RAGGitSource struct {
 	Include []string `json:"include,omitempty"`
 	// +optional
 	Exclude []string `json:"exclude,omitempty"`
+	// AsciiDoc attributes given by the source, like attributes passed to Asciidoctor: they win over the document's own and
+	// choose the product when one repository serves several (openshift-enterprise, product-title, product-version). A
+	// name ending in ! locks the attribute as unset (upstream!). ifdef/ifndef blocks are evaluated against them.
+	// +kubebuilder:validation:MaxProperties=50
+	// +optional
+	Attributes map[string]string `json:"attributes,omitempty"`
+	// Repository files whose attribute definitions apply to every document (the common attributes a documentation set
+	// pulls in, e.g. _attributes/common-attributes.adoc).
+	// +kubebuilder:validation:MaxItems=10
+	// +optional
+	AttributeFiles []string `json:"attributeFiles,omitempty"`
 	// Limit on documents read.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=10000

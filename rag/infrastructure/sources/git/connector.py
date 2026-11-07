@@ -92,7 +92,8 @@ class GitConnector:
         return resp.text.strip()
 
     def fetch(self, url: str, ref: str, paths: Sequence[str] = (), include: Sequence[str] = (), exclude: Sequence[str] = (),
-              max_files: int = 2000) -> list[GitFile]:
+              max_files: int = 2000, attributes: dict[str, str] | None = None,
+              attribute_files: Sequence[str] = ()) -> list[GitFile]:
         """The documents of the source at *ref*. The archive is streamed: only text files are read, bounded in size."""
         owner, repo = parse_repo(url)
         resp = self._session.get(f"{self._archive}/{owner}/{repo}/tar.gz/{quote(ref, safe='/')}", timeout=self._timeout, stream=True)
@@ -101,13 +102,19 @@ class GitConnector:
         if resp.status_code != 200:
             raise GitError(f"{url}: the archive answered {resp.status_code}")
         sources: dict[str, str] = {}
+        links: dict[str, str] = {}
         used = 0
         try:
             with tarfile.open(fileobj=resp.raw, mode="r|gz") as tar:
                 for member in tar:
+                    path = posixpath.normpath(member.name.split("/", 1)[1]) if "/" in member.name else ""
+                    if member.issym() and path and not member.linkname.startswith("/"):
+                        target = posixpath.normpath(posixpath.join(posixpath.dirname(path), member.linkname))
+                        if not target.startswith(".."):
+                            links[path] = target
+                        continue
                     if not member.isfile() or member.size > MAX_FILE_BYTES:
                         continue
-                    path = posixpath.normpath(member.name.split("/", 1)[1]) if "/" in member.name else ""
                     if not path or path.startswith("..") or not path.lower().endswith(TEXT_SUFFIXES):
                         continue
                     data = tar.extractfile(member).read()
@@ -121,7 +128,7 @@ class GitConnector:
         for path in sorted(sources):
             if not selected(path, paths, include, exclude):
                 continue
-            text = adoc_to_text(path, sources) if path.lower().endswith(".adoc") else sources[path].strip()
+            text = adoc_to_text(path, sources, attributes, attribute_files, links) if path.lower().endswith(".adoc") else sources[path].strip()
             if not text:
                 continue
             blob = f"https://github.com/{owner}/{repo}/blob/{quote(ref, safe='/')}/{quote(path)}"

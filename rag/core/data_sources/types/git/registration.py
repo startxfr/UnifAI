@@ -28,6 +28,8 @@ class GitRegistration(ConfluenceRegistration):
                                          "include": list(self.instance.get("include") or []),
                                          "exclude": list(self.instance.get("exclude") or []),
                                          "max_files": int(self.instance.get("maxFiles") or 2000),
+                                         "attributes": dict(self.instance.get("attributes") or {}),
+                                         "attribute_files": [f.strip().strip("/") for f in (self.instance.get("attributeFiles") or []) if f and f.strip()],
                                          "metadata": dict(self.instance.get("metadata") or {}),
                                          "classification": source_classification(self.instance)})
 

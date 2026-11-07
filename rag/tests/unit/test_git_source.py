@@ -50,7 +50,34 @@ def test_asciidoc_includes_attributes_and_headings_become_prose():
     assert "## Introduction" in text and "$ oc get nodes" in text and "----" not in text
     assert "Note: Read OpenShift Container Platform release notes." in text
     assert "a comment" not in text and "ifdef" not in text and "[id=" not in text
+    assert "Enterprise only" not in text, "the openshift-enterprise block applies only when that attribute is given"
     assert title_of(text, "x") == "Installing OpenShift Container Platform"
+
+
+DISTRO = {"common-attributes.adoc": ":ocp-next: 4.23\nifdef::openshift-origin[]\n:op-system: FCOS\nendif::[]\n:op-system: RHCOS\n",
+          "book.adoc": "= {product-title} {product-version}\ninclude::common-attributes.adoc[]\n\n"
+                       "ifdef::openshift-enterprise[]\nFor {product-title} only.\nendif::[]\n"
+                       "ifdef::openshift-dedicated,openshift-rosa[]\nManaged service only.\nendif::[]\n"
+                       "ifndef::openshift-origin[]\nNot OKD.\nendif::[]\n"
+                       "ifdef::openshift-enterprise[Inline for {op-system}.]\n"
+                       "ifdef::openshift-enterprise+openshift-origin[]\nBoth.\nendif::[]\n"
+                       "ifdef::openshift-origin[]\nifdef::openshift-enterprise[]\nnested\nendif::[]\nendif::[]\n:product-title: Overridden\n{product-title}\n"}
+
+
+def test_the_chosen_distro_decides_which_blocks_and_names_apply():
+    given = {"product-title": "OpenShift Container Platform", "product-version": "4.22", "openshift-enterprise": ""}
+    text = adoc_to_text("book.adoc", DISTRO, given)
+    assert text.startswith("# OpenShift Container Platform 4.22")
+    assert "For OpenShift Container Platform only." in text and "Not OKD." in text and "Inline for RHCOS." in text
+    assert "Managed service only" not in text and "Both." not in text and "nested" not in text
+    assert text.rstrip().endswith("OpenShift Container Platform"), "a given attribute is locked: the document cannot override it"
+
+
+def test_attribute_files_seed_every_document_and_name_bang_unsets():
+    files = {"_attrs.adoc": ":acm: Red Hat Advanced Cluster Management\n", "a.adoc": "= About\n:upstream:\nifdef::upstream[]\nUpstream\nendif::[]\n{acm} rocks"}
+    assert "{acm}" in adoc_to_text("a.adoc", files)
+    seeded = adoc_to_text("a.adoc", files, {"upstream!": ""}, ["_attrs.adoc"])
+    assert "Red Hat Advanced Cluster Management rocks" in seeded and "Upstream" not in seeded
 
 
 def test_a_missing_or_cyclic_include_is_dropped_not_fatal():
@@ -209,3 +236,11 @@ def test_a_repository_that_lost_most_documents_fails_instead_of_deleting_them():
     handler, _ = _handler({"pages": pages, "commit": "c1"}, [_file("0.adoc", "0")], commit="c2")
     with pytest.raises(GitSyncDegraded):
         handler.collect(CTX)
+
+
+def test_symlinked_directories_of_the_repository_are_followed_for_includes():
+    files = {"modules/m.adoc": "= Module\nbody text", "inst/a.adoc": "= A\ninclude::modules/m.adoc[leveloffset=+1]"}
+    assert "body text" not in adoc_to_text("inst/a.adoc", files)
+    links = {"inst/modules": "modules"}
+    text = adoc_to_text("inst/a.adoc", files, links=links)
+    assert "## Module" in text and "body text" in text

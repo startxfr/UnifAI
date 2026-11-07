@@ -113,6 +113,23 @@ spec:
                   without credentials from the repository archive. AsciiDoc include:: of files of the same repository are resolved, so an
                   assembly reads as one document. A sync whose ref still points at the commit of the last one downloads nothing.
                 properties:
+                  attributeFiles:
+                    description: |-
+                      Repository files whose attribute definitions apply to every document (the common attributes a documentation set
+                      pulls in, e.g. _attributes/common-attributes.adoc).
+                    items:
+                      type: string
+                    maxItems: 10
+                    type: array
+                  attributes:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      AsciiDoc attributes given by the source, like attributes passed to Asciidoctor: they win over the document's own and
+                      choose the product when one repository serves several (openshift-enterprise, product-title, product-version). A
+                      name ending in ! locks the attribute as unset (upstream!). ifdef/ifndef blocks are evaluated against them.
+                    maxProperties: 50
+                    type: object
                   exclude:
                     items:
                       type: string

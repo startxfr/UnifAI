@@ -123,6 +123,12 @@ func ragSourceInstance(obj *unifaiv1.UnifaiRAGSource) (string, map[string]any, e
 		instance["paths"] = append([]string{}, g.Paths...)
 		instance["include"], instance["exclude"] = append([]string{}, g.Include...), append([]string{}, g.Exclude...)
 		instance["maxFiles"] = g.MaxFiles
+		if len(g.Attributes) > 0 { // absent when unset, so a git source without them keeps its hash
+			instance["attributes"] = g.Attributes
+		}
+		if len(g.AttributeFiles) > 0 {
+			instance["attributeFiles"] = append([]string{}, g.AttributeFiles...)
+		}
 		instance["metadata"] = g.Metadata
 		return sourceTypeGit, instance, nil
 	}
