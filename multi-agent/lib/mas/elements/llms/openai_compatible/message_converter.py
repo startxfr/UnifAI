@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from ..common.chat.message import ChatMessage, Role, ToolCall
+from ..common.chat.tool_arguments import drop_blank_argument
 
 _ROLE_MAP: Dict[Role, str] = {
     Role.SYSTEM: "system",
@@ -94,7 +95,7 @@ class OpenAIMessageConverter:
         result = [
             ToolCall(
                 name=tc.function.name,
-                args=(
+                args=drop_blank_argument(
                     json.loads(tc.function.arguments)
                     if isinstance(tc.function.arguments, str)
                     else tc.function.arguments

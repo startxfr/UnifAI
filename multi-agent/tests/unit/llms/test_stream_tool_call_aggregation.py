@@ -99,3 +99,11 @@ def test_responses_aggregator_two_calls_and_bad_args():
     calls = agg.build()
     assert calls[0].args == {"x": 1}
     assert ARGUMENTS_ERROR_KEY in calls[1].args
+
+
+def test_a_blank_argument_key_is_dropped_but_a_real_value_under_it_is_kept():
+    from mas.elements.llms.common.chat.tool_arguments import drop_blank_argument, parse_tool_arguments
+    assert parse_tool_arguments('{"": ""}') == {}
+    assert drop_blank_argument({"": None, "q": "x"}) == {"q": "x"}
+    assert parse_tool_arguments('{"": "oops"}') == {"": "oops"}
+    assert parse_tool_arguments('{"q": "x"}') == {"q": "x"}
