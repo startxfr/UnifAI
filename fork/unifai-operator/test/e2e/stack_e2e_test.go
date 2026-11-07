@@ -339,6 +339,9 @@ func TestUnifaiStack(t *testing.T) {
 		if !strings.Contains(chat.Status.Result, "pong") {
 			t.Errorf("unexpected chat result %s", chat.Status.Result)
 		}
+		if os.Getenv("E2E_APPROVAL_PROBE") != "0" {
+			checkStaleApproval(t, ns, chat.Status.SessionID)
+		}
 	})
 
 	t.Run("an agent bundle signed keyless is verified, another signer refused", func(t *testing.T) {
@@ -655,6 +658,39 @@ for name, url in urls.items():
 open("/dev/termination-log", "w").write("; ".join(out))
 sys.exit(0 if ok else 1)
 `
+
+// staleApprovalProbe answers an approval nobody waits for, on the session the chat just ran, through the route and the
+// Redis channel factory production uses (R-540, R-542: 0.1.63 answered 500 here). It exits 0 on 409 approval_not_pending.
+const staleApprovalProbe = `
+import json, os, sys, urllib.request, urllib.error
+req = urllib.request.Request("http://unifai-multiagent-be:8003/api/sessions/session.approval",
+    data=json.dumps({"sessionId": os.environ["SESSION_ID"], "requestId": "e2e-not-pending", "decision": "approve"}).encode(),
+    headers={"Content-Type": "application/json", "X-Authenticated-User": "admin",
+             "X-Internal-Auth": os.environ["INTERNAL_AUTH_SECRET"]}, method="POST")
+try:
+    code, body = urllib.request.urlopen(req, timeout=30).status, ""
+except urllib.error.HTTPError as e:
+    code, body = e.code, e.read().decode()[:200]
+open("/dev/termination-log", "w").write("status %d %s" % (code, body))
+sys.exit(0 if code == 409 and "approval_not_pending" in body else 1)
+`
+
+// checkStaleApproval fails unless an approval answer for a request nobody waits for is refused with 409
+// approval_not_pending (a 500 is the 0.1.63 defect).
+func checkStaleApproval(t *testing.T, ns, sessionID string) {
+	t.Helper()
+	if sessionID == "" {
+		t.Fatal("the chat has no session id")
+	}
+	secret := &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{Name: "unifai-internal-auth"}, Key: "INTERNAL_AUTH_SECRET"}}
+	ok, msg := runProbe(t, ns, "e2e-stale-approval", staleApprovalProbe,
+		map[string]string{"unifai.startx.fr/internal-client": "true"},
+		corev1.EnvVar{Name: "INTERNAL_AUTH_SECRET", ValueFrom: secret}, corev1.EnvVar{Name: "SESSION_ID", Value: sessionID})
+	if !ok {
+		t.Errorf("session.approval for a request nobody waits for must answer 409 approval_not_pending: %s", msg)
+	}
+}
 
 // ragClientProbe calls the RAG server and MAS of the stack in STACK_NS from another namespace: MAS and the data
 // stores must stay unreachable, the RAG server must be reachable when EXPECT_RAG=open and unreachable otherwise.
