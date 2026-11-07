@@ -95,3 +95,64 @@ def test_a_client_without_cap_does_not_count():
     for _ in range(3):
         llm.chat([ChatMessage(role=Role.USER, content="hi")])
     assert tb._store.used("s1:h1") == 0
+
+
+class _CeilingIterator:
+    """What the loop sees when the ceiling cuts the turn after the model said something."""
+
+    def __init__(self, text):
+        from mas.elements.llms.common.chat.message import ChatMessage, Role
+        from mas.elements.nodes.common.agent.primitives import AgentStep, StepType
+        planning = AgentStep(type=StepType.PLANNING, data=ChatMessage(role=Role.ASSISTANT, content=text), metadata={})
+        error = AgentStep(type=StepType.ERROR, data=tb.TokenCeilingReached(120, 100),
+                          metadata={"recoverable": False, "retry_after": None})
+        self.history, self.observations, self._steps = [planning, error], [], [error]
+
+    def __iter__(self):
+        return iter(self._steps)
+
+
+def _agent(events, text="Here is what I found so far."):
+    from mas.elements.nodes.common.capabilities.agent_capable import AgentCapableMixin
+
+    class _A(AgentCapableMixin[object]):
+        def create_iterator(self, messages, strategy, *, config=None, on_action=None):
+            return _CeilingIterator(text)
+
+        def is_streaming(self):
+            return True
+
+        def _stream(self, event):
+            events.append(event)
+
+        def chat(self, messages, tools=None):
+            raise AssertionError("no wrap-up call after a ceiling")
+
+    return _A()
+
+
+def _run(agent):
+    from mas.elements.llms.common.chat.message import ChatMessage, Role
+    from mas.elements.nodes.common.agent import AgentConfig
+
+    class _S:
+        strategy_name = "react"
+
+    return agent.run_agent([ChatMessage(role=Role.USER, content="hi")], _S(), config=AgentConfig())
+
+
+def test_the_turn_ends_cleanly_with_what_was_produced_then_the_notice_and_one_event():
+    events = []
+    tb.bind_turn("s1", "h1")
+    result = _run(_agent(events))
+    assert result["success"] is True and result["error"] is None
+    assert result["output"] == "Here is what I found so far.\n\nToken ceiling reached for this turn (120/100 tokens)"
+    assert [e["error_type"] for e in events if e.get("type") == "agent_error"] == [tb.TOKEN_CEILING_TYPE]
+    again = []
+    _run(_agent(again))  # a second node of the same turn reports it: the event is not repeated
+    assert [e for e in again if e.get("type") == "agent_error"] == []
+
+
+def test_a_turn_cut_before_the_model_said_anything_answers_with_the_notice_alone():
+    result = _run(_agent([], text=""))
+    assert result["output"] == "Token ceiling reached for this turn (120/100 tokens)"

@@ -20,7 +20,9 @@ from typing import Optional, List, Dict, Any, TypeVar, Generic, Iterator, Callab
 from enum import Enum
 
 from mas.elements.llms.common.chat.message import ERROR_METADATA_KEY, RESPONSE_METADATA_KEY, ChatMessage, Role
+from mas.elements.llms.common import token_budget
 from mas.elements.llms.common.exceptions import LLMRateLimitError
+from mas.elements.llms.common.token_budget import TOKEN_CEILING_TYPE, TokenCeilingReached
 from mas.elements.tools.common.base_tool import BaseTool
 from mas.elements.tools.common.execution import ToolExecutorManager, ExecutorConfig
 from mas.elements.tools.common.execution.models import (
@@ -523,7 +525,12 @@ class AgentCapableMixin(Generic[T]):
             if step.type == StepType.ERROR and isinstance(step.data, LLMRateLimitError):
                 info = step.data.to_dict()
                 result["metadata"][ERROR_METADATA_KEY] = info
-                if self.is_streaming():
+                if isinstance(step.data, TokenCeilingReached):
+                    # The turn ends cleanly (R-543): what the model had produced, then the notice.
+                    partial = self._partial_text(iterator)
+                    result["output"] = f"{partial}\n\n{info['message']}" if partial else info["message"]
+                    result["success"], result["error"] = True, None
+                if self.is_streaming() and (info["type"] != TOKEN_CEILING_TYPE or token_budget.announce_once()):
                     self._stream({
                         "type": "agent_error",
                         "error_type": info["type"],
@@ -646,6 +653,16 @@ class AgentCapableMixin(Generic[T]):
                 "metadata": {"unexpected_error": True}
             }
     
+    @staticmethod
+    def _partial_text(iterator: Any) -> str:
+        """The last text the model produced before the turn was cut (empty when it only called tools)."""
+        for step in reversed(iterator.history):
+            if step.type == StepType.PLANNING and isinstance(step.data, ChatMessage):
+                text = (step.data.content or "").strip()
+                if text:
+                    return text
+        return ""
+
     @staticmethod
     def _error_event_fields(error: Any) -> Dict[str, Any]:
         """Typed fields (``error_type``, ``retry_after``) for known non-fatal errors."""

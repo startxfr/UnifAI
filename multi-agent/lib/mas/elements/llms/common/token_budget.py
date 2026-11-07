@@ -46,14 +46,14 @@ class TokenBudgetStore(ABC):
     def announce_once(self, turn_key: str) -> bool:
         """True the first time it is asked for a turn: the ceiling event is emitted once. Per process by default."""
         with _lock:
-            if turn_key in _announced:
+            announced = self.__dict__.setdefault("_announced", set())
+            if turn_key in announced:
                 return False
-            _announced.add(turn_key)
+            announced.add(turn_key)
             return True
 
 
 _lock = threading.Lock()
-_announced: set[str] = set()
 
 
 class InMemoryTokenBudgetStore(TokenBudgetStore):
