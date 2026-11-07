@@ -428,8 +428,8 @@ metadata:
       ]
     capabilities: Seamless Upgrades
     categories: AI/Machine Learning, Developer Tools
-    containerImage: quay.io/zuno/unifai-operator@sha256:0d02f1d4ece2aa9ce68dd4c94fa1606af186afa3587b854d4e55616b56b8122a
-    createdAt: '2026-11-07T07:15:52Z'
+    containerImage: quay.io/zuno/unifai-operator@sha256:3af30d3af92cfae689e305a75aff3e1b33650ea68f8a8f7a3556ff2c19ecfb37
+    createdAt: '2026-11-07T11:05:25Z'
     description: Deploys UnifAI stacks and manages UnifAI agents, workflows and RAG pipelines declaratively.
     features.operators.openshift.io/disconnected: 'false'
     features.operators.openshift.io/fips-compliant: 'false'
@@ -443,7 +443,7 @@ metadata:
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     repository: https://github.com/startxfr/UnifAI
     support: startx
-  name: unifai-operator.v0.1.63
+  name: unifai-operator.v0.1.64
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -865,7 +865,7 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.namespace
-                image: quay.io/zuno/unifai-operator@sha256:0d02f1d4ece2aa9ce68dd4c94fa1606af186afa3587b854d4e55616b56b8122a
+                image: quay.io/zuno/unifai-operator@sha256:3af30d3af92cfae689e305a75aff3e1b33650ea68f8a8f7a3556ff2c19ecfb37
                 imagePullPolicy: Always
                 livenessProbe:
                   httpGet:
@@ -970,4 +970,4 @@ spec:
   provider:
     name: startx
     url: https://www.startx.fr
-  version: 0.1.63
+  version: 0.1.64
