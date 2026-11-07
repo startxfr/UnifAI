@@ -110,3 +110,41 @@ def test_the_redis_channel_records_the_request_with_a_ttl_and_forgets_it():
     assert channel.is_pending("r1") and list(channel._redis.keys.values()) == [330]
     channel.clear_pending("r1")
     assert not channel.is_pending("r1")
+
+
+def test_every_channel_the_api_can_get_answers_is_pending_and_submit():
+    """The API's session.approval calls these two on whatever get_input_channel returns. With Redis that is a proxy,
+    not the running channel: 0.1.63 shipped without is_pending on it and answered 500 to every approval."""
+    from outbound.channels.redis.factory import _RedisSubmitProxy
+    from outbound.channels.redis.input_channel import RedisInputCapableChannel
+
+    for cls in (LocalInputCapableChannel, _RedisSubmitProxy):
+        assert callable(getattr(cls, "is_pending", None)) and callable(getattr(cls, "submit", None)), cls
+
+
+def test_the_api_proxy_and_the_running_channel_agree_on_what_is_pending():
+    from outbound.channels.redis.factory import _RedisSubmitProxy
+    from outbound.channels.redis.input_channel import RedisInputCapableChannel
+
+    class _Redis:
+        def __init__(self):
+            self.keys = {}
+
+        def set(self, key, value, ex=None):
+            self.keys[key] = ex
+
+        def exists(self, key):
+            return key in self.keys
+
+        def delete(self, key):
+            self.keys.pop(key, None)
+
+    redis = _Redis()
+    running = RedisInputCapableChannel.__new__(RedisInputCapableChannel)
+    running._session_id, running._redis = "s1", redis
+    api = _RedisSubmitProxy("s1", redis)
+    assert api.is_pending("r1") is False  # nobody waits: the API must answer 409
+    running.mark_pending("r1", 300)
+    assert api.is_pending("r1") is True and _RedisSubmitProxy("s2", redis).is_pending("r1") is False
+    running.clear_pending("r1")
+    assert api.is_pending("r1") is False

@@ -286,3 +286,66 @@ def test_create_on_public_blueprint_by_anyone(env):
 def test_create_admin_may_use_any_blueprint(env):
     _, client, *_ = env
     assert _create(client, "root", "bp-alice").status_code == 200
+
+
+class _FakeRedis:
+    """Just enough Redis for the approval path: the pending record and the answer list."""
+
+    def __init__(self):
+        self.keys, self.lists = {}, {}
+
+    def set(self, key, value, ex=None):
+        self.keys[key] = ex
+
+    def exists(self, key):
+        return key in self.keys
+
+    def delete(self, key):
+        self.keys.pop(key, None)
+
+    def lpush(self, key, value):
+        self.lists.setdefault(key, []).append(value)
+
+    def expire(self, key, ttl):
+        pass
+
+
+@pytest.fixture
+def redis_approval(env):
+    """The approval route wired to the REAL Redis channel factory (what production uses), not a mock: 0.1.63 shipped
+    a 500 on every answer because the factory's proxy lacked a method the route calls, and a MagicMock hid it."""
+    from outbound.channels.redis.factory import RedisChannelFactory
+    from outbound.channels.redis.input_channel import RedisInputCapableChannel
+
+    app, client, *_ = env
+    redis = _FakeRedis()
+    factory = RedisChannelFactory.__new__(RedisChannelFactory)
+    factory._redis = lambda: redis
+    app.container.channel_factory = factory
+    running = RedisInputCapableChannel.__new__(RedisInputCapableChannel)
+    running._session_id, running._redis = "s-alice", redis
+    return client, running, redis
+
+
+def _answer(client, request_id, decision="approve"):
+    return client.post("/session.approval", headers=_h("alice"), json={
+        "sessionId": "s-alice", "requestId": request_id, "decision": decision, "feedback": "ok"})
+
+
+def test_an_awaited_request_is_answered_with_the_real_redis_factory(redis_approval):
+    client, running, redis = redis_approval
+    running.mark_pending("r1", 300)
+    resp = _answer(client, "r1")
+    assert resp.status_code == 200 and resp.get_json()["status"] == "submitted"
+    assert len(redis.lists["mas:hitl:s-alice:r1"]) == 1
+
+
+def test_a_request_nobody_waits_for_is_refused_with_409_and_nothing_is_stored(redis_approval):
+    client, running, redis = redis_approval
+    for request_id in ("never-asked", "r1"):  # unknown, then asked and already finished
+        if request_id == "r1":
+            running.mark_pending("r1", 300)
+            running.clear_pending("r1")
+        resp = _answer(client, request_id)
+        assert resp.status_code == 409 and resp.get_json()["code"] == "approval_not_pending"
+    assert redis.lists == {}

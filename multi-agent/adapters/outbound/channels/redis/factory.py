@@ -21,7 +21,7 @@ from mas.core.channels import (
     SessionStreamMonitor,
 )
 from .channel import RedisSessionChannel
-from .input_channel import RedisInputCapableChannel, _HITL_KEY_PREFIX, _HITL_RESPONSE_TTL_S
+from .input_channel import RedisInputCapableChannel, _HITL_KEY_PREFIX, _HITL_RESPONSE_TTL_S, pending_key
 from .reader import RedisSessionChannelReader
 from .monitor import RedisStreamMonitor
 
@@ -97,6 +97,10 @@ class _RedisSubmitProxy:
     def __init__(self, session_id: str, redis_client: Redis) -> None:
         self._session_id = session_id
         self._redis = redis_client
+
+    def is_pending(self, request_id: str) -> bool:
+        """True while the running channel waits for *request_id* (R-540): the API refuses any other answer."""
+        return bool(self._redis.exists(pending_key(self._session_id, request_id)))
 
     def submit(self, request_id: str, data: dict) -> None:
         key = f"{_HITL_KEY_PREFIX}{self._session_id}:{request_id}"

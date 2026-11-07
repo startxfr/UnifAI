@@ -34,8 +34,14 @@ logger = logging.getLogger(__name__)
 _GATE_TTL_S = 300
 _HITL_KEY_PREFIX = "mas:hitl:"
 _HITL_RESPONSE_TTL_S = 600
+_PENDING_PREFIX = "hitl:pending:"
 _PENDING_GRACE_S = 30  # the pending record outlives the wait a little; the gate clears it as soon as the wait ends
 _BLPOP_SLICE_S = 5
+
+
+def pending_key(session_id: str, request_id: str) -> str:
+    """Redis key that records a request somebody waits for (R-540); shared by the channel and the API's proxy."""
+    return f"{_PENDING_PREFIX}{session_id}:{request_id}"
 
 
 class RedisInputCapableChannel(InputCapableChannel):
@@ -129,7 +135,7 @@ class RedisInputCapableChannel(InputCapableChannel):
     # -- Internal -----------------------------------------------------------
 
     def _pending_key(self, request_id: str) -> str:
-        return f"hitl:pending:{self._session_id}:{request_id}"
+        return pending_key(self._session_id, request_id)
 
     def _hitl_key(self, request_id: str) -> str:
         return f"{_HITL_KEY_PREFIX}{self._session_id}:{request_id}"
