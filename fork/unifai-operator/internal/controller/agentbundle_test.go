@@ -656,6 +656,55 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(cfg).NotTo(HaveKey("max_tokens"))
 	})
 
+	v03WithTurnTokens := func(agentCap, taskCap string) okf.Files {
+		files := okf.Files{}
+		for k, v := range tekosFiles() {
+			files[k] = []byte(strings.ReplaceAll(string(v), "okf_version: v0.2", "okf_version: v0.3"))
+		}
+		if agentCap != "" {
+			files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "zuno:\n", "zuno:\n  limits:\n    max_tokens_per_turn: "+agentCap+"\n", 1))
+		}
+		if taskCap != "" {
+			files["tasks/write-code.md"] = []byte(strings.Replace(string(files["tasks/write-code.md"]), "zuno:\n", "zuno:\n  limits:\n    max_tokens_per_turn: "+taskCap+"\n", 1))
+		}
+		return files
+	}
+	turnTokens := func(ns, name string) any {
+		var agent unifaiv1.UnifaiAgent
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &agent)).To(Succeed())
+		cfg := map[string]any{}
+		Expect(json.Unmarshal(agent.Spec.Config.Raw, &cfg)).To(Succeed())
+		return cfg["max_tokens_per_turn"]
+	}
+
+	It("applies zuno.limits.max_tokens_per_turn as the agents' token ceiling, the task value over the agent's (R-543)", func() {
+		ns := setup("bundle-turntokens")
+		files := v03WithTurnTokens("40000", "20000")
+		Expect(k8sClient.Create(ctx, newBundle(ns, fakeBundles.put(files, sign(key, files)), nil))).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"), func() string { return status(ns)().Message })
+		Expect(turnTokens(ns, "tekos-answer-technical-question")).To(BeNumerically("==", 40000))
+		Expect(turnTokens(ns, "tekos-write-code")).To(BeNumerically("==", 20000))
+	})
+
+	It("gives a task without its own ceiling the stack's maxTokensPerTurn, and no ceiling when there is none", func() {
+		ns := setup("bundle-turntokens-stack")
+		files := v03WithTurnTokens("", "")
+		b := newBundle(ns, fakeBundles.put(files, sign(key, files)), nil)
+		b.Spec.Ceilings.MaxTokensPerTurn = 30000
+		Expect(k8sClient.Create(ctx, b)).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"), func() string { return status(ns)().Message })
+		Expect(turnTokens(ns, "tekos-write-code")).To(BeNumerically("==", 30000))
+		ns2 := setup("bundle-turntokens-none")
+		Expect(k8sClient.Create(ctx, newBundle(ns2, fakeBundles.put(files, sign(key, files)), nil))).To(Succeed())
+		Eventually(func() string { return status(ns2)().Phase }, timeout, interval).Should(Equal("Ready"), func() string { return status(ns2)().Message })
+		Expect(turnTokens(ns2, "tekos-write-code")).To(BeNil(), "nothing declared, nothing emitted: existing stacks render the same")
+	})
+
+	It("refuses a bundle whose max_tokens_per_turn is above the stack ceiling", func() {
+		refused(setup("bundle-turntokens-ceiling"), func(b *unifaiv1.UnifaiAgentBundle) { b.Spec.Ceilings.MaxTokensPerTurn = 10000 },
+			v03WithTurnTokens("8000", "10001"), ConditionWithinCeilings, "Widening")
+	})
+
 	It("refuses a bundle whose max_steps is above the ceilings", func() {
 		refused(setup("bundle-maxsteps-ceiling"), func(*unifaiv1.UnifaiAgentBundle) {}, v03WithSteps("8", "51"), ConditionWithinCeilings, "Widening")
 	})

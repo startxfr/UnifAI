@@ -20,6 +20,7 @@ from typing import Any, Callable, Optional
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from mas.elements.llms.common import token_budget
 from mas.core.channels import ChannelFactory
 from mas.core.hitl.ports import ApprovalGateFactory
 from mas.core.runtime_binder import NodeRuntimeBindings
@@ -59,6 +60,7 @@ class GraphNodeActivities:
     @heartbeat(interval=3)
     def execute_node(self, params: ExecuteNodeParams) -> GraphState:
         bind_correlation_ids(params.request_id, params.session_id)
+        token_budget.bind_turn(params.session_id, getattr(params.execution_context, "engine_handle", None))
         bindings = self._build_bindings(params.session_id)
         try:
             return self._executor.execute_node(

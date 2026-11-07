@@ -28,7 +28,7 @@ class CustomAgentNodeFactory(BaseFactory[CustomAgentNodeConfig, CustomAgentNode]
             tracing_service = element_deps.tracing_service if element_deps else None
 
             return CustomAgentNode(
-                llm=deps.pop("llm"),
+                llm=_with_token_cap(deps.pop("llm"), cfg.max_tokens_per_turn),
                 retriever=deps.pop("retriever"),
                 tools=deps.pop("tools"),
                 mcp_providers=deps.pop("providers"),
@@ -49,3 +49,9 @@ class CustomAgentNodeFactory(BaseFactory[CustomAgentNodeConfig, CustomAgentNode]
                 f"CustomAgentNodeFactory.create failed: {e}",
                 cfg.dict()
             ) from e
+
+
+def _with_token_cap(llm, cap):
+    """The node's model client with the per-turn token ceiling of its task (R-543); a client that cannot count keeps
+    working without one."""
+    return llm.with_token_cap(cap) if cap and hasattr(llm, "with_token_cap") else llm

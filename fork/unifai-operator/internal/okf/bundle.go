@@ -37,6 +37,9 @@ type Bundle struct {
 	MaxSteps int
 	// MaxTokens is the agent's generation ceiling per model call (zuno.limits.max_tokens, ADR-0544); 0 = not declared.
 	MaxTokens int
+	// MaxTokensPerTurn is the agent's token ceiling for one user turn (zuno.limits.max_tokens_per_turn, R-543); 0 = not
+	// declared.
+	MaxTokensPerTurn int
 	// History is the agent's conversation-history window (zuno.limits.memory.history, or the zuno.memory.history
 	// alias); nil = not declared.
 	History *History
@@ -70,6 +73,9 @@ type Task struct {
 	// MaxTokens is the task's own generation ceiling (zuno.limits.max_tokens or its alias zuno.max_tokens; 0 = the
 	// agent's).
 	MaxTokens int
+	// MaxTokensPerTurn is the task's own token ceiling for one user turn (zuno.limits.max_tokens_per_turn; 0 = the
+	// agent's).
+	MaxTokensPerTurn int
 }
 
 // History is the window over the conversation an agent sends to its model (ADR-0215): Enabled false sends no
@@ -123,6 +129,27 @@ func (b *Bundle) Tokens(t Task) int {
 	return b.MaxTokens
 }
 
+// TurnTokens is the token ceiling of one turn of the task: its own, else the agent's (0 = none declared).
+func (b *Bundle) TurnTokens(t Task) int {
+	if t.MaxTokensPerTurn > 0 {
+		return t.MaxTokensPerTurn
+	}
+	return b.MaxTokensPerTurn
+}
+
+// maxTokensPerTurn reads limits.max_tokens_per_turn: absent = 0, else a whole number of at least 1.
+func maxTokensPerTurn(limits map[string]any, where string) (int, error) {
+	v, ok := limits["max_tokens_per_turn"]
+	if !ok {
+		return 0, nil
+	}
+	f, ok := v.(float64)
+	if !ok || f < 1 || f != float64(int(f)) {
+		return 0, fmt.Errorf("%s: zuno.limits.max_tokens_per_turn must be a whole number of at least 1, got %v", where, v)
+	}
+	return int(f), nil
+}
+
 // maxTokens reads limits.max_tokens, else the task-level alias: absent = 0, else a whole number from 1 to 8192.
 func maxTokens(limits map[string]any, alias any, where string) (int, error) {
 	v, ok := limits["max_tokens"]
@@ -165,12 +192,12 @@ func historyInt(hist map[string]any, key string, lo, hi int, where string) (int,
 	return int(f), nil
 }
 
-// platformLimits are the limits the platform enforces itself: all but max_steps, max_tokens and memory.history,
+// platformLimits are the limits the platform enforces itself: all but max_steps, max_tokens, max_tokens_per_turn and memory.history,
 // which UnifAI applies (max_tokens as the X-Zuno-Max-Tokens header and the client's generation cap).
 func platformLimits(limits map[string]any) bool {
 	for k, v := range limits {
 		switch k {
-		case "max_steps", "max_tokens":
+		case "max_steps", "max_tokens", "max_tokens_per_turn":
 		case "memory":
 			if m, ok := v.(map[string]any); !ok || len(m) > 1 || m["history"] == nil {
 				return true
@@ -309,6 +336,9 @@ func Parse(files Files) (*Bundle, error) {
 	if b.MaxTokens, err = maxTokens(af.Zuno.Limits, nil, "agent.okf.md"); err != nil {
 		return nil, err
 	}
+	if b.MaxTokensPerTurn, err = maxTokensPerTurn(af.Zuno.Limits, "agent.okf.md"); err != nil {
+		return nil, err
+	}
 	if b.History, err = historyWindow(af.Zuno.Limits, af.Zuno.Memory, "agent.okf.md"); err != nil {
 		return nil, err
 	}
@@ -391,6 +421,9 @@ func parseTask(files Files, name string) (*Task, error) {
 		return nil, err
 	}
 	if t.MaxTokens, err = maxTokens(tf.Zuno.Limits, tf.Zuno.MaxTokens, p); err != nil {
+		return nil, err
+	}
+	if t.MaxTokensPerTurn, err = maxTokensPerTurn(tf.Zuno.Limits, p); err != nil {
 		return nil, err
 	}
 	for _, ref := range tf.Zuno.Skills {

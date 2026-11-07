@@ -95,6 +95,13 @@ spec:
                     maximum: 1000
                     minimum: 1
                     type: integer
+                  maxTokensPerTurn:
+                    description: |-
+                      Most tokens one user turn of a task may use over all its model calls (zuno.limits.max_tokens_per_turn). A task
+                      declaring more is refused (WithinCeilings=False); a task declaring none gets this value. Unset = no ceiling.
+                    format: int32
+                    minimum: 1
+                    type: integer
                   minClassification:
                     description: |-
                       The least restrictive classification the bundle may run at (C1 < C2 < C3): a bundle declaring a lower

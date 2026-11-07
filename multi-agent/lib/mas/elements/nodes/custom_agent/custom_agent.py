@@ -3,7 +3,9 @@ from typing import Optional, Any, List, ClassVar, Set, Dict
 from copy import deepcopy
 from mas.graph.state.state_view import StateView
 from mas.elements.llms.common.chat.message import ERROR_METADATA_KEY, RESPONSE_METADATA_KEY, ChatMessage, Role
+from mas.elements.llms.common import token_budget
 from mas.elements.llms.common.exceptions import LLMRateLimitError
+from mas.elements.llms.common.token_budget import TOKEN_CEILING_TYPE
 from mas.elements.tools.common.base_tool import BaseTool
 from mas.elements.nodes.common.base_node import BaseNode
 from mas.elements.nodes.common.capabilities.iem_capable import IEMCapableMixin
@@ -419,7 +421,7 @@ class CustomAgentNode(
     def _rate_limit_metadata(self, error: LLMRateLimitError) -> Dict[str, Any]:
         """Result metadata for a rate limit; also tells a live stream about it."""
         info = error.to_dict()
-        if self.is_streaming():
+        if self.is_streaming() and (info["type"] != TOKEN_CEILING_TYPE or token_budget.announce_once()):
             self._stream({
                 "type": "agent_error",
                 "error_type": info["type"],

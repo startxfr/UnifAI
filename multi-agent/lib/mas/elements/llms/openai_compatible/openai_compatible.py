@@ -20,6 +20,7 @@ from openai.types.chat import ChatCompletionToolParam
 
 from ..common.base_llm import BaseLLM
 from ..common.chat.message import RESPONSE_METADATA_KEY, ChatMessage, Role
+from ..common import token_budget
 from ..common.exceptions import LLMRateLimitError, rate_limit_from_response
 from ..common.name_sanitizer import build_name_maps, map_name
 from ..common.tool_name_restorer import restore_tool_names
@@ -127,12 +128,14 @@ class OpenAICompatibleLLM(BaseLLM):
         self._lookup_forwarder = lookup_forwarder if lookup_forwarder is not None else forwarder
         self._request_id_header = request_id_header or ""
         self._lookup_transport = None  # test seam
+        self._token_cap: Optional[int] = None
 
     # ------------------------------------------------------------------
     # BaseLLM interface
     # ------------------------------------------------------------------
 
     def chat(self, messages: List[ChatMessage]) -> ChatMessage:
+        token_budget.check(self._token_cap)
         raw_messages = OpenAIMessageConverter.to_openai(messages)
         self._sanitize_outbound_names(raw_messages)
         request_id = self._new_request_id()
@@ -185,6 +188,7 @@ class OpenAICompatibleLLM(BaseLLM):
                     "output_tokens": response.usage.completion_tokens,
                     "total_tokens": response.usage.total_tokens,
                 }
+                token_budget.record(response.usage.total_tokens, self._token_cap)
             gen.update(
                 output=result_msg.content, usage_details=usage or None,
                 metadata={"finish_reason": str(response.choices[0].finish_reason or ""),
@@ -199,6 +203,10 @@ class OpenAICompatibleLLM(BaseLLM):
         messages: List[ChatMessage],
         **call_params: Any,
     ) -> Iterator[Union[str, ChatMessage]]:
+        token_budget.check(self._token_cap)
+        if self._token_cap:
+            # The usage chunk only comes when asked for; without it a streamed call would not count.
+            call_params.setdefault("stream_options", {"include_usage": True})
         raw_messages = OpenAIMessageConverter.to_openai(messages)
         self._sanitize_outbound_names(raw_messages)
         request_id = self._new_request_id()
@@ -241,6 +249,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 collector.absorb(chunk)
                 if not chunk.choices:
                     if hasattr(chunk, "usage") and chunk.usage:
+                        token_budget.record(chunk.usage.total_tokens, self._token_cap)
                         gen.update(usage_details={
                             "input_tokens": chunk.usage.prompt_tokens,
                             "output_tokens": chunk.usage.completion_tokens,
@@ -272,6 +281,12 @@ class OpenAICompatibleLLM(BaseLLM):
                 metadata=response_metadata,
             )
             yield restore_tool_names(self._rev_names, result)
+
+    def with_token_cap(self, cap: Optional[int]) -> OpenAICompatibleLLM:
+        """A copy that refuses a call once the current turn used *cap* tokens (R-543); None = no ceiling."""
+        clone = copy.copy(self)
+        clone._token_cap = cap
+        return clone
 
     def bind_tools(self, tools: List[ToolDefinition]) -> OpenAICompatibleLLM:
         clone = copy.copy(self)

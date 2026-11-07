@@ -65,6 +65,10 @@ class CustomAgentNodeConfig(NodeBaseConfig):
                     "the result in the prompt (the retriever stays available as a tool for follow-up searches)",
     )
     max_rounds: Optional[int] = Field(default=100, description="Maximum number of agent execution rounds")
+    max_tokens_per_turn: Optional[int] = Field(
+        default=None, ge=1,
+        description="Token ceiling of one turn (one user.session.submit), counted over every model call of the run; "
+                    "past it the node's next model call is refused and the turn ends with a notice (unset = none)")
     history_enabled: bool = Field(
         default=True, description="Send earlier turns of the conversation to the model; false = the current prompt only")
     history_max_turns: Optional[int] = Field(

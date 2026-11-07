@@ -36,7 +36,7 @@ class OrchestratorNodeFactory(BaseFactory[OrchestratorNodeConfig, OrchestratorNo
             tracing_service = element_deps.tracing_service if element_deps else None
 
             return OrchestratorNode(
-                llm=deps.pop("llm"),
+                llm=_with_token_cap(deps.pop("llm"), cfg.max_tokens_per_turn),
                 tools=deps.pop("tools", []),
                 system_message=cfg.system_message,
                 max_rounds=cfg.max_rounds,
@@ -53,3 +53,7 @@ class OrchestratorNodeFactory(BaseFactory[OrchestratorNodeConfig, OrchestratorNo
             ) from e
 
 
+def _with_token_cap(llm, cap):
+    """The node's model client with the per-turn token ceiling of its task (R-543); a client that cannot count keeps
+    working without one."""
+    return llm.with_token_cap(cap) if cap and hasattr(llm, "with_token_cap") else llm

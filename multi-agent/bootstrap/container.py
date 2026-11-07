@@ -367,6 +367,7 @@ class AppContainer(metaclass=SingletonMeta):
 
         from outbound.hitl import ChannelApprovalGateFactory
         self.overrides_store = self._create_overrides_store()
+        self._configure_token_budget()
         self.gate_factory = ChannelApprovalGateFactory(
             overrides_store=self.overrides_store,
         )
@@ -526,6 +527,15 @@ class AppContainer(metaclass=SingletonMeta):
             client_secret=cfg.client_secret,
             verify_tls=cfg.identity_forwarding_verify_tls,
         )
+
+    @staticmethod
+    def _configure_token_budget() -> None:
+        """The per-turn token counter is shared between the API and the worker processes through Redis (R-543)."""
+        redis_url = get_redis_url()
+        if redis_url:
+            from mas.elements.llms.common import token_budget
+            from outbound.budget import RedisTokenBudgetStore
+            token_budget.configure(RedisTokenBudgetStore(redis_url=redis_url))
 
     @staticmethod
     def _create_overrides_store():

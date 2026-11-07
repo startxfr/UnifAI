@@ -150,6 +150,7 @@ func orchestratorConfig(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Tas
 	msg.WriteString("ask it again only when it says it needs information from the user.\n")
 	msg.WriteString("Then give a single final answer built from their results, keeping the sources they cite.")
 	cfg := map[string]any{"llm": "$ref:llm/" + llmName, "system_message": msg.String(), "max_rounds": rounds}
+	setTurnTokens(cfg, turnTokenCap(cr, b, t))
 	setHistory(cfg, b.History)
 	return cfg
 }

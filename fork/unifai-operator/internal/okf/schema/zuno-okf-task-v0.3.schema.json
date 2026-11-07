@@ -149,6 +149,11 @@
               "type": "integer",
               "minimum": 1
             },
+            "max_tokens_per_turn": {
+              "description": "Token ceiling of one user turn, counted over every model call of the run (R-543, unifai-operator); at most the stack ceiling spec.ceilings.maxTokensPerTurn. A task-level value overrides the agent's. Absent: none.",
+              "type": "integer",
+              "minimum": 1
+            },
             "max_steps": {
               "description": "Maximum reasoning/tool rounds of one agent turn; the agent then gives a final answer from what it gathered. At most the corp ceiling max_steps (policies/limits/limits-policy.yaml). A task-level value overrides the agent's. Absent: the runtime default (unifai-operator: 15).",
               "type": "integer",

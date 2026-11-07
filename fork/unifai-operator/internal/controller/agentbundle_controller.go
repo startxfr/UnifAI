@@ -332,6 +332,9 @@ func checkCeilings(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle) error {
 		if steps := b.Steps(t); steps > ceiling {
 			problems = append(problems, fmt.Sprintf("task %s: max_steps %d is above maxSteps %d", t.Name, steps, ceiling))
 		}
+		if cap := int32(b.TurnTokens(t)); cr.Spec.Ceilings.MaxTokensPerTurn > 0 && cap > cr.Spec.Ceilings.MaxTokensPerTurn {
+			problems = append(problems, fmt.Sprintf("task %s: max_tokens_per_turn %d is above maxTokensPerTurn %d", t.Name, cap, cr.Spec.Ceilings.MaxTokensPerTurn))
+		}
 	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))
@@ -429,6 +432,7 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...dele
 			agent["strategy_type"] = "react"
 		}
 		setRounds(agent, b.Steps(t))
+		setTurnTokens(agent, turnTokenCap(cr, b, t))
 		setHistory(agent, b.History)
 		if len(t.AllowedTools) > 0 && (cr.Spec.MCP != nil || len(cr.Spec.Providers) > 0) {
 			refs := []any{}
@@ -671,6 +675,22 @@ func setRounds(agent map[string]any, steps int) {
 		agent["max_rounds"] = steps
 	} else if _, ok := agent["max_rounds"]; !ok {
 		agent["max_rounds"] = defaultMaxRounds
+	}
+}
+
+// turnTokenCap is the token ceiling of one turn of a task (R-543): the task's own (task, else agent), else the stack's
+// spec.ceilings.maxTokensPerTurn; 0 = none, the turn is not counted.
+func turnTokenCap(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task) int {
+	if n := b.TurnTokens(t); n > 0 {
+		return n
+	}
+	return int(cr.Spec.Ceilings.MaxTokensPerTurn)
+}
+
+// setTurnTokens sets the node's max_tokens_per_turn only when there is a ceiling (existing stacks render the same).
+func setTurnTokens(cfg map[string]any, cap int) {
+	if cap > 0 {
+		cfg["max_tokens_per_turn"] = cap
 	}
 }
 

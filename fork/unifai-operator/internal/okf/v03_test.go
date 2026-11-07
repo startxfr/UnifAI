@@ -232,3 +232,37 @@ func TestParseMaxTokens(t *testing.T) {
 		}
 	}
 }
+
+// zuno.limits.max_tokens_per_turn (agent and task, R-543) is applied by UnifAI: in both schemas, parsed, the task value wins,
+// and it is not reported as a platform-side limit.
+func TestParseMaxTokensPerTurn(t *testing.T) {
+	files := v03Tekos(t)
+	files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "    max_tokens: 2048\n", "    max_tokens: 2048\n    max_tokens_per_turn: 40000\n", 1))
+	files["tasks/write-code.md"] = []byte(strings.Replace(string(files["tasks/write-code.md"]), "zuno:\n", "zuno:\n  limits:\n    max_tokens_per_turn: 20000\n", 1))
+	if err := ValidateSchemas(files); err != nil {
+		t.Fatalf("max_tokens_per_turn is part of the v0.3 schemas: %v", err)
+	}
+	b, err := Parse(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, task := range b.Tasks {
+		want := 40000
+		if task.Name == "write-code" {
+			want = 20000
+		}
+		if got := b.TurnTokens(task); got != want {
+			t.Errorf("task %s turn tokens = %d, want %d", task.Name, got, want)
+		}
+	}
+	if strings.Contains(strings.Join(b.Unmapped, "\n"), "max_tokens_per_turn") {
+		t.Errorf("max_tokens_per_turn is applied by UnifAI, not reported unmapped: %v", b.Unmapped)
+	}
+	for _, bad := range []string{"0", "2.5", "\"many\""} {
+		f := v03Tekos(t)
+		f["agent.okf.md"] = []byte(strings.Replace(string(f["agent.okf.md"]), "    max_tokens: 2048\n", "    max_tokens: 2048\n    max_tokens_per_turn: "+bad+"\n", 1))
+		if _, err := Parse(f); err == nil || !strings.Contains(err.Error(), "max_tokens_per_turn") {
+			t.Errorf("max_tokens_per_turn %s must be refused, got %v", bad, err)
+		}
+	}
+}

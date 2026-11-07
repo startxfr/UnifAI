@@ -67,6 +67,11 @@ type BundleCeilings struct {
 	// +kubebuilder:validation:Maximum=1000
 	// +optional
 	MaxSteps int32 `json:"maxSteps,omitempty"`
+	// Most tokens one user turn of a task may use over all its model calls (zuno.limits.max_tokens_per_turn). A task
+	// declaring more is refused (WithinCeilings=False); a task declaring none gets this value. Unset = no ceiling.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MaxTokensPerTurn int32 `json:"maxTokensPerTurn,omitempty"`
 	// A2A targets the bundle may delegate to, as <agent>/<task> (zuno.delegation.targets). Empty = none.
 	// +kubebuilder:validation:MaxItems=64
 	// +kubebuilder:validation:items:Pattern=`^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$`
