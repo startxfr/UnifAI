@@ -507,3 +507,26 @@ func TestRenderDigestPins(t *testing.T) {
 		}
 	}
 }
+
+// The outbound URL guard of multiagent (server and worker) trusts the stack's own namespace, so an MCP server or an
+// A2A agent next to the stack needs no manual OUTBOUND_ALLOWED_HOSTS; an extraEnv entry of that name still wins.
+func TestMultiagentTrustsItsOwnNamespace(t *testing.T) {
+	out := renderAll(t, testPlan(t, nil))
+	want := regexp.MustCompile(`name: OUTBOUND_ALLOWED_HOSTS\s+value: \.team-a\.svc,\.team-a\.svc\.cluster\.local`)
+	for _, rel := range []string{"unifai-multiagent-be", "unifai-multiagent-temporal-worker"} {
+		if !want.MatchString(out[rel]) {
+			t.Errorf("%s: OUTBOUND_ALLOWED_HOSTS is not the stack namespace", rel)
+		}
+	}
+	for _, rel := range []string{"unifai-rag-server", "unifai-backend", "unifai-ui"} {
+		if strings.Contains(out[rel], "OUTBOUND_ALLOWED_HOSTS") {
+			t.Errorf("%s must not get OUTBOUND_ALLOWED_HOSTS", rel)
+		}
+	}
+	over := renderAll(t, testPlan(t, func(s *unifaiv1.UnifaiStackSpec) {
+		s.ExtraEnv = map[string][]corev1.EnvVar{"multiagent": {{Name: "OUTBOUND_ALLOWED_HOSTS", Value: ".other.svc"}}}
+	}))
+	if strings.Count(over["unifai-multiagent-be"], "name: OUTBOUND_ALLOWED_HOSTS") != 1 || !strings.Contains(over["unifai-multiagent-be"], ".other.svc") {
+		t.Errorf("extraEnv must replace OUTBOUND_ALLOWED_HOSTS, not duplicate it")
+	}
+}

@@ -148,7 +148,28 @@ func (r *TeamReconciler) delete(ctx context.Context, api *unifai.Client, obj *un
 	if unifai.IsStatus(err, http.StatusNotFound) {
 		return nil
 	}
+	if unifai.IsStatus(err, http.StatusForbidden) {
+		return r.refused(ctx, api, obj, err)
+	}
 	return err
+}
+
+// TeamDeleteRefused is identity's 403 on team.delete: only the creator of the team or an UnifAI admin may delete it.
+// The object stays (phase Deleting, a Warning Event) and is released by itself once the team is gone, so nobody
+// is left with an identity team that has no owner.
+type TeamDeleteRefused struct{ Msg string }
+
+func (e *TeamDeleteRefused) Error() string { return e.Msg }
+
+// refused names who may delete the team: its creator (read from identity) or an UnifAI admin.
+func (r *TeamReconciler) refused(ctx context.Context, api *unifai.Client, obj *unifaiv1.UnifaiTeam, cause error) error {
+	creator := "its creator"
+	var t identityTeam
+	if err := api.Call(ctx, http.MethodGet, "/api/teams/team.get", url.Values{"teamId": {obj.Status.TeamID}}, nil, &t); err == nil && t.CreatedBy != "" {
+		creator = "its creator \"" + t.CreatedBy + "\""
+	}
+	return &TeamDeleteRefused{Msg: "identity refused to delete team " + obj.Status.TeamID + " for spec.owner \"" + obj.Spec.Owner +
+		"\" (403): only " + creator + " or an UnifAI admin can delete it; ask them to delete it in identity, this object is released as soon as the team is gone (" + cause.Error() + ")"}
 }
 
 // teamUsers lists the UnifAI objects of the namespace (including those being deleted) that use the team, by

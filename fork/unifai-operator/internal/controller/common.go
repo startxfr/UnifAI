@@ -357,7 +357,8 @@ func (b *Base) nothingToClean(ctx context.Context, ns string) bool {
 func (b *Base) unifaiGone(ctx context.Context, ns string, err error) bool {
 	var ae *unifai.APIError
 	var inUse *InUseError
-	if errors.As(err, &ae) || errors.As(err, &inUse) {
+	var refused *TeamDeleteRefused
+	if errors.As(err, &ae) || errors.As(err, &inUse) || errors.As(err, &refused) {
 		return false
 	}
 	var st unifaiv1.UnifaiStack
@@ -367,6 +368,10 @@ func (b *Base) unifaiGone(ctx context.Context, ns string, err error) bool {
 // deleteFailure explains why an object cannot be deleted. The operator deletes as spec.owner, so a 403 means the
 // owner is no longer allowed in UnifAI (it left the admins or the team) rather than that the object is referenced.
 func deleteFailure(obj unifaiv1.Object, err error) string {
+	var refused *TeamDeleteRefused
+	if errors.As(err, &refused) {
+		return refused.Error()
+	}
 	if unifai.IsStatus(err, http.StatusForbidden) {
 		return "cannot delete: UnifAI refuses spec.owner \"" + obj.GetCommon().Owner +
 			"\" (it must still be an UnifAI admin or a member of the team); set spec.owner to an allowed user, then delete: " + err.Error()

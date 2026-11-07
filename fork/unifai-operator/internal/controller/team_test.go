@@ -94,6 +94,28 @@ var _ = Describe("UnifaiTeam and teamRef", func() {
 		Expect(mine.Status.TeamID).To(Equal("mine-" + ns))
 	})
 
+	It("keeps a team identity refuses to delete (403), says who may delete it, and releases it once it is gone", func() {
+		ns := newNamespace("teamforbid")
+		team := &unifaiv1.UnifaiTeam{ObjectMeta: metav1.ObjectMeta{Name: "t", Namespace: ns}, Spec: unifaiv1.UnifaiTeamSpec{
+			CommonSpec: unifaiv1.CommonSpec{UnifaiName: "forbid-" + ns}}}
+		Expect(k8sClient.Create(ctx, team)).To(Succeed())
+		Eventually(phaseOf(team), timeout, interval).Should(Equal("Ready"))
+		id := team.Status.TeamID
+		mas.mu.Lock()
+		mas.teams[id]["created_by"] = "someone-else"
+		mas.mu.Unlock()
+		Expect(k8sClient.Delete(ctx, team)).To(Succeed())
+		Eventually(phaseOf(team), timeout, interval).Should(Equal("Deleting"))
+		Expect(team.Status.Message).To(ContainSubstring(`only its creator "someone-else" or an UnifAI admin can delete it`))
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(team), team)).To(Succeed()) // kept, not orphaned
+		By("the creator deletes it in identity")
+		mas.mu.Lock()
+		delete(mas.teams, id)
+		mas.mu.Unlock()
+		Eventually(func() bool { return apierrors.IsNotFound(k8sClient.Get(ctx, client.ObjectKeyFromObject(team), team)) },
+			60*time.Second, interval).Should(BeTrue())
+	})
+
 	It("refuses teamId together with teamRef at admission", func() {
 		ns := newNamespace("teamboth")
 		tool := &unifaiv1.UnifaiTool{ObjectMeta: metav1.ObjectMeta{Name: "t", Namespace: ns}, Spec: unifaiv1.UnifaiToolSpec{

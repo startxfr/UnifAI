@@ -329,6 +329,12 @@ func multiagentValues(p *Plan, v map[string]any) map[string]any {
 		set(v, "env.KEYCLOAK_REALM", p.OIDCRealm)
 		set(v, "env.CLIENT_ID", p.OIDCClientID)
 	}
+	// The services of the stack's own namespace (an MCP server, an A2A agent, a model server next to the stack) are
+	// legitimate targets of the outbound URL guard (global_utils net_guard). Without this, each one needed a manual
+	// OUTBOUND_ALLOWED_HOSTS in spec.extraEnv; an extraEnv entry of that name still replaces this value.
+	if p.Namespace != "" {
+		set(v, "env.OUTBOUND_ALLOWED_HOSTS", fmt.Sprintf(".%[1]s.svc,.%[1]s.svc.cluster.local", p.Namespace))
+	}
 	lf := p.Spec.Integrations.Langfuse
 	set(v, "env.LANGFUSE_ENABLED", fmt.Sprint(lf != nil))
 	if lf != nil && lf.BaseURL != "" {
