@@ -26,6 +26,13 @@ class FindTag(unittest.TestCase):
         tags = {f"devel-{self.HISTORY[3][:9]}"}
         self.assertIsNone(ri.find_tag(self.HISTORY[0], ["x"], tags, self.HISTORY, self.same_until(2)))
 
+    def test_a_change_then_its_revert_keeps_the_older_image(self):
+        # R-549 (2026-11-08): a workflow edit then its revert left two commits of other code between the head and the
+        # commit that has the images; the walk stopped there and every component looked unbuilt.
+        tags = {f"devel-{self.HISTORY[3][:9]}"}
+        same = lambda c, h, p: c != self.HISTORY[2]  # one commit of other code between the head and the images
+        self.assertEqual(ri.find_tag(self.HISTORY[0], ["x"], tags, self.HISTORY, same), f"devel-{self.HISTORY[3][:9]}")
+
     def test_no_image_at_all(self):
         self.assertIsNone(ri.find_tag(self.HISTORY[0], ["x"], set(), self.HISTORY, self.same_until(4)))
 

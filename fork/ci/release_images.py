@@ -4,7 +4,8 @@
 A release does not rebuild anything. publish-images.yml builds and signs each image on devel as `devel-<sha>` of the
 head of the push that changed its code, and only when its code changed. For each component this walks the commit's
 first-parent history back to the newest commit that has a `devel-<sha>` image and the same code for that component
-(no change under its build paths in between), then checks the image's devel signature and, for the operator, that it
+(the same code under its build paths, whatever the commits in between: a change then its revert keeps the images of the
+first state), then checks the image's devel signature and, for the operator, that it
 reports the Makefile VERSION.
 
     release_images.py --version 0.1.52 [--commit HEAD] [--registry quay.io/zuno] [--no-verify] [--out images.json]
@@ -75,7 +76,7 @@ def find_tag(head: str, paths: list[str], tags: set[str], history: Iterable[str]
     """The <branch>-<sha> tag of the newest commit of `history` that has an image and the code of `head` for `paths`."""
     for commit in history:
         if not same(commit, head, paths):
-            return None  # older commits build other code
+            continue  # this commit builds other code; an older one may build the code of `head` again (change then revert)
         for prefix in prefixes(branch):
             tag = f"{prefix}-{commit[:9]}"
             if tag in tags:
