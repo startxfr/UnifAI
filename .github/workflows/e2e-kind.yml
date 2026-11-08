@@ -22,6 +22,10 @@ on:
         description: "UnifAI images tag, e.g. devel-<sha> (empty = the one of this commit)"
         required: false
         default: ""
+      token_ceiling:
+        description: "1 = also run the proof of the token ceiling of one turn (R-543); empty = the normal suite"
+        required: false
+        default: ""
   workflow_call:
     inputs:
       operator:
@@ -113,6 +117,8 @@ jobs:
 
       - name: e2e on kind
         working-directory: fork/unifai-operator
+        env:
+          E2E_TOKEN_CEILING: ${{ inputs.token_ceiling }}
         run: |
           set -o pipefail   # the default shell has no pipefail: tee would hide a failure
           ./hack/kind/e2e.sh "$OPERATOR" "$APP_VERSION" 2>&1 | tee "$RUNNER_TEMP/e2e.log"
