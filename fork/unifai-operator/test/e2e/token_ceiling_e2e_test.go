@@ -72,7 +72,7 @@ func ceilingBundleOf(ns string) *unifaiv1.UnifaiAgentBundle {
 func checkTokenCeiling(t *testing.T, ns string) {
 	t.Helper()
 	if err := c.Get(ctx, client.ObjectKey{Namespace: ns, Name: ceilingHeavyLLM}, &corev1.Service{}); err != nil {
-		deployNamedMockLLM(t, ns, ceilingHeavyLLM, corev1.EnvVar{Name: "MOCK_USAGE_TOKENS", Value: ceilingUsage})
+		deployNamedMockLLM(t, ns, ceilingHeavyLLM, corev1.EnvVar{Name: "MOCK_USAGE_TOKENS", Value: ceilingUsage}, corev1.EnvVar{Name: "MOCK_TOOL_FIRST", Value: "1"})
 	}
 	root, err := os.ReadFile(trustedRootFile)
 	must(t, err)

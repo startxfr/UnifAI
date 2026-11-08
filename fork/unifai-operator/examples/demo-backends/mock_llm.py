@@ -5,6 +5,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 TEXT = "pong from the demo mock LLM"
 # Tokens the endpoint reports per call (the token ceiling of a turn counts them). Default: a few tokens, as a real tiny answer.
 USAGE = int(os.environ.get("MOCK_USAGE_TOKENS", "6"))
+# MOCK_TOOL_FIRST=1: when the request offers tools and carries no tool result yet, answer with a call of one tool (the clock
+# when offered) instead of the text, so that a turn needs a second model call (what the token ceiling of a turn refuses).
+TOOL_FIRST = os.environ.get("MOCK_TOOL_FIRST") == "1"
+
+
+def tool_to_call(req):
+    """Name of the tool to call on this request, or None (answer with the text)."""
+    names = [(t.get("function") or {}).get("name") for t in req.get("tools") or []]
+    names = [n for n in names if n]
+    if not TOOL_FIRST or not names or any(m.get("role") == "tool" for m in req.get("messages") or []):
+        return None
+    return next((n for n in names if "time" in n), names[0])
 
 
 class H(BaseHTTPRequestHandler):
@@ -23,6 +35,22 @@ class H(BaseHTTPRequestHandler):
         req = json.loads(self.rfile.read(n) or b"{}")
         model, stream, now = req.get("model", "mock-model"), req.get("stream"), int(time.time())
         if self.path.endswith("/chat/completions"):
+            tool = tool_to_call(req)
+            usage = {"prompt_tokens": USAGE - 5, "completion_tokens": 5, "total_tokens": USAGE}
+            if tool and stream:
+                call = [{"index": 0, "id": "call_1", "type": "function", "function": {"name": tool, "arguments": "{}"}}]
+                ch = {"id": "c1", "object": "chat.completion.chunk", "created": now, "model": model,
+                      "choices": [{"index": 0, "delta": {"role": "assistant", "content": None, "tool_calls": call}, "finish_reason": None}]}
+                end = {**ch, "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+                chunks = [ch, end]
+                if (req.get("stream_options") or {}).get("include_usage"):
+                    chunks.append({**ch, "choices": [], "usage": usage})
+                return self._send(200, "".join(f"data: {json.dumps(x)}\n\n" for x in chunks).encode() + b"data: [DONE]\n\n", "text/event-stream")
+            if tool:
+                msg = {"role": "assistant", "content": None, "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": tool, "arguments": "{}"}}]}
+                return self._send(200, {"id": "c1", "object": "chat.completion", "created": now, "model": model,
+                                        "choices": [{"index": 0, "message": msg, "finish_reason": "tool_calls"}], "usage": usage})
             if stream:
                 ch = {"id": "c1", "object": "chat.completion.chunk", "created": now, "model": model,
                       "choices": [{"index": 0, "delta": {"role": "assistant", "content": TEXT}, "finish_reason": None}]}
