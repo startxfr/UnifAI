@@ -6,6 +6,8 @@ commit of the ref is kept, and a sync whose ref still points at it downloads not
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -25,11 +27,20 @@ class GitSyncDegraded(SyncDegraded):
     """The repository holds far fewer documents than the source did: failing keeps the index as it is."""
 
 
+# What selects and renders the documents: a sync at the same commit is only skipped when none of it changed.
+_SELECTION = ("url", "ref", "paths", "include", "exclude", "max_files", "attributes", "attribute_files")
+
+
+def selection_hash(settings: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps({k: settings.get(k) for k in _SELECTION}, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
 class GitPipelineHandler(WebPipelineHandler):
 
     def __init__(self, connector_factory: Callable[[], GitConnector], **kwargs: Any) -> None:
         super().__init__(connector_factory=connector_factory, **kwargs)
         self._commit = ""
+        self._selection = ""
         self._files: dict[str, GitFile] = {}
 
     @property
@@ -44,7 +55,8 @@ class GitPipelineHandler(WebPipelineHandler):
         connector = self._connector_factory()
         commit = connector.head_commit(settings["url"], settings.get("ref", "main"))
         self._commit = commit
-        if commit and commit == settings.get("commit") and previous and not reingest:
+        self._selection = selection_hash(settings)
+        if commit and commit == settings.get("commit") and self._selection == settings.get("settings_hash") and previous and not reingest:
             self._manifest, self._changed, self._deleted, self._unchanged = previous, [], [], len(previous)
             logger.info(f"Git source {context.source_name}: ref still at {commit[:12]}, nothing to do")
             return []
@@ -75,4 +87,4 @@ class GitPipelineHandler(WebPipelineHandler):
                 for f in raw_data]
 
     def get_summary(self, context: PipelineContext, collected: Any) -> dict[str, Any]:
-        return {**super().get_summary(context, collected), "commit": self._commit}
+        return {**super().get_summary(context, collected), "commit": self._commit, "settings_hash": self._selection}

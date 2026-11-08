@@ -212,7 +212,7 @@ def test_a_ref_that_did_not_move_downloads_nothing():
     first, _ = _handler({}, [_file("a.adoc")])
     _run(first)
     summary = first.get_summary(CTX, None)
-    handler, connector = _handler({"pages": summary["pages"], "commit": "c1"}, [_file("a.adoc")])
+    handler, connector = _handler({"pages": summary["pages"], "commit": "c1", "settings_hash": summary["settings_hash"]}, [_file("a.adoc")])
     chunks, stale, again = _run(handler)
     assert chunks == [] and stale == [] and again["pages_unchanged"] == 1
     connector.fetch.assert_not_called()
@@ -244,3 +244,30 @@ def test_symlinked_directories_of_the_repository_are_followed_for_includes():
     links = {"inst/modules": "modules"}
     text = adoc_to_text("inst/a.adoc", files, links=links)
     assert "## Module" in text and "body text" in text
+
+
+def test_a_changed_selection_at_the_same_commit_is_not_skipped():
+    first, _ = _handler({"include": ["*.adoc"]}, [_file("a.adoc")])
+    _run(first)
+    summary = first.get_summary(CTX, None)
+    state = {"pages": summary["pages"], "commit": "c1", "settings_hash": summary["settings_hash"]}
+    unchanged, connector = _handler({**state, "include": ["*.adoc"]}, [_file("a.adoc")])
+    unchanged.collect(CTX)
+    connector.fetch.assert_not_called()
+    changed, connector = _handler({**state, "include": ["*.md"]}, [_file("a.adoc")])
+    changed.collect(CTX)
+    connector.fetch.assert_called_once()
+
+
+def test_re_registering_a_source_keeps_the_commit_and_the_selection_it_was_synced_with():
+    from core.data_sources.types.confluence.registration import PIPELINE_STATE_KEYS
+    repo = MagicMock()
+    repo.find_by_pipeline_id.return_value = SimpleNamespace(
+        upload_by="admin", created_at=None, last_sync_at=None,
+        type_data={"pages": {"u": {}}, "commit": "c1", "settings_hash": "h1", "url": "stale", "ref": "stale"})
+    reg = GitRegistration(data_source_repository=repo, upload_by="admin", instance={"url": "https://github.com/o/r"}, skip_validation=True)
+    reg._persist(reg._build_type_data())
+    saved = repo.save.call_args[0][0].type_data
+    assert saved["commit"] == "c1" and saved["settings_hash"] == "h1" and saved["pages"] == {"u": {}}
+    assert saved["url"] == "https://github.com/o/r", "the form fields come from the new registration, not the old state"
+    assert {"commit", "settings_hash"} <= set(PIPELINE_STATE_KEYS)

@@ -15,7 +15,7 @@ from core.registration.domain.model import BaseSourceData
 
 # Keys of type_data the pipeline owns; re-registering a source keeps them.
 PIPELINE_STATE_KEYS = ("pages", "page_count", "pages_changed", "pages_deleted", "pages_unchanged", "index_version",
-                       "ingested_classification")
+                       "ingested_classification", "commit", "settings_hash")
 
 
 @dataclass
