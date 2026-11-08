@@ -141,7 +141,20 @@ jobs:
         with:
           go-version-file: fork/unifai-operator/go.mod
 
+      # The cosign download is a GitHub release download: an outage of it made four cuts fail on 2026-11-08 (R-549).
+      # One more attempt after a pause, a second failure still fails the job.
       - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        id: cosign
+        continue-on-error: true
+        with:
+          cosign-release: v2.4.1
+
+      - name: Wait before the second cosign download
+        if: steps.cosign.outcome == 'failure'
+        run: sleep 90
+
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        if: steps.cosign.outcome == 'failure'
         with:
           cosign-release: v2.4.1
 
