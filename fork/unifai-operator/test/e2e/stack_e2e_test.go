@@ -358,6 +358,13 @@ func TestUnifaiStack(t *testing.T) {
 		checkAgentBundleDelegation(t, ns)
 	})
 
+	t.Run("a turn is cut by the token ceiling of the bundle (R-543)", func(t *testing.T) {
+		if os.Getenv("E2E_TOKEN_CEILING") != "1" {
+			t.Skip("E2E_TOKEN_CEILING=1 to run: proof of the token ceiling of one turn")
+		}
+		checkTokenCeiling(t, ns)
+	})
+
 	t.Run("an UnifaiRestore brings back the MongoDB and Qdrant data of a backup", func(t *testing.T) {
 		if os.Getenv("E2E_RESTORE") == "0" {
 			t.Skip("E2E_RESTORE=0")
@@ -617,25 +624,31 @@ func releaseVersions(t *testing.T, ns string) map[string]int {
 // deployMockLLM runs the OpenAI-compatible fake of examples/demo-backends (constant answer "pong ...").
 func deployMockLLM(t *testing.T, ns string) {
 	t.Helper()
+	deployNamedMockLLM(t, ns, "e2e-llm")
+}
+
+// deployNamedMockLLM runs the same fake under another name; env tunes it (MOCK_USAGE_TOKENS: tokens reported per call).
+func deployNamedMockLLM(t *testing.T, ns, name string, env ...corev1.EnvVar) {
+	t.Helper()
 	src, err := os.ReadFile("../../examples/demo-backends/mock_llm.py")
 	must(t, err)
-	labels := map[string]string{"app": "e2e-llm"}
-	must(t, c.Create(ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "e2e-llm-src", Namespace: ns}, Data: map[string]string{"mock_llm.py": string(src)}}))
+	labels := map[string]string{"app": name}
+	must(t, c.Create(ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: name + "-src", Namespace: ns}, Data: map[string]string{"mock_llm.py": string(src)}}))
 	one := int32(1)
-	must(t, c.Create(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "e2e-llm", Namespace: ns}, Spec: appsv1.DeploymentSpec{
+	must(t, c.Create(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns}, Spec: appsv1.DeploymentSpec{
 		Replicas: &one, Selector: &metav1.LabelSelector{MatchLabels: labels},
 		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{
 			Containers: []corev1.Container{{Name: "llm", Image: "registry.access.redhat.com/ubi9/python-312:latest",
-				Command: []string{"python", "/src/mock_llm.py"}, Ports: []corev1.ContainerPort{{ContainerPort: 8000}},
+				Command: []string{"python", "/src/mock_llm.py"}, Ports: []corev1.ContainerPort{{ContainerPort: 8000}}, Env: env,
 				VolumeMounts: []corev1.VolumeMount{{Name: "src", MountPath: "/src"}}}},
 			Volumes: []corev1.Volume{{Name: "src", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
-				LocalObjectReference: corev1.LocalObjectReference{Name: "e2e-llm-src"}}}}},
+				LocalObjectReference: corev1.LocalObjectReference{Name: name + "-src"}}}}},
 		}}}}))
-	must(t, c.Create(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "e2e-llm", Namespace: ns}, Spec: corev1.ServiceSpec{
+	must(t, c.Create(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns}, Spec: corev1.ServiceSpec{
 		Selector: labels, Ports: []corev1.ServicePort{{Port: 8000, TargetPort: intstr.FromInt32(8000)}}}}))
-	eventually(t, "mock LLM ready", 5*time.Minute, func() (bool, string) {
+	eventually(t, "mock LLM "+name+" ready", 5*time.Minute, func() (bool, string) {
 		d := &appsv1.Deployment{}
-		if err := c.Get(ctx, client.ObjectKey{Namespace: ns, Name: "e2e-llm"}, d); err != nil {
+		if err := c.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, d); err != nil {
 			return false, err.Error()
 		}
 		return d.Status.AvailableReplicas == 1, fmt.Sprintf("%d available", d.Status.AvailableReplicas)
