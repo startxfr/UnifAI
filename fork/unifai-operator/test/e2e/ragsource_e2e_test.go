@@ -225,3 +225,38 @@ func checkAdmissionRules(t *testing.T, ns string) {
 		t.Errorf("a 30s schedule interval: got %v, want a refusal with %q", err, msg)
 	}
 }
+
+// checkGitSource ingests a small public repository (github/gitignore: README.md and CONTRIBUTING.md, CC0) through a
+// type git source: the sync must finish (its pipeline is consumed by a Celery worker: 0.1.65 published to git_queue with
+// nobody listening), embed both documents, and a second sync of the same commit must change nothing. Needs Internet
+// access from the cluster (api.github.com, codeload.github.com).
+func checkGitSource(t *testing.T, ns string) {
+	if resp, err := (&http.Client{Timeout: 15 * time.Second}).Get("https://api.github.com/zen"); err != nil || resp.StatusCode >= 500 {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		if os.Getenv("E2E_GIT_REQUIRED") != "1" {
+			t.Skipf("api.github.com is not reachable from the e2e runner (%v): not a verdict on the RAG service (E2E_GIT_REQUIRED=1 to fail)", err)
+		}
+	} else {
+		_ = resp.Body.Close()
+	}
+	src := &unifaiv1.UnifaiRAGSource{ObjectMeta: metav1.ObjectMeta{Name: "e2e-git", Namespace: ns}, Spec: unifaiv1.UnifaiRAGSourceSpec{
+		Type: "git", Git: &unifaiv1.RAGGitSource{URL: "https://github.com/github/gitignore", Ref: "main",
+			Include: []string{"README.md", "CONTRIBUTING.md"}}}}
+	start := time.Now()
+	create(t, src)
+	waitSynced(t, src, start, 20*time.Minute)
+	if src.Status.Pages != 2 {
+		t.Fatalf("git source: %s, want 2 documents (README.md and CONTRIBUTING.md)", src.Status.Message)
+	}
+
+	must(t, getObj(src))
+	src.Spec.ResyncToken = "again" // same commit: nothing is downloaded or embedded again
+	start = time.Now()
+	must(t, c.Update(ctx, src))
+	waitSynced(t, src, start, 20*time.Minute)
+	if src.Status.Pages != 2 || src.Status.PagesChanged != 0 {
+		t.Errorf("resync of an unmoved ref: %s, want 2 documents and none changed", src.Status.Message)
+	}
+}

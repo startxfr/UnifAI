@@ -412,6 +412,13 @@ func TestUnifaiStack(t *testing.T) {
 		checkRedHatSource(t, ns)
 	})
 
+	t.Run("a public git repository is ingested and its second sync changes nothing", func(t *testing.T) {
+		if os.Getenv("E2E_FULL") == "" {
+			t.Skip("E2E_FULL=1 required (RAG workers, embedding service, Internet access)")
+		}
+		checkGitSource(t, ns)
+	})
+
 	t.Run("schedule, template and RAG pipeline on the real services", func(t *testing.T) {
 		sch := &unifaiv1.UnifaiSchedule{ObjectMeta: metav1.ObjectMeta{Name: "e2e-every", Namespace: ns}, Spec: unifaiv1.UnifaiScheduleSpec{
 			Workflow: "e2e-wf", Inputs: map[string]string{"user_prompt": "ping"}, Schedule: unifaiv1.ScheduleDefinition{Interval: "PT12H"}}}

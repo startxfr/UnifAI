@@ -260,9 +260,9 @@ func ragValues(p *Plan, v map[string]any) map[string]any {
 			set(v, "env.OIDC_ISSUER_URL", strings.TrimRight(p.OIDCURL, "/")+"/realms/"+p.OIDCRealm)
 		}
 	}
-	// Celery workers consume one queue per source type; web sources need no stack setting, so every source type is
-	// always consumed (an idle queue costs nothing).
-	set(v, "env.CELERY_QUEUES", "slack_queue,document_queue,slack_events_queue,confluence_queue,web_queue")
+	// Celery workers consume one queue per source type (the RAG publishes to <TYPE>_queue, see TestEveryPipelineQueueIsConsumed);
+	// web and git sources need no stack setting, so every source type is always consumed (an idle queue costs nothing).
+	set(v, "env.CELERY_QUEUES", "slack_queue,document_queue,slack_events_queue,confluence_queue,web_queue,git_queue")
 	if r.Embedding.QueryPrefix != "" {
 		set(v, "env.EMBEDDING_QUERY_PREFIX", r.Embedding.QueryPrefix)
 	}

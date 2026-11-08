@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -265,7 +266,7 @@ func TestRAGSettings(t *testing.T) {
 	p.OIDCURL, p.OIDCRealm = "https://kc.example.com/", "zuno"
 	on := renderAll(t, p)
 	for _, rel := range []string{"unifai-rag-server", "unifai-rag-celery"} {
-		for _, want := range []string{"QDRANT_HYBRID_ENABLED", `["admin"]`, "https://kc.example.com/realms/zuno", "confluence_queue", "web_queue"} {
+		for _, want := range []string{"QDRANT_HYBRID_ENABLED", `["admin"]`, "https://kc.example.com/realms/zuno", "confluence_queue", "web_queue", "git_queue"} {
 			if !strings.Contains(on[rel], want) {
 				t.Errorf("%s lacks %s", rel, want)
 			}
@@ -528,5 +529,36 @@ func TestMultiagentTrustsItsOwnNamespace(t *testing.T) {
 	}))
 	if strings.Count(over["unifai-multiagent-be"], "name: OUTBOUND_ALLOWED_HOSTS") != 1 || !strings.Contains(over["unifai-multiagent-be"], ".other.svc") {
 		t.Errorf("extraEnv must replace OUTBOUND_ALLOWED_HOSTS, not duplicate it")
+	}
+}
+
+// The RAG publishes a pipeline to <source type>_queue (rag/infrastructure/celery/pipeline_dispatcher.py) and the worker only
+// consumes the queues of CELERY_QUEUES: a source type added to the RAG without its queue here is never ingested (git in
+// 0.1.65). The types are read from the RAG's own handler table, so the next one cannot be missed.
+func TestEveryPipelineQueueIsConsumed(t *testing.T) {
+	raw, err := os.ReadFile("../../../../rag/bootstrap/app_container.py")
+	if err != nil {
+		t.Skipf("the RAG sources are not next to the operator: %v", err)
+	}
+	table := regexp.MustCompile(`"([A-Z_]+)":\s*\w+_pipeline_handler`).FindAllStringSubmatch(string(raw), -1)
+	if len(table) < 5 {
+		t.Fatalf("found %d source types in the RAG handler table, want at least 5 (slack, document, confluence, web, git): the pattern is stale", len(table))
+	}
+	out := renderAll(t, testPlan(t, nil))
+	queues := regexp.MustCompile(`name: CELERY_QUEUES\s+value:\s*"?([^"\n]+)"?`)
+	for _, rel := range []string{"unifai-rag-server", "unifai-rag-celery"} {
+		m := queues.FindStringSubmatch(out[rel])
+		if m == nil {
+			t.Fatalf("%s: no CELERY_QUEUES", rel)
+		}
+		have := map[string]bool{}
+		for _, q := range strings.Split(m[1], ",") {
+			have[strings.TrimSpace(q)] = true
+		}
+		for _, typ := range table {
+			if q := strings.ToLower(typ[1]) + "_queue"; !have[q] {
+				t.Errorf("%s: CELERY_QUEUES lacks %s (source type %s): its pipelines would never be consumed", rel, q, typ[1])
+			}
+		}
 	}
 }
