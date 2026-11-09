@@ -70,3 +70,17 @@ def test_threshold_gap_and_compare():
     c = rag_eval.compare(a, b)
     assert c["changed"] == [{"id": 2, "from": 2, "to": 1}]
     assert c["delta"]["hit@1"] == 0.5
+
+
+def test_merged_types_sort_by_score_and_match_git_fragments():
+    entry = {"id": 1, "query": "q", "sourceType": "WEB", "expect": ["web-page"], "expect_git": ["modules/log-forwarding"]}
+    answers = {"WEB": [hit("https://x/other", 0.5)], "GIT": [hit("https://github.com/o/r/blob/main/modules/log-forwarding.adoc", 0.8)]}
+    run = rag_eval.merged_run(["WEB", "GIT"], 0.3, lambda e, k: answers[e["sourceType"]])
+    res = run(entry, 10)
+    assert [h["_type"] for h in res] == ["GIT", "WEB"]
+    assert rag_eval.first_hit_merged(res, entry) == 1
+    # below the threshold the git page is dropped, and a web hit still uses `expect`
+    res = rag_eval.merged_run(["WEB", "GIT"], 0.9, lambda e, k: answers[e["sourceType"]])(entry, 10)
+    assert res == [] and rag_eval.first_hit_merged(res, entry) is None
+    web_entry = dict(entry, expect=["other"], expect_git=[])
+    assert rag_eval.first_hit_merged(run(web_entry, 10), web_entry) == 2

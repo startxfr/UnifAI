@@ -43,6 +43,28 @@ def first_hit(results: list[dict], expect: list[str]) -> int | None:
     return None
 
 
+def merged_run(types: list[str], threshold: float, run_one):
+    """What the docs_rag retriever does with extra_source_types: one search per type, matches under the threshold
+    dropped, the rest sorted by score and cut to top_k. Each result keeps the type it came from (`_type`)."""
+    def run(entry: dict, top_k: int) -> list[dict]:
+        out = []
+        for t in types:
+            out.extend(dict(h, _type=t) for h in run_one(dict(entry, sourceType=t), top_k) if (h.get("score") or 0) >= threshold)
+        return sorted(out, key=lambda h: h.get("score") or 0, reverse=True)[:top_k]
+    return run
+
+
+def first_hit_merged(results: list[dict], entry: dict) -> int | None:
+    """Like first_hit for merged results: a result of the entry's own sourceType is matched with `expect`, one of
+    another type (git pages cite a repository blob URL, not docs.redhat.com) with `expect_git`."""
+    own = entry.get("sourceType", "WEB")
+    for rank, hit in enumerate(results, 1):
+        frags = entry.get("expect") if hit.get("_type", own) == own else entry.get("expect_git")
+        if frags and any(fold(f) in fold(result_url(hit)) for f in frags):
+            return rank
+    return None
+
+
 def query(base: str, token: str, entry: dict, top_k: int) -> list[dict]:
     params = {"query": entry["query"], "sourceType": entry.get("sourceType", "WEB"), "top_k_results": top_k}
     tags = entry.get("tags") or []
@@ -55,7 +77,7 @@ def query(base: str, token: str, entry: dict, top_k: int) -> list[dict]:
     return body.get("matches") or body.get("results") or []
 
 
-def evaluate(entries: list[dict], run) -> dict:
+def evaluate(entries: list[dict], run, matcher=None) -> dict:
     rows, ranks, none_scores = [], [], []
     for e in entries:
         results = run(e)
@@ -64,7 +86,7 @@ def evaluate(entries: list[dict], run) -> dict:
             none_scores.append(top or 0.0)
             rows.append({"id": e["id"], "expect_none": True, "top_score": top})
             continue
-        rank = first_hit(results, e.get("expect") or [])
+        rank = matcher(results, e) if matcher else first_hit(results, e.get("expect") or [])
         ranks.append(rank)
         rows.append({"id": e["id"], "rank": rank, "top_score": top, "top_url": result_url(results[0]) if results else ""})
     n = len(ranks) or 1
@@ -108,6 +130,9 @@ def main(argv=None) -> int:
     ap.add_argument("--compare", nargs=2, metavar=("A.json", "B.json"), help="diff two --json reports and stop")
     ap.add_argument("--top-k", type=int, default=10)
     ap.add_argument("--json", help="write the full report here")
+    ap.add_argument("--merge-types", help="comma-separated source types searched together and merged by score like the "
+                    "retriever's extra_source_types (e.g. WEB,GIT); entries may carry `expect_git` fragments for the git pages")
+    ap.add_argument("--threshold", type=float, default=0.0, help="drop matches below this score (with --merge-types)")
     args = ap.parse_args(argv)
     if args.compare:
         with open(args.compare[0], encoding="utf-8") as fa, open(args.compare[1], encoding="utf-8") as fb:
@@ -121,7 +146,12 @@ def main(argv=None) -> int:
         return 2
     with open(args.set, encoding="utf-8") as fh:
         entries = yaml.safe_load(fh)
-    report = evaluate(entries, lambda e: query(args.url, token, e, args.top_k))
+    if args.merge_types:
+        merged = merged_run([t.strip() for t in args.merge_types.split(",") if t.strip()], args.threshold,
+                            lambda e, k: query(args.url, token, e, k))
+        report = evaluate(entries, lambda e: merged(e, args.top_k), first_hit_merged)
+    else:
+        report = evaluate(entries, lambda e: query(args.url, token, e, args.top_k))
     print(f"hit@1 {report['hit@1']:.2f}  hit@5 {report['hit@5']:.2f}  MRR {report['mrr']:.2f}  "
           f"threshold_gap {report['threshold_gap']}  missed {report['missed']}  expect_none top scores {report['expect_none_top_scores']}")
     for row in report["rows"]:
