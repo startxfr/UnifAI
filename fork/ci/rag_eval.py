@@ -47,6 +47,11 @@ def merged_run(types: list[str], threshold: float, run_one):
     """What the docs_rag retriever does with extra_source_types: one search per type, matches under the threshold
     dropped, the rest sorted by score and cut to top_k. Each result keeps the type it came from (`_type`)."""
     def run(entry: dict, top_k: int) -> list[dict]:
+        # The extra types belong to one retriever: only entries of its own type (the first) get them; a Confluence
+        # entry stays a Confluence search (found by zuno-main on the first merged run, 2026-11-09).
+        own = entry.get("sourceType", "WEB")
+        if own != types[0]:
+            return run_one(entry, top_k)
         out = []
         for t in types:
             out.extend(dict(h, _type=t) for h in run_one(dict(entry, sourceType=t), top_k) if (h.get("score") or 0) >= threshold)

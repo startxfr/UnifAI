@@ -84,3 +84,16 @@ def test_merged_types_sort_by_score_and_match_git_fragments():
     assert res == [] and rag_eval.first_hit_merged(res, entry) is None
     web_entry = dict(entry, expect=["other"], expect_git=[])
     assert rag_eval.first_hit_merged(run(web_entry, 10), web_entry) == 2
+
+
+def test_merge_leaves_other_source_types_alone():
+    calls = []
+
+    def one(e, k):
+        calls.append(e["sourceType"])
+        return [hit("https://x/" + e["sourceType"], 0.7)]
+
+    run = rag_eval.merged_run(["WEB", "GIT"], 0.0, one)
+    res = run({"id": 1, "query": "q", "sourceType": "CONFLUENCE", "expect": ["CONFLUENCE"]}, 10)
+    assert calls == ["CONFLUENCE"] and "_type" not in res[0]
+    assert rag_eval.first_hit_merged(res, {"sourceType": "CONFLUENCE", "expect": ["CONFLUENCE"]}) == 1
