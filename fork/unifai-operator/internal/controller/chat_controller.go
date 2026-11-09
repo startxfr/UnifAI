@@ -92,8 +92,22 @@ func (r *ChatReconciler) apply(ctx context.Context, api *unifai.Client, obj *uni
 	}
 	b, _ := json.Marshal(chat)
 	st.Result = unifai.Truncate(string(b), 4000)
-	setReady(st, phase, "session "+status)
+	phase, msg := chatOutcome(phase, status, string(b))
+	setReady(st, phase, msg)
 	return 0, nil
+}
+
+// identityBindingError is the text UnifAI returns as the model's answer when a run has no signed-in user.
+const identityBindingError = "no identity binding for session"
+
+// chatOutcome maps the end of a session to the chat phase. R-533: the operator submits a chat as spec.owner, with
+// no signed-in user, so a model that forwards the user token can only answer with the identity error, while UnifAI
+// still ends the session COMPLETED; such a chat is Failed.
+func chatOutcome(phase, status, transcript string) (string, string) {
+	if phase == PhaseCompleted && strings.Contains(transcript, identityBindingError) {
+		return PhaseFailed, "session COMPLETED with an identity error: an LLM of the workflow forwards the user token, which a chat run by the operator never has"
+	}
+	return phase, "session " + status
 }
 
 // SetupWithManager registers the controller.
