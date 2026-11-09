@@ -74,17 +74,47 @@ def evaluate(entries: list[dict], run) -> dict:
         "mrr": sum(1 / r for r in ranks if r) / n,
         "missed": [row["id"] for row in rows if not row.get("expect_none") and row["rank"] is None],
         "expect_none_top_scores": none_scores,
+        "threshold_gap": threshold_gap(rows),
         "rows": rows,
+    }
+
+
+def threshold_gap(rows: list[dict]) -> float | None:
+    """Lowest top score of an answered question minus the highest top score of an out-of-corpus one. Above 0 a
+    relevance threshold separates the two (R-518: the mmarco reranker had none); None without both kinds."""
+    answered = [r["top_score"] for r in rows if not r.get("expect_none") and r.get("rank") and r.get("top_score") is not None]
+    none = [r["top_score"] for r in rows if r.get("expect_none") and r.get("top_score") is not None]
+    if not answered or not none:
+        return None
+    return min(answered) - max(none)
+
+
+def compare(a: dict, b: dict) -> dict:
+    """A/B of two reports (--json files): metric deltas (b minus a) and the questions whose rank changed."""
+    ra = {r["id"]: r.get("rank") for r in a["rows"] if not r.get("expect_none")}
+    rb = {r["id"]: r.get("rank") for r in b["rows"] if not r.get("expect_none")}
+    changed = [{"id": i, "from": ra[i], "to": rb[i]} for i in ra if i in rb and ra[i] != rb[i]]
+    return {
+        "delta": {k: (b[k] - a[k]) for k in ("hit@1", "hit@5", "mrr")},
+        "threshold_gap": {"a": a.get("threshold_gap"), "b": b.get("threshold_gap")},
+        "changed": changed,
     }
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--url", required=True, help="RAG server base URL")
-    ap.add_argument("--set", required=True, help="evaluation YAML")
+    ap.add_argument("--url", help="RAG server base URL")
+    ap.add_argument("--set", help="evaluation YAML")
+    ap.add_argument("--compare", nargs=2, metavar=("A.json", "B.json"), help="diff two --json reports and stop")
     ap.add_argument("--top-k", type=int, default=10)
     ap.add_argument("--json", help="write the full report here")
     args = ap.parse_args(argv)
+    if args.compare:
+        with open(args.compare[0], encoding="utf-8") as fa, open(args.compare[1], encoding="utf-8") as fb:
+            print(json.dumps(compare(json.load(fa), json.load(fb)), indent=2))
+        return 0
+    if not args.url or not args.set:
+        ap.error("--url and --set are required unless --compare is used")
     token = os.environ.get("RAG_TOKEN", "")
     if not token:
         print("RAG_TOKEN is not set", file=sys.stderr)
@@ -93,7 +123,7 @@ def main(argv=None) -> int:
         entries = yaml.safe_load(fh)
     report = evaluate(entries, lambda e: query(args.url, token, e, args.top_k))
     print(f"hit@1 {report['hit@1']:.2f}  hit@5 {report['hit@5']:.2f}  MRR {report['mrr']:.2f}  "
-          f"missed {report['missed']}  expect_none top scores {report['expect_none_top_scores']}")
+          f"threshold_gap {report['threshold_gap']}  missed {report['missed']}  expect_none top scores {report['expect_none_top_scores']}")
     for row in report["rows"]:
         print(json.dumps(row))
     if args.json:

@@ -56,3 +56,17 @@ def test_tags_are_sent_as_repeated_parameters(monkeypatch):
     assert "tags=a&tags=b" in seen["url"] and "top_k_results=7" in seen["url"] and "sourceType=WEB" in seen["url"]
     rag_eval.query("http://rag:13456", "tok", {"query": "q", "tags": "knowledge.tech"}, 3)
     assert "tags=knowledge.tech" in seen["url"]
+
+
+def test_threshold_gap_and_compare():
+    entries = [{"id": 1, "query": "q1", "expect": ["a"]}, {"id": 2, "query": "q2", "expect": ["b"]},
+               {"id": 3, "query": "q3", "expect_none": True}]
+    first = {"q1": [hit("https://x/a", 0.9)], "q2": [hit("https://x/z", 0.8), hit("https://x/b", 0.7)], "q3": [hit("https://x/o", 0.95)]}
+    second = {"q1": [hit("https://x/a", 0.9)], "q2": [hit("https://x/b", 0.8)], "q3": [hit("https://x/o", 0.3)]}
+    a = rag_eval.evaluate(entries, lambda e: first[e["query"]])
+    b = rag_eval.evaluate(entries, lambda e: second[e["query"]])
+    assert abs(a["threshold_gap"] - (0.7 - 0.95)) < 1e-9 or abs(a["threshold_gap"] - (0.8 - 0.95)) < 1e-9
+    assert a["threshold_gap"] < 0 < b["threshold_gap"]
+    c = rag_eval.compare(a, b)
+    assert c["changed"] == [{"id": 2, "from": 2, "to": 1}]
+    assert c["delta"]["hit@1"] == 0.5
