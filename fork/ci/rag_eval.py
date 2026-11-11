@@ -45,19 +45,39 @@ def first_hit(results: list[dict], expect: list[str]) -> int | None:
     return None
 
 
-def merged_run(types: list[str], threshold: float, run_one):
+FUSIONS = ("score", "rrf", "interleave")
+RRF_K = 60
+
+
+def fuse(per_type: list[list[dict]], fusion: str, top_k: int) -> list[dict]:
+    """Merge the ranked result lists of several source types. `score` sorts by the raw score (what the retriever
+    does today: the scores of two searches are not on one scale, DBSF normalises each query's own candidates);
+    `rrf` sums 1/(RRF_K + rank) over the types, ranks only; `interleave` takes one result per type in turn."""
+    if fusion == "score":
+        return sorted((h for lst in per_type for h in lst), key=lambda h: h.get("score") or 0, reverse=True)[:top_k]
+    if fusion == "rrf":
+        scored = [(1.0 / (RRF_K + rank), h) for lst in per_type for rank, h in enumerate(lst, 1)]
+        return [h for _, h in sorted(scored, key=lambda x: x[0], reverse=True)][:top_k]
+    if fusion == "interleave":
+        out: list[dict] = []
+        for rank in range(max((len(lst) for lst in per_type), default=0)):
+            out.extend(lst[rank] for lst in per_type if rank < len(lst))
+        return out[:top_k]
+    raise ValueError(f"fusion must be one of {FUSIONS}, got {fusion!r}")
+
+
+def merged_run(types: list[str], threshold: float, run_one, fusion: str = "score"):
     """What the docs_rag retriever does with extra_source_types: one search per type, matches under the threshold
-    dropped, the rest sorted by score and cut to top_k. Each result keeps the type it came from (`_type`)."""
+    dropped, the lists merged with `fusion` and cut to top_k. Each result keeps the type it came from (`_type`)."""
     def run(entry: dict, top_k: int) -> list[dict]:
         # The extra types belong to one retriever: only entries of its own type (the first) get them; a Confluence
         # entry stays a Confluence search (found by zuno-main on the first merged run, 2026-11-09).
         own = entry.get("sourceType", "WEB")
         if own != types[0]:
             return run_one(entry, top_k)
-        out = []
-        for t in types:
-            out.extend(dict(h, _type=t) for h in run_one(dict(entry, sourceType=t), top_k) if (h.get("score") or 0) >= threshold)
-        return sorted(out, key=lambda h: h.get("score") or 0, reverse=True)[:top_k]
+        per_type = [[dict(h, _type=t) for h in run_one(dict(entry, sourceType=t), top_k) if (h.get("score") or 0) >= threshold]
+                    for t in types]
+        return fuse(per_type, fusion, top_k)
     return run
 
 
@@ -158,6 +178,8 @@ def main(argv=None) -> int:
     ap.add_argument("--merge-types", help="comma-separated source types searched together and merged by score like the "
                     "retriever's extra_source_types (e.g. WEB,GIT); entries may carry `expect_git` fragments for the git pages")
     ap.add_argument("--threshold", type=float, default=0.0, help="drop matches below this score (with --merge-types)")
+    ap.add_argument("--fusion", choices=FUSIONS, default="score",
+                    help="how --merge-types merges the lists: score (the retriever today), rrf (ranks only), interleave")
     args = ap.parse_args(argv)
     if args.compare:
         with open(args.compare[0], encoding="utf-8") as fa, open(args.compare[1], encoding="utf-8") as fb:
@@ -173,7 +195,7 @@ def main(argv=None) -> int:
         entries = yaml.safe_load(fh)
     if args.merge_types:
         merged = merged_run([t.strip() for t in args.merge_types.split(",") if t.strip()], args.threshold,
-                            lambda e, k: query(args.url, token, e, k))
+                            lambda e, k: query(args.url, token, e, k), args.fusion)
         report = evaluate(entries, lambda e: merged(e, args.top_k), first_hit_merged)
     else:
         report = evaluate(entries, lambda e: query(args.url, token, e, args.top_k))

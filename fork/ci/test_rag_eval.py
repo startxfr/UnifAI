@@ -107,3 +107,19 @@ def test_rows_carry_best_score_per_type_when_merged():
     assert report["rows"][0]["by_type"] == {"GIT": 2.4, "WEB": 1.5}
     plain = rag_eval.evaluate([{"id": 1, "query": "q", "expect": ["a"]}], lambda e: [{"score": 1.0, "url": "a"}])
     assert "by_type" not in plain["rows"][0]
+
+
+def test_fusions_merge_ranked_lists_without_comparing_scales():
+    web = [{"score": 1.4, "id": "w1"}, {"score": 1.3, "id": "w2"}, {"score": 1.2, "id": "w3"}]
+    git = [{"score": 2.8, "id": "g1"}, {"score": 2.7, "id": "g2"}, {"score": 2.6, "id": "g3"}]
+    ids = lambda r: [h["id"] for h in r]
+    assert ids(rag_eval.fuse([web, git], "score", 4)) == ["g1", "g2", "g3", "w1"]
+    assert ids(rag_eval.fuse([web, git], "interleave", 4)) == ["w1", "g1", "w2", "g2"]
+    assert set(ids(rag_eval.fuse([web, git], "rrf", 2))) == {"w1", "g1"}
+    assert ids(rag_eval.fuse([web, []], "rrf", 5)) == ["w1", "w2", "w3"]
+    try:
+        rag_eval.fuse([web], "nope", 1)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("an unknown fusion must be refused")
