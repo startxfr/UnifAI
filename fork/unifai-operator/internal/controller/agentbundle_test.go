@@ -543,6 +543,24 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Eventually(func() int { return count(ns) }, timeout, interval).Should(BeNumerically(">", 0))
 	})
 
+	It("keeps the group team of a revoked agent, so that its sessions stay readable (R-536)", func() {
+		ns := setup("bundle-revoked-team")
+		files := tekosFiles()
+		b := newBundle(ns, fakeBundles.put(files, sign(key, files)), nil)
+		b.Spec.Entitlement = entitlementEnforced
+		b.Spec.GroupTeam = true
+		Expect(k8sClient.Create(ctx, b)).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"))
+		Expect(count(ns)).To(BeNumerically(">", 0))
+
+		revocations(ns, "- bundle: tekos\n  reason: compromised\n")
+		Eventually(func() string { return validReason(ns) }, timeout, interval).Should(Equal("Revoked"))
+		Eventually(func() int { return count(ns) }, timeout, interval).Should(BeZero())
+		var team unifaiv1.UnifaiTeam
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "agent-tekos"}, &team)).To(Succeed())
+		Expect(team.DeletionTimestamp.IsZero()).To(BeTrue(), "the group team is not deleted by a revocation")
+	})
+
 	It("admits nothing new when the revocation list is unreadable and leaves what is emitted alone", func() {
 		ns := setup("bundle-revocation-unreadable")
 		files := tekosFiles()

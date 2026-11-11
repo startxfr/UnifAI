@@ -207,7 +207,7 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 	}
 	if b.Status == statusPlaceholder && !cr.Spec.ServePlaceholder {
 		// ADR-0007: a placeholder agent is not served. Objects emitted while it was served are removed.
-		if err := r.prune(ctx, cr, nil); err != nil {
+		if err := r.withdraw(ctx, cr); err != nil {
 			return err
 		}
 		st.Children, st.Tasks = nil, nil
@@ -802,6 +802,17 @@ func (r *AgentBundleReconciler) upsert(ctx context.Context, cr *unifaiv1.UnifaiA
 
 // prune deletes the children this bundle owns that the current bundle no longer emits (e.g. a removed task).
 func (r *AgentBundleReconciler) prune(ctx context.Context, cr *unifaiv1.UnifaiAgentBundle, desired []client.Object) error {
+	return r.pruneChildren(ctx, cr, desired, false)
+}
+
+// withdraw removes everything the bundle emitted except its group team (revoked, retired or not-served agent). R-536:
+// deleting the team deletes its UnifAI workspace once no object uses it any more, and the sessions of the agent must
+// stay readable after a withdrawal; the team goes with the bundle itself (owner reference).
+func (r *AgentBundleReconciler) withdraw(ctx context.Context, cr *unifaiv1.UnifaiAgentBundle) error {
+	return r.pruneChildren(ctx, cr, nil, true)
+}
+
+func (r *AgentBundleReconciler) pruneChildren(ctx context.Context, cr *unifaiv1.UnifaiAgentBundle, desired []client.Object, keepTeams bool) error {
 	keep := map[string]bool{}
 	for _, o := range childNames(desired) {
 		keep[o] = true
@@ -819,6 +830,9 @@ func (r *AgentBundleReconciler) prune(ctx context.Context, cr *unifaiv1.UnifaiAg
 		for _, it := range items {
 			o := it.(client.Object)
 			if keep[bundleChildKind(o)+"/"+o.GetName()] || !metav1.IsControlledBy(o, cr) {
+				continue
+			}
+			if _, isTeam := o.(*unifaiv1.UnifaiTeam); isTeam && keepTeams {
 				continue
 			}
 			log.FromContext(ctx).Info("pruning object no longer in the bundle", "kind", bundleChildKind(o), "name", o.GetName())

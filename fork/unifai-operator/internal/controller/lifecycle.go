@@ -179,7 +179,7 @@ func (r *AgentBundleReconciler) checkRevocation(ctx context.Context, cr *unifaiv
 		actor = unknownActor
 	}
 	msg := fmt.Sprintf("revoked by the platform: %s (actor %s)", reason, actor)
-	if err := r.prune(ctx, cr, nil); err != nil {
+	if err := r.withdraw(ctx, cr); err != nil {
 		return err
 	}
 	st.Children, st.Tasks, st.Agent, st.PrimaryTask, st.Display = nil, nil, "", "", nil
@@ -195,7 +195,7 @@ func (r *AgentBundleReconciler) retire(ctx context.Context, cr *unifaiv1.UnifaiA
 		cond(ConditionValid, false, "MissingReason", "zuno.status is retired: set the annotation "+AnnotationReason+" (the pull request that retires the agent says why)")
 		return permanent("retired agent without the annotation %s, nothing changed", AnnotationReason)
 	}
-	if err := r.prune(ctx, cr, nil); err != nil {
+	if err := r.withdraw(ctx, cr); err != nil {
 		return err
 	}
 	st.Children, st.Tasks, st.Agent, st.PrimaryTask, st.Display = nil, nil, "", "", nil
