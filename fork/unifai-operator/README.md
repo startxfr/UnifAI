@@ -234,6 +234,11 @@ every chunk and returns it in the search results, so a consumer can raise the le
 for the consumer to treat as C2). Changing it embeds every page again at the next sync, so existing chunks get the new
 value without a `resyncToken`.
 
+A `web` source discovers linked pages with `spec.web.crawl`: `redhat-docs` (the default, kept for the existing
+sources: same host, `/html/` and `/html-single/` book paths, the `/documentation/` and `/en/documentation/` forms
+of docs.redhat.com folded to one), `generic` (same host, under the seed's directory, any site) or `none` (the seed
+pages only). A source for any other documentation site sets `crawl: generic` explicitly.
+
 ### Backups (spec.backup)
 
 `spec.backup` renders two CronJobs (default schedule `0 2 * * *`, `concurrencyPolicy: Forbid`) that write to an

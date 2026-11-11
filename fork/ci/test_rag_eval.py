@@ -97,3 +97,13 @@ def test_merge_leaves_other_source_types_alone():
     res = run({"id": 1, "query": "q", "sourceType": "CONFLUENCE", "expect": ["CONFLUENCE"]}, 10)
     assert calls == ["CONFLUENCE"] and "_type" not in res[0]
     assert rag_eval.first_hit_merged(res, {"sourceType": "CONFLUENCE", "expect": ["CONFLUENCE"]}) == 1
+
+
+def test_rows_carry_best_score_per_type_when_merged():
+    results = [{"score": 2.4, "_type": "GIT", "source": {"url": "https://github.com/o/r/blob/x/a.adoc"}},
+               {"score": 1.5, "_type": "WEB", "source": {"url": "https://example.com/a"}},
+               {"score": 1.1, "_type": "GIT", "source": {"url": "https://github.com/o/r/blob/x/b.adoc"}}]
+    report = rag_eval.evaluate([{"id": 1, "query": "q", "expect": ["example.com/a"]}], lambda e: results)
+    assert report["rows"][0]["by_type"] == {"GIT": 2.4, "WEB": 1.5}
+    plain = rag_eval.evaluate([{"id": 1, "query": "q", "expect": ["a"]}], lambda e: [{"score": 1.0, "url": "a"}])
+    assert "by_type" not in plain["rows"][0]

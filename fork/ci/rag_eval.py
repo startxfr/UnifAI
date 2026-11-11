@@ -4,10 +4,12 @@
     RAG_TOKEN=<a user's bearer token> python3 fork/ci/rag_eval.py --url https://<rag route> \
         --set ranking.yaml [--top-k 10] [--json out.json]
 
-The set is zuno-demo's evaluations/redhat-docs/ranking.yaml: entries {id, query, sourceType, tags, expect (URL
-fragments), expect_none}. A hit is a result whose source URL contains one of the fragments, after folding the
-docs.redhat.com /documentation/ and /en/documentation/ forms. Reports hit@1, hit@5, MRR over the entries that
-expect something, and the top score of the entries that expect nothing (to set a relevance threshold).
+The set is a YAML file of entries {id, query, sourceType, tags, expect (URL fragments), expect_none, expect_git
+(optional, URL fragments of the pages of another source type, with --merge-types)}. A hit is a result whose source
+URL contains one of the fragments; URL forms that a site serves twice (e.g. /documentation/ and /en/documentation/)
+are folded to one. Reports hit@1, hit@5, MRR over the entries that expect something, and the top score of the
+entries that expect nothing (to set a relevance threshold). With --merge-types every row also carries `by_type`,
+the best score per source type among its results, to see whether the score scales of the types differ.
 The token is read from RAG_TOKEN and never printed. Queries are read-only.
 """
 from __future__ import annotations
@@ -82,6 +84,16 @@ def query(base: str, token: str, entry: dict, top_k: int) -> list[dict]:
     return body.get("matches") or body.get("results") or []
 
 
+def best_by_type(results: list[dict]) -> dict[str, float]:
+    """Best score per source type among merged results (empty when the results carry no `_type`)."""
+    out: dict[str, float] = {}
+    for h in results:
+        t = h.get("_type")
+        if t and (h.get("score") or 0) > out.get(t, float("-inf")):
+            out[t] = h.get("score") or 0
+    return out
+
+
 def evaluate(entries: list[dict], run, matcher=None) -> dict:
     rows, ranks, none_scores = [], [], []
     for e in entries:
@@ -89,11 +101,19 @@ def evaluate(entries: list[dict], run, matcher=None) -> dict:
         top = results[0]["score"] if results else None
         if e.get("expect_none"):
             none_scores.append(top or 0.0)
-            rows.append({"id": e["id"], "expect_none": True, "top_score": top})
+            row = {"id": e["id"], "expect_none": True, "top_score": top}
+            by_type = best_by_type(results)
+            if by_type:
+                row["by_type"] = by_type
+            rows.append(row)
             continue
         rank = matcher(results, e) if matcher else first_hit(results, e.get("expect") or [])
         ranks.append(rank)
-        rows.append({"id": e["id"], "rank": rank, "top_score": top, "top_url": result_url(results[0]) if results else ""})
+        row = {"id": e["id"], "rank": rank, "top_score": top, "top_url": result_url(results[0]) if results else ""}
+        by_type = best_by_type(results)
+        if by_type:
+            row["by_type"] = by_type
+        rows.append(row)
     n = len(ranks) or 1
     return {
         "hit@1": sum(1 for r in ranks if r == 1) / n,
