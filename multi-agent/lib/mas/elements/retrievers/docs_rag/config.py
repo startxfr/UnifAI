@@ -60,8 +60,19 @@ class DocsRagRetrieverConfig(BaseRetrieverConfig):
         default=None,
         description=(
             "Further RAG source types searched next to source_type (for example WEB next to "
-            "CONFLUENCE). Each type is queried on its own, the matches of all types are merged "
-            "by score and the best top_k_results are kept."
+            "CONFLUENCE). Each type is queried on its own, the threshold applies per type, the matches "
+            "of all types are merged as source_merge says (by score by default) and the best "
+            "top_k_results are kept."
+        ),
+    )
+
+    source_merge: Literal["score", "rrf"] = Field(
+        default="score",
+        description=(
+            "How the matches of several source types are merged: score sorts them by their score; rrf merges by "
+            "rank only (reciprocal rank fusion). The scores of two source types are not on one scale (each search "
+            "normalises its own candidates), so rrf keeps one type from outranking the other. Only used with "
+            "extra_source_types."
         ),
     )
 

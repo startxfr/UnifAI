@@ -92,3 +92,35 @@ def test_without_extra_source_types_one_query_in_provider_order():
     out = r.retrieve("q")
     assert [m["text"] for m in out] == ["a", "b"]
     assert r._provider.query.call_count == 1
+
+
+def test_rrf_merges_by_rank_so_one_source_type_cannot_outrank_the_other_by_scale():
+    cfg = DocsRagRetrieverConfig(source_type="WEB", extra_source_types=["GIT"], top_k_results=4, threshold=0.0,
+                                 source_merge="rrf")
+    r = DocsRagRetrieverFactory().create(cfg, deps=_deps())
+    r._provider = MagicMock()
+    by_type = {
+        "WEB": [_match(1.4, "w1"), _match(1.3, "w2"), _match(1.2, "w3")],
+        "GIT": [_match(2.8, "g1"), _match(2.7, "g2"), _match(2.6, "g3")],
+    }
+    r._provider.query.side_effect = lambda **kw: MagicMock(matches=by_type[kw["source_type"]])
+    assert [m["text"] for m in r.retrieve("q")] == ["w1", "g1", "w2", "g2"]
+    score = DocsRagRetrieverFactory().create(
+        DocsRagRetrieverConfig(source_type="WEB", extra_source_types=["GIT"], top_k_results=4, threshold=0.0), deps=_deps())
+    score._provider = r._provider
+    assert [m["text"] for m in score.retrieve("q")] == ["g1", "g2", "g3", "w1"]
+
+
+def test_rrf_keeps_the_threshold_and_a_single_type_unchanged():
+    r = DocsRagRetrieverFactory().create(
+        DocsRagRetrieverConfig(source_type="WEB", extra_source_types=["GIT"], top_k_results=3, threshold=0.5,
+                               source_merge="rrf"), deps=_deps())
+    r._provider = MagicMock()
+    by_type = {"WEB": [_match(0.9, "w1"), _match(0.2, "low")], "GIT": []}
+    r._provider.query.side_effect = lambda **kw: MagicMock(matches=by_type[kw["source_type"]])
+    assert [m["text"] for m in r.retrieve("q")] == ["w1"]
+    single = DocsRagRetrieverFactory().create(
+        DocsRagRetrieverConfig(source_type="WEB", source_merge="rrf"), deps=_deps())
+    single._provider = MagicMock()
+    single._provider.query.return_value = MagicMock(matches=[_match(0.4, "a"), _match(0.9, "b")])
+    assert [m["text"] for m in single.retrieve("q")] == ["a", "b"]
