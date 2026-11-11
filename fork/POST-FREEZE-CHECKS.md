@@ -23,7 +23,7 @@ Send back: `oc get unifaiteam r545-probe -o yaml` (status and events) after step
 
 ## 3. R-543, token ceiling of one turn
 1. On a throwaway bundle (or the stack ceiling `spec.ceilings.maxTokensPerTurn: 2000`), set `zuno.limits.max_tokens_per_turn: 2000` on the agent.
-2. Send one user turn that needs several model calls (a delegation or a long answer).
+2. Send one user turn that needs several model calls: a turn with a tool call (a delegation or a tool use). A long answer alone is one model call and is never cut, the ceiling is checked before each call. The model endpoint must report the usage of a streamed call (the ai-gateway republishes it since zuno-demo 20954f04).
 3. Expected: the answer ends with `Token ceiling reached for this turn (<used>/2000 tokens)`, exactly one `agent_error` event for the turn, the session stays usable.
 4. Remove the ceiling and the bundle.
 
