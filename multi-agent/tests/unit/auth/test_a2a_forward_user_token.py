@@ -43,7 +43,7 @@ def _holder():
 
 def _cfg(**over: Any) -> A2AAgentNodeConfig:
     data: dict[str, Any] = {
-        "base_url": HttpUrl("http://a2a-gateway.zuno-ai-run.svc:8080/agents/tekos"),
+        "base_url": HttpUrl("http://a2a-gateway.gateways.svc:8080/agents/tekos"),
         "auth_method": FORWARD_USER_TOKEN,
         "additional_headers": {"X-Zuno-Agent": "tekos", "X-Zuno-Run-Id": "{session_id}"},
     }

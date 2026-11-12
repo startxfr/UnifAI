@@ -23,8 +23,11 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# docs.redhat.com books: /html/<book>/... and /html-single/<book>/...
-REDHAT_DOCS_PATH = re.compile(r"/(html|html-single)/")
+# Deprecated, removed in 0.2: the former default crawl, docs.redhat.com books, kept as a preset of the generic rules.
+# The same source is `crawl: site` with these include patterns (the source's own include narrows them further) and
+# rewrite.
+REDHAT_DOCS_INCLUDE = ("*/html/*", "*/html-single/*")
+REDHAT_DOCS_REWRITES = ((r"^(https?://docs\.redhat\.com)/documentation/", r"\1/en/documentation/"),)
 USER_AGENT = "unifai-rag-web/1.0"
 
 
@@ -100,18 +103,31 @@ class _Links(HTMLParser):
                 self.hrefs.append(href)
 
 
-def canonical_redhat_docs(url: str) -> str:
-    """docs.redhat.com serves a book under /documentation/... and /en/documentation/...: keep the /en/ form only."""
-    parsed = urlparse(url)
-    if parsed.netloc == "docs.redhat.com" and parsed.path.startswith("/documentation/"):
-        return parsed._replace(path="/en" + parsed.path).geturl()
+def compile_rewrites(rewrites: Sequence[tuple[str, str]]) -> list[tuple[re.Pattern, str]]:
+    """(regex, replacement) pairs; raises re.error on an invalid expression."""
+    return [(re.compile(match), replace) for match, replace in rewrites]
+
+
+def rewrite(url: str, rewrites: Sequence[tuple[re.Pattern, str]]) -> str:
+    """The URL after each rewrite in turn (a site that serves a page under two URLs keeps one form)."""
+    for pattern, replace in rewrites:
+        url = pattern.sub(replace, url, count=1)
     return url
 
 
-def discover_links(base_url: str, html: str, crawl: str, limit: int) -> list[str]:
-    """In-scope links of a landing page. crawl: redhat-docs | generic | none."""
+def discover_links(base_url: str, html: str, crawl: str, limit: int, include: Sequence[str] = (),
+                   exclude: Sequence[str] = (), rewrites: Sequence[tuple[str, str]] = ()) -> list[str]:
+    """In-scope links of a landing page, at most ``limit``. crawl: site | generic | none (CRAWL_MODES).
+
+    Each link is rewritten first (``rewrites``: regex, replacement), then kept when it is on the seed's host, in the
+    crawl's scope and matches the include/exclude patterns.
+    """
     if crawl == "none":
         return []
+    preset: Sequence[str] = ()
+    if crawl == "redhat-docs":
+        crawl, preset, rewrites = "site", REDHAT_DOCS_INCLUDE, (*REDHAT_DOCS_REWRITES, *rewrites)
+    compiled = compile_rewrites(rewrites)
     base = urlparse(base_url)
     prefix = base.path if base.path.endswith("/") else base.path.rsplit("/", 1)[0] + "/"
     parser = _Links()
@@ -119,15 +135,15 @@ def discover_links(base_url: str, html: str, crawl: str, limit: int) -> list[str
     found: list[str] = []
     seen = {base_url}
     for href in parser.hrefs:
-        url = urljoin(base_url, href).split("#", 1)[0]
-        if crawl == "redhat-docs":
-            url = canonical_redhat_docs(url)
+        url = rewrite(urljoin(base_url, href).split("#", 1)[0], compiled)
         parsed = urlparse(url)
         if url in seen or parsed.scheme not in ("http", "https") or parsed.netloc != base.netloc:
             continue
-        if crawl == "redhat-docs" and not REDHAT_DOCS_PATH.search(parsed.path):
-            continue
         if crawl == "generic" and not parsed.path.startswith(prefix):
+            continue
+        if preset and not in_scope(url, preset, ()):
+            continue
+        if not in_scope(url, include, exclude):  # before the cap: the limit counts pages the source wants
             continue
         seen.add(url)
         found.append(url)
@@ -211,8 +227,8 @@ class WebConnector:
         return blocked
 
     def iter_pages(self, seeds: Sequence[str], previous: dict[str, dict], include: Sequence[str] = (),
-                   exclude: Sequence[str] = (), crawl: str = "redhat-docs",
-                   max_pages: int = 50) -> Iterator[tuple[str, WebPage | None]]:
+                   exclude: Sequence[str] = (), crawl: str = "generic", max_pages: int = 50,
+                   rewrites: Sequence[tuple[str, str]] = ()) -> Iterator[tuple[str, WebPage | None]]:
         """(url, page) for every in-scope URL; page is None when the URL is unchanged or could not be read.
 
         A URL that fails keeps its manifest entry: the caller must not treat it as removed.
@@ -231,8 +247,8 @@ class WebConnector:
                 blocked = 0
             seed_pages[seed] = page
             if page is not None:
-                discovered += [u for u in discover_links(seed, page.html, crawl, max_pages)
-                               if u not in seed_pages and u not in discovered and in_scope(u, include, exclude)]
+                discovered += [u for u in discover_links(seed, page.html, crawl, max_pages, include, exclude, rewrites)
+                               if u not in seed_pages and u not in discovered]
         yield from seed_pages.items()
         for url in discovered:
             try:

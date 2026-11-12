@@ -31,13 +31,14 @@ class AppConfig(SharedConfig):
     # groups). Empty = nobody: every source stays private to its uploader.
     rag_shared_publishers: list = []
     # OIDC issuer used to verify bearer tokens forwarded by internal callers (e.g.
-    # https://keycloak.example.com/realms/zuno); their `groups` claim selects which
+    # https://keycloak.example.com/realms/example); their `groups` claim selects which
     # shared sources a search may return. Empty = forwarded tokens are ignored.
     oidc_issuer_url: str = ""
     oidc_verify_tls: bool = True
-    # Audience a Keycloak token must carry to search through /api/sources/query.bearer (every token of the
-    # zuno realm carries zuno-admin-api). Empty = the audience is not checked.
-    rag_bearer_audience: str = "zuno-admin-api"
+    # Audience a token must carry to search through /api/sources/query.bearer and for its groups to unlock shared
+    # sources (the identity provider adds it, e.g. a Keycloak audience mapper). The operator sets it from
+    # UnifaiStack spec.rag.bearerAudience. Empty = the audience is not checked: any token of the issuer is accepted.
+    rag_bearer_audience: str = "unifai-rag"
     # Accept opaque (OpenShift) tokens on /api/sources/query.bearer after a Kubernetes TokenReview. The
     # service account needs the system:auth-delegator role.
     rag_tokenreview_enabled: bool = False

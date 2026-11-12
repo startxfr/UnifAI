@@ -8,8 +8,7 @@ Every request, and every redirect hop when the client follows redirects, is vett
 :func:`~global_utils.utils.net_guard.vet_outbound_url`. For a public host the connection goes to the
 address that was just vetted, with the original name kept for the ``Host`` header and for TLS
 (SNI and certificate check), so the name cannot resolve to something else between the check and the
-connection (DNS rebinding). Hosts trusted by name (the platform's runtime namespace, the allow-list)
-connect the usual way.
+connection (DNS rebinding). Hosts trusted by name (the allow-list) connect the usual way.
 """
 from __future__ import annotations
 

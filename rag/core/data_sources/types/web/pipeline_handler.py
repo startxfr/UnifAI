@@ -93,8 +93,9 @@ class WebPipelineHandler(SourcePipelinePort):
         changed: list[WebPage] = []
         # Without the previous manifest the connector fetches every page unconditionally.
         for url, page in connector.iter_pages(settings["urls"], {} if reingest else previous, settings.get("include", []),
-                                              settings.get("exclude", []), settings.get("crawl", "redhat-docs"),
-                                              int(settings.get("max_pages", 50))):
+                                              settings.get("exclude", []), settings.get("crawl", "generic"),
+                                              int(settings.get("max_pages", 50)),
+                                              [(r["match"], r["replace"]) for r in settings.get("rewrites") or []]):
             old = previous.get(url)
             if page is None:  # not modified, or unreadable: keep what is indexed
                 if old is not None:

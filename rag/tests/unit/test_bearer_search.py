@@ -10,19 +10,19 @@ from flask import Flask
 
 pytestmark = pytest.mark.unit
 
-ISSUER = "https://keycloak.example/realms/zuno"
+ISSUER = "https://keycloak.example/realms/example"
 KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
 
 def cfg(**kw):
-    base = dict(oidc_issuer_url=ISSUER, oidc_verify_tls=True, rag_bearer_audience="zuno-admin-api",
+    base = dict(oidc_issuer_url=ISSUER, oidc_verify_tls=True, rag_bearer_audience="unifai-rag",
                 rag_tokenreview_enabled=False)
     base.update(kw)
     return SimpleNamespace(**base)
 
 
 def token(**claims):
-    payload = {"iss": ISSUER, "aud": ["zuno-admin-api", "tekos-frontend"], "preferred_username": "consultant-01",
+    payload = {"iss": ISSUER, "aud": ["unifai-rag", "tekos-frontend"], "preferred_username": "consultant-01",
                "groups": ["/consultant/confluence-build-satellite", "/agent_tekos"], "exp": int(time.time()) + 300}
     payload.update(claims)
     return jwt.encode(payload, KEY, algorithm="RS256")
@@ -54,12 +54,12 @@ def test_an_expired_token_is_refused(bearer):
 
 
 def test_another_issuer_is_not_trusted_and_gets_no_token_review_when_off(bearer):
-    assert bearer.authenticate_bearer(token(iss="https://evil.example/realms/zuno"), cfg()) is None
+    assert bearer.authenticate_bearer(token(iss="https://evil.example/realms/example"), cfg()) is None
 
 
 def test_a_token_signed_with_another_key_is_refused(bearer):
     other = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    forged = jwt.encode({"iss": ISSUER, "aud": "zuno-admin-api", "preferred_username": "boss", "exp": int(time.time()) + 60},
+    forged = jwt.encode({"iss": ISSUER, "aud": "unifai-rag", "preferred_username": "boss", "exp": int(time.time()) + 60},
                         other, algorithm="RS256")
     assert bearer.authenticate_bearer(forged, cfg()) is None
 

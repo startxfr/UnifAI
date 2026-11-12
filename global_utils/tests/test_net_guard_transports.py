@@ -87,15 +87,16 @@ def test_a_redirect_between_public_hosts_is_followed_and_each_hop_is_pinned():
     assert [r.url.host for r in rec.seen] == ["93.184.216.34", "93.184.216.35"]
 
 
-def test_a_cluster_internal_name_connects_the_usual_way():
+def test_an_allowed_cluster_name_connects_the_usual_way(monkeypatch):
+    monkeypatch.setenv("OUTBOUND_ALLOWED_HOSTS", ".gateways.svc.cluster.local")
     rec = Recorder()
 
     async def go():
         async with client(rec, {}) as c:  # the resolver would KeyError if it were asked
-            return await c.get("http://a2a-gateway.zuno-ai-run.svc.cluster.local:8080/agents/x/")
+            return await c.get("http://a2a-gateway.gateways.svc.cluster.local:8080/agents/x/")
 
     assert run(go()).status_code == 200
-    assert rec.seen[0].url.host == "a2a-gateway.zuno-ai-run.svc.cluster.local"
+    assert rec.seen[0].url.host == "a2a-gateway.gateways.svc.cluster.local"
 
 
 def test_the_sync_transport_pins_and_refuses_too():

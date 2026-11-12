@@ -28,17 +28,26 @@ type RAGWebSource struct {
 	// +kubebuilder:validation:items:MaxLength=2048
 	// +kubebuilder:validation:XValidation:rule="self.all(u, isURL(u) && (u.startsWith('http://') || u.startsWith('https://')) && size(url(u).getHostname()) > 0)",message="web urls are http(s) URLs"
 	URLs []string `json:"urls"`
-	// Discovery of linked pages: redhat-docs (same host, /html/ or /html-single/ book paths), generic
-	// (same host, under the seed's directory) or none (the seeds only).
-	// +kubebuilder:validation:Enum=redhat-docs;generic;none
-	// +kubebuilder:default=redhat-docs
+	// Discovery of linked pages: generic (same host, under the seed's directory), site (same host, any path: narrow
+	// it with include) or none (the seeds only). redhat-docs is deprecated and removed in 0.2: it is site with the
+	// include patterns */html/* and */html-single/* and the docs.redhat.com /documentation/ to /en/documentation/
+	// rewrite, which a source now declares itself.
+	// +kubebuilder:validation:Enum=generic;site;none;redhat-docs
+	// +kubebuilder:default=generic
 	// +optional
 	Crawl string `json:"crawl,omitempty"`
-	// Shell-style patterns a discovered URL must match (empty = all) and must not match.
+	// Shell-style patterns a discovered URL must match (empty = all) and must not match. They apply before
+	// maxPages, which counts only the pages kept.
 	// +optional
 	Include []string `json:"include,omitempty"`
 	// +optional
 	Exclude []string `json:"exclude,omitempty"`
+	// Rewrites applied in turn to every discovered URL before the scope checks, for a site that serves a page
+	// under several URLs: the first match of the regular expression (Python syntax) is replaced; the replacement
+	// may refer to its groups (\1).
+	// +kubebuilder:validation:MaxItems=20
+	// +optional
+	Rewrites []RAGWebRewrite `json:"rewrites,omitempty"`
 	// Limit on pages discovered per seed.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=1000
@@ -48,6 +57,16 @@ type RAGWebSource struct {
 	// Fields stamped on every chunk of the source (e.g. product, version, language).
 	// +optional
 	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+// RAGWebRewrite rewrites a discovered URL: the first match of Match is replaced by Replace.
+type RAGWebRewrite struct {
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=500
+	Match string `json:"match"`
+	// +kubebuilder:validation:MaxLength=500
+	// +optional
+	Replace string `json:"replace,omitempty"`
 }
 
 // RAGGitSource scopes a git source: the AsciiDoc, Markdown and text files of a public GitHub repository at a ref, read

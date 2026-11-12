@@ -260,6 +260,9 @@ func ragValues(p *Plan, v map[string]any) map[string]any {
 			set(v, "env.OIDC_ISSUER_URL", strings.TrimRight(p.OIDCURL, "/")+"/realms/"+p.OIDCRealm)
 		}
 	}
+	if r.BearerAudience != "" {
+		set(v, "env.RAG_BEARER_AUDIENCE", r.BearerAudience)
+	}
 	// Celery workers consume one queue per source type (the RAG publishes to <TYPE>_queue, see TestEveryPipelineQueueIsConsumed);
 	// web and git sources need no stack setting, so every source type is always consumed (an idle queue costs nothing).
 	set(v, "env.CELERY_QUEUES", "slack_queue,document_queue,slack_events_queue,confluence_queue,web_queue,git_queue")
@@ -330,10 +333,15 @@ func multiagentValues(p *Plan, v map[string]any) map[string]any {
 		set(v, "env.CLIENT_ID", p.OIDCClientID)
 	}
 	// The services of the stack's own namespace (an MCP server, an A2A agent, a model server next to the stack) are
-	// legitimate targets of the outbound URL guard (global_utils net_guard). Without this, each one needed a manual
-	// OUTBOUND_ALLOWED_HOSTS in spec.extraEnv; an extraEnv entry of that name still replaces this value.
+	// legitimate targets of the outbound URL guard (global_utils net_guard), and spec.outboundAllowedHosts adds others
+	// (a gateway in another namespace). An extraEnv entry of that name still replaces this value.
+	var allowed []string
 	if p.Namespace != "" {
-		set(v, "env.OUTBOUND_ALLOWED_HOSTS", fmt.Sprintf(".%[1]s.svc,.%[1]s.svc.cluster.local", p.Namespace))
+		allowed = append(allowed, "."+p.Namespace+".svc", "."+p.Namespace+".svc.cluster.local")
+	}
+	allowed = append(allowed, p.Spec.OutboundAllowedHosts...)
+	if len(allowed) > 0 {
+		set(v, "env.OUTBOUND_ALLOWED_HOSTS", strings.Join(allowed, ","))
 	}
 	lf := p.Spec.Integrations.Langfuse
 	set(v, "env.LANGFUSE_ENABLED", fmt.Sprint(lf != nil))

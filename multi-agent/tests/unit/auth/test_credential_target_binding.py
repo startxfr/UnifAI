@@ -86,8 +86,8 @@ def test_without_recorded_origins_only_the_issuer_origin_is_allowed():
 
 
 @pytest.mark.parametrize("url", [
-    "http://mcp-gateway.zuno-ai-run.svc:8080/mcp",
-    "http://mcp-gateway.zuno-ai-run.svc.cluster.local/mcp",
+    "http://mcp-gateway.gateways.svc:8080/mcp",
+    "http://mcp-gateway.gateways.svc.cluster.local/mcp",
     "http://mcp-gateway:8080/mcp",
 ])
 def test_user_token_goes_to_cluster_internal_services(url):
@@ -186,7 +186,7 @@ def test_forwarder_refuses_the_token_for_an_external_model_endpoint():
 def test_forwarder_checks_every_target_including_the_routing_lookup():
     fw = IdentityForwarder(
         NullIdentityTokenSource(), None,
-        target_urls=("http://ai-gateway.zuno-ai-run.svc:8080/v1", "https://evil.example/{request_id}"),
+        target_urls=("http://ai-gateway.gateways.svc:8080/v1", "https://evil.example/{request_id}"),
     )
     with pytest.raises(IdentityTokenUnavailable, match="cluster-internal"):
         fw.access_token()

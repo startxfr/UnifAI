@@ -46,23 +46,32 @@ def test_odd_urls_are_refused(url):
 
 
 @pytest.mark.parametrize("url", [
-    "http://ai-gateway.zuno-ai-run.svc:8080/v1",
-    "http://mcp-gateway.zuno-ai-run.svc.cluster.local:8080/mcp",
+    "http://ai-gateway.gateways.svc:8080/v1",
+    "http://mcp-gateway.gateways.svc.cluster.local:8080/mcp",
 ])
-def test_the_platform_runtime_namespace_is_allowed_by_name(url):
+def test_an_allowed_suffix_is_trusted_by_name(url, monkeypatch):
+    monkeypatch.setenv("OUTBOUND_ALLOWED_HOSTS", ".gateways.svc,.gateways.svc.cluster.local")
     boom = lambda host: (_ for _ in ()).throw(AssertionError("must not resolve"))  # noqa: E731
     assert check_outbound_url(url, resolver=boom)
 
 
+def test_no_namespace_is_trusted_by_default(monkeypatch):
+    monkeypatch.delenv("OUTBOUND_ALLOWED_HOSTS", raising=False)
+    with pytest.raises(UnsafeUrlError):
+        check_outbound_url("http://a2a-gateway.zuno-ai-run.svc:8080/", resolver=resolver_for({
+            "a2a-gateway.zuno-ai-run.svc": ["10.1.2.5"]}))
+
+
 @pytest.mark.parametrize("url", [
-    "http://unifai-mongo:27017/", "http://redis.zuno-unifai.svc:6379/", "http://zuno-ai-run.svc.evil.example/",
-    "http://x.zuno-ai-run.svc.evil.example/",
+    "http://unifai-mongo:27017/", "http://redis.unifai.svc:6379/", "http://gateways.svc.evil.example/",
+    "http://x.gateways.svc.evil.example/",
 ])
-def test_other_internal_names_are_refused(url):
+def test_other_internal_names_are_refused(url, monkeypatch):
+    monkeypatch.setenv("OUTBOUND_ALLOWED_HOSTS", ".gateways.svc")
     with pytest.raises(UnsafeUrlError):
         check_outbound_url(url, resolver=resolver_for({
-            "unifai-mongo": ["10.1.2.3"], "redis.zuno-unifai.svc": ["10.1.2.4"],
-            "zuno-ai-run.svc.evil.example": ["10.9.9.9"], "x.zuno-ai-run.svc.evil.example": ["10.9.9.9"],
+            "unifai-mongo": ["10.1.2.3"], "redis.unifai.svc": ["10.1.2.4"],
+            "gateways.svc.evil.example": ["10.9.9.9"], "x.gateways.svc.evil.example": ["10.9.9.9"],
         }))
 
 

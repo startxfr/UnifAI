@@ -123,15 +123,23 @@ var _ = Describe("UnifaiRAGSource controller", func() {
 			s.Spec.Owner, s.Spec.Visibility = testPublisher, visibilityPublic
 			s.Spec.Tags = []string{"knowledge.tech", "product:satellite"}
 			s.Spec.Web = &unifaiv1.RAGWebSource{
-				URLs: []string{"https://docs.example.com/en/documentation/satellite/6.17"}, Crawl: "redhat-docs", MaxPages: 50,
+				URLs: []string{"https://docs.example.com/en/documentation/satellite/6.17"}, Crawl: "site", MaxPages: 50,
+				Include: []string{"https://docs.example.com/en/documentation/satellite/6.17/html/*"},
 				Exclude: []string{"*/release_notes/*"}, Metadata: map[string]string{"product": "Satellite", "version": "6.17"},
+				Rewrites: []unifaiv1.RAGWebRewrite{{Match: `^(https://docs\.example\.com)/documentation/`, Replace: `\1/en/documentation/`}},
 			}
 		})
 		typ, instance, err := ragSourceInstance(s)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(typ).To(Equal(sourceTypeWeb))
 		Expect(instance).To(HaveKeyWithValue("visibility", visibilityPublic))
-		Expect(instance).To(HaveKeyWithValue("crawl", "redhat-docs"))
+		Expect(instance).To(HaveKeyWithValue("crawl", "site"))
+		Expect(instance["rewrites"]).To(Equal([]map[string]any{
+			{"match": `^(https://docs\.example\.com)/documentation/`, "replace": `\1/en/documentation/`}}))
+		s.Spec.Web.Rewrites = nil // unset: not registered, so the hash of existing sources stays the same
+		_, without, err := ragSourceInstance(s)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(without).NotTo(HaveKey("rewrites"))
 		Expect(instance["urls"]).To(Equal([]string{"https://docs.example.com/en/documentation/satellite/6.17"}))
 		Expect(instance["metadata"]).To(Equal(map[string]string{"product": "Satellite", "version": "6.17"}))
 		Expect(instance["tags"]).To(Equal([]string{"knowledge.tech", "product:satellite"}))

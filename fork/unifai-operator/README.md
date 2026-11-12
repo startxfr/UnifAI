@@ -95,6 +95,15 @@ spec:
       - {name: DIRECTORY_OIDC_ISSUER, value: https://keycloak.example.com/realms/unifai}
 ```
 
+The outbound URL guard of multiagent (MCP, A2A and OAuth discovery calls to user-typed URLs, `OUTBOUND_ALLOWED_HOSTS`)
+trusts by name the services of the stack's own namespace and the hosts of `spec.outboundAllowedHosts` (a name, or a
+suffix starting with a dot), for a gateway in another namespace; nothing else that resolves to a private address:
+```yaml
+spec:
+  outboundAllowedHosts: [.gateways.svc, .gateways.svc.cluster.local]
+```
+An `extraEnv` entry `OUTBOUND_ALLOWED_HOSTS` replaces that whole value (the namespace included).
+
 `openTelemetry` exports traces and metrics (OTLP) of the multiagent server and Temporal worker, the RAG server and
 Celery worker and the backend, through the global_utils telemetry bootstrap (fork commit c918f732b, images built from
 it): `UNIFAI_OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`/`_PROTOCOL`, `OTEL_SERVICE_NAME` (the Helm release name,
@@ -205,6 +214,9 @@ fields and prompt examples.
 - `sharedPublishers`: users allowed to publish shared sources, visible to members of the source's OIDC groups;
   the RAG service then verifies tokens forwarded by multiagent against the stack's OIDC issuer. Empty = every
   source stays private to its uploader.
+- `bearerAudience` (`RAG_BEARER_AUDIENCE`): the audience a user token must carry for the RAG service to accept it, on
+  the bearer search API and for the groups that unlock shared sources. Unset = `unifai-rag`; have the identity provider
+  add it to the callers' tokens (a Keycloak audience mapper).
 - `confluence`: the credentials of the Confluence source type (Secret refs, added to `unifai-rag-secrets`).
 
 - `embedding.queryPrefix` (`EMBEDDING_QUERY_PREFIX`): an instruction put in front of search queries only, for
@@ -234,10 +246,21 @@ every chunk and returns it in the search results, so a consumer can raise the le
 for the consumer to treat as C2). Changing it embeds every page again at the next sync, so existing chunks get the new
 value without a `resyncToken`.
 
-A `web` source discovers linked pages with `spec.web.crawl`: `redhat-docs` (the default, kept for the existing
-sources: same host, `/html/` and `/html-single/` book paths, the `/documentation/` and `/en/documentation/` forms
-of docs.redhat.com folded to one), `generic` (same host, under the seed's directory, any site) or `none` (the seed
-pages only). A source for any other documentation site sets `crawl: generic` explicitly.
+A `web` source discovers linked pages with `spec.web.crawl`: `generic` (the default: same host, under the seed's
+directory), `site` (same host, any path, narrowed by `include`) or `none` (the seed pages only). `include` and `exclude`
+apply before `maxPages`, which counts only the pages kept. `rewrites` folds the URLs of a site that serves a page under
+several forms into one, before those checks (regular expression, first match replaced, `\1` for a group):
+```yaml
+web:
+  urls: [https://docs.example.com/en/documentation/product/1.0]
+  crawl: site
+  include: ["https://docs.example.com/en/documentation/product/1.0/html/*"]
+  rewrites:
+    - {match: '^(https://docs\.example\.com)/documentation/', replace: '\1/en/documentation/'}
+```
+`redhat-docs` (the default until 0.1.70) is deprecated and removed in 0.2: it is `site` with the include patterns
+`*/html/*` and `*/html-single/*` and the docs.redhat.com `/documentation/` to `/en/documentation/` rewrite, which a
+source now declares itself. A stored source that sets no `crawl` now gets `generic`.
 
 ### Backups (spec.backup)
 

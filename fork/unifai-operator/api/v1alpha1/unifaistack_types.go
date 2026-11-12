@@ -230,6 +230,13 @@ type RAGSpec struct {
 	// every source stays private to its uploader. UnifaiRAGSource objects are published as their owner.
 	// +optional
 	SharedPublishers []string `json:"sharedPublishers,omitempty"`
+	// Audience a user token must carry for the RAG server to accept it: on the bearer search API
+	// (/api/sources/query.bearer) and for the groups that unlock shared sources (RAG_BEARER_AUDIENCE). Have the
+	// identity provider add it to the tokens of the callers (e.g. a Keycloak audience mapper). Unset = the RAG default,
+	// unifai-rag.
+	// +kubebuilder:validation:MaxLength=255
+	// +optional
+	BearerAudience string `json:"bearerAudience,omitempty"`
 	// Web source chunks with fewer characters of text than this (whitespace normalised: navigation fragments, a lone
 	// heading) are not embedded (WEB_MIN_CHUNK_CHARS). Unset = the RAG default, 200; 0 = keep every chunk. Takes
 	// effect on the pages a sync re-ingests (new or changed).
@@ -350,6 +357,14 @@ type UnifaiStackSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self.all(k, k in ['multiagent', 'multiagentWorker', 'rag', 'ragCelery', 'backend', 'identity', 'ui'])",message="extraEnv keys: multiagent, multiagentWorker, rag, ragCelery, backend, identity, ui"
 	// +optional
 	ExtraEnv map[string][]corev1.EnvVar `json:"extraEnv,omitempty"`
+	// Hosts the multiagent pods may call besides the services of the stack's own namespace, through the outbound URL
+	// guard of MCP, A2A and OAuth discovery calls (OUTBOUND_ALLOWED_HOSTS): a host name, or a suffix starting with a dot
+	// (.gateways.svc). Added to the stack namespace, which is always allowed. An extraEnv OUTBOUND_ALLOWED_HOSTS entry
+	// still replaces the whole value.
+	// +kubebuilder:validation:MaxItems=50
+	// +kubebuilder:validation:items:Pattern=`^\.?[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`
+	// +optional
+	OutboundAllowedHosts []string `json:"outboundAllowedHosts,omitempty"`
 	// Added to every UnifAI pod.
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`

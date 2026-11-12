@@ -244,7 +244,7 @@ func TestRenderOverrides(t *testing.T) {
 func TestRAGSettings(t *testing.T) {
 	off := renderAll(t, testPlan(t, nil))
 	for _, rel := range []string{"unifai-rag-server", "unifai-rag-celery"} {
-		for _, absent := range []string{"QDRANT_HYBRID_ENABLED", "RAG_SHARED_PUBLISHERS", "OIDC_ISSUER_URL"} {
+		for _, absent := range []string{"QDRANT_HYBRID_ENABLED", "RAG_SHARED_PUBLISHERS", "OIDC_ISSUER_URL", "RAG_BEARER_AUDIENCE"} {
 			if strings.Contains(off[rel], absent) {
 				t.Errorf("%s: %s must not be rendered by default (it would roll existing stacks)", rel, absent)
 			}
@@ -529,6 +529,27 @@ func TestMultiagentTrustsItsOwnNamespace(t *testing.T) {
 	}))
 	if strings.Count(over["unifai-multiagent-be"], "name: OUTBOUND_ALLOWED_HOSTS") != 1 || !strings.Contains(over["unifai-multiagent-be"], ".other.svc") {
 		t.Errorf("extraEnv must replace OUTBOUND_ALLOWED_HOSTS, not duplicate it")
+	}
+}
+
+// spec.outboundAllowedHosts adds hosts (a gateway in another namespace) to the stack namespace, which stays allowed.
+func TestOutboundAllowedHostsAddToTheNamespace(t *testing.T) {
+	out := renderAll(t, testPlan(t, func(s *unifaiv1.UnifaiStackSpec) {
+		s.OutboundAllowedHosts = []string{".gateways.svc", "mcp.example.com"}
+	}))
+	want := regexp.MustCompile(`name: OUTBOUND_ALLOWED_HOSTS\s+value: \.team-a\.svc,\.team-a\.svc\.cluster\.local,\.gateways\.svc,mcp\.example\.com\n`)
+	for _, rel := range []string{"unifai-multiagent-be", "unifai-multiagent-temporal-worker"} {
+		if !want.MatchString(out[rel]) {
+			t.Errorf("%s: OUTBOUND_ALLOWED_HOSTS is not the namespace followed by spec.outboundAllowedHosts", rel)
+		}
+	}
+}
+
+// spec.rag.bearerAudience sets the RAG token audience; unset, nothing is rendered (TestRAGSettings) and the RAG default applies.
+func TestRAGBearerAudience(t *testing.T) {
+	out := renderAll(t, testPlan(t, func(s *unifaiv1.UnifaiStackSpec) { s.RAG.BearerAudience = "rag-api" }))
+	if !regexp.MustCompile(`name: RAG_BEARER_AUDIENCE\s+value: rag-api\n`).MatchString(out["unifai-rag-server"]) {
+		t.Errorf("rag-server: RAG_BEARER_AUDIENCE is not spec.rag.bearerAudience")
 	}
 }
 

@@ -160,7 +160,7 @@ def test_resolver_without_groups_only_matches_own_sources():
 
 # ── caller groups ────────────────────────────────────────────────────────────
 
-ISSUER = "https://keycloak.example/realms/zuno"
+ISSUER = "https://keycloak.example/realms/example"
 
 
 def _b64(d):
@@ -243,13 +243,13 @@ def test_forged_or_expired_tokens_yield_no_group(app):
 def test_forwarded_token_minted_for_another_client_is_refused_when_an_audience_is_required(app):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     other_client = _signed(key, preferred_username="alice", groups=["/agent_tekos"], aud="some-other-client")
-    right_client = _signed(key, preferred_username="alice", groups=["/agent_tekos"], aud=["zuno-admin-api", "unifai"])
+    right_client = _signed(key, preferred_username="alice", groups=["/agent_tekos"], aud=["unifai-rag", "unifai"])
     with _verify_with(key):
         for token, expected in ((other_client, []), (right_client, ["agent_tekos"])):
             with app.test_request_context("/", headers={"Authorization": f"Bearer {token}"}):
                 g.identity_session = SimpleNamespace(access_token=None)
                 g.user_id = "alice"
-                assert cg.caller_groups(ISSUER, True, "zuno-admin-api") == expected
+                assert cg.caller_groups(ISSUER, True, "unifai-rag") == expected
 
 
 def test_no_issuer_configured_ignores_bearer_tokens(app):

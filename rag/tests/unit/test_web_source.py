@@ -35,6 +35,7 @@ LANDING = (
 )
 C1 = "https://docs.example.com/en/documentation/product/1.0/html/guide/chapter-1"
 SINGLE = "https://docs.example.com/en/documentation/product/1.0/html-single/guide/index"
+BOOKS = ["*/html/*", "*/html-single/*"]  # the book pages of the host, through the generic rules
 
 
 def test_discovery_keeps_book_links_of_the_same_host_without_duplicates_or_fragments():
@@ -49,6 +50,29 @@ def test_generic_discovery_stays_under_the_seed_directory():
 def test_no_crawl_and_cap():
     assert discover_links(SEED, LANDING, "none", 50) == []
     assert discover_links(SEED, LANDING, "redhat-docs", 1) == [C1]
+
+
+def test_site_discovery_follows_the_whole_host_and_include_narrows_it_before_the_cap():
+    assert discover_links(SEED, LANDING, "site", 50) == [
+        "https://docs.example.com/en/other", C1, SINGLE, "https://docs.example.com/en/support/index"]
+    # The include patterns apply before the cap: the one page allowed is a book page, not the navigation link.
+    assert discover_links(SEED, '<a href="/en/other">n</a>' + LANDING, "site", 1, BOOKS) == [C1]
+    assert discover_links(SEED, LANDING, "site", 50, BOOKS, ["*html-single*"]) == [C1]
+
+
+def test_rewrites_apply_before_the_scope_and_the_duplicates_check():
+    html = '<a href="/documentation/p/1/html/a">old</a><a href="/en/documentation/p/1/html/a">new</a>'
+    rules = [(r"^(https://docs\.example\.com)/documentation/", r"\1/en/documentation/")]
+    assert discover_links(SEED, html, "site", 50, ["*/en/*"], (), rules) == [
+        "https://docs.example.com/en/documentation/p/1/html/a"]
+
+
+def test_the_redhat_docs_preset_is_site_with_its_include_and_rewrite():
+    seed = "https://docs.redhat.com/en/documentation/ocp/4.21/html/networking/index"
+    html = ('<a href="/documentation/ocp/4.21/html/networking/ovn">no en</a><a href="/en/support">s</a>'
+            '<a href="/en/documentation/ocp/4.21/html-single/security/index">x</a>')
+    rules = [(r"^(https?://docs\.redhat\.com)/documentation/", r"\1/en/documentation/")]
+    assert discover_links(seed, html, "redhat-docs", 50) == discover_links(seed, html, "site", 50, BOOKS, (), rules)
 
 
 def test_include_and_exclude_patterns():
@@ -88,7 +112,7 @@ def test_connector_fetches_the_seed_unconditionally_and_the_rest_conditionally()
     site = {SEED: (200, LANDING, {}), C1: (304, "", {}), SINGLE: (200, "<h1>S</h1><p>x</p>", {"ETag": '"e2"'})}
     calls = []
     previous = {C1: {"etag": '"e1"', "last_modified": "Mon, 01 Jan 2026 00:00:00 GMT"}}
-    out = dict(_connector(site, calls).iter_pages([SEED], previous))
+    out = dict(_connector(site, calls).iter_pages([SEED], previous, BOOKS, crawl="site"))
     assert out[SEED].html == LANDING and out[C1] is None and out[SINGLE].etag == '"e2"'
     assert calls[0] == (SEED, {})
     assert dict(calls)[C1] == {"If-None-Match": '"e1"', "If-Modified-Since": "Mon, 01 Jan 2026 00:00:00 GMT"}
@@ -96,7 +120,7 @@ def test_connector_fetches_the_seed_unconditionally_and_the_rest_conditionally()
 
 def test_connector_survives_an_unreadable_page():
     site = {SEED: (200, LANDING, {}), C1: (503, "", {}), SINGLE: (200, "<p>ok</p>", {})}
-    out = dict(_connector(site, []).iter_pages([SEED], {}))
+    out = dict(_connector(site, []).iter_pages([SEED], {}, BOOKS, crawl="site"))
     assert out[C1] is None and out[SINGLE] is not None
 
 
@@ -318,13 +342,25 @@ def test_registration_stores_the_form_and_keeps_the_manifest():
     assert saved.source_type == "WEB" and saved.tags == ["knowledge.tech"]
     assert saved.type_data["pages"] == {SEED: {"content_hash": "h"}} and saved.type_data["urls"] == [SEED]
     assert saved.type_data["metadata"] == {"product": "P"} and saved.type_data["max_pages"] == 7
+    assert saved.type_data["crawl"] == "generic" and saved.type_data["rewrites"] == []  # the defaults
     assert source["pipeline_id"].startswith("web_")
+
+
+def test_registration_stores_the_rewrites():
+    rules = [{"match": "^(https://a\\.example)/doc/", "replace": "\\1/en/doc/"}]
+    reg = WebRegistration(MagicMock(), "u", {"urls": [SEED], "crawl": "site", "rewrites": rules})
+    assert reg.run_validator() == (True, None)
+    assert reg.source_data.form_data["rewrites"] == rules and reg.source_data.form_data["crawl"] == "site"
 
 
 @pytest.mark.parametrize("instance,issue", [
     ({"urls": []}, "MissingField"),
     ({"urls": ["ftp://x"]}, "InvalidUrl"),
     ({"crawl": "everything"}, "InvalidValue"),
+    ({"rewrites": [{"match": "(unclosed", "replace": ""}]}, "InvalidValue"),
+    ({"rewrites": [{"match": "a", "replace": "\\2"}]}, "InvalidValue"),
+    ({"rewrites": [{"match": "", "replace": "x"}]}, "InvalidValue"),
+    ({"rewrites": [{"match": "a", "replace": "b"}] * 21}, "InvalidValue"),
 ])
 def test_registration_refuses_a_bad_form(instance, issue):
     ok, problem = WebRegistration(MagicMock(), "u", {"urls": [SEED], **instance}).run_validator()

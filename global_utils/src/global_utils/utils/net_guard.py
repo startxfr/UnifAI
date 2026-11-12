@@ -9,9 +9,9 @@ The rule (:func:`check_outbound_url`):
 * the scheme is http or https, with no credentials in the URL;
 * a host that resolves to a public address is allowed;
 * a host that resolves to a loopback, link-local (including 169.254.169.254), unspecified,
-  multicast, reserved or private address is refused, unless its name is on the allow-list:
-  the platform's own runtime namespace (``*.zuno-ai-run.svc``) and the names listed in
-  ``OUTBOUND_ALLOWED_HOSTS`` (comma-separated, exact host or ``.suffix``).
+  multicast, reserved or private address is refused, unless its name is on the allow-list
+  ``OUTBOUND_ALLOWED_HOSTS`` (comma-separated, exact host or ``.suffix``). Nothing is allowed by name
+  by default; the operator lists the stack's own namespace and UnifaiStack ``spec.outboundAllowedHosts``.
 
 :func:`check_outbound_url` alone resolves the name before the connection, so a name that answers
 differently a moment later (DNS rebinding) is not caught. The HTTP clients that carry a user-typed URL
@@ -28,8 +28,6 @@ from collections.abc import Callable, Iterable
 from urllib.parse import urlparse
 
 ALLOWED_HOSTS_ENV = "OUTBOUND_ALLOWED_HOSTS"
-# The platform's own runtime namespace: its gateways and model servers are legitimate targets.
-DEFAULT_ALLOWED_SUFFIXES = (".zuno-ai-run.svc", ".zuno-ai-run.svc.cluster.local")
 
 Resolver = Callable[[str], Iterable[str]]
 
@@ -54,8 +52,7 @@ def _is_public(address: str) -> bool:
 
 
 def _allowed_by_name(host: str, extra: Iterable[str] | None) -> bool:
-    entries = list(DEFAULT_ALLOWED_SUFFIXES)
-    entries += [e.strip().lower() for e in (extra if extra is not None else os.environ.get(ALLOWED_HOSTS_ENV, "").split(",")) if e and e.strip()]
+    entries = [e.strip().lower() for e in (extra if extra is not None else os.environ.get(ALLOWED_HOSTS_ENV, "").split(",")) if e and e.strip()]
     return any(host == e or (e.startswith(".") and host.endswith(e)) for e in entries)
 
 
@@ -68,7 +65,7 @@ def vet_outbound_url(
     """Check ``url`` and return ``(host, addresses)``.
 
     ``addresses`` are the public addresses the host resolved to, in the order to try them; ``None`` when
-    the host is trusted by name (the platform's runtime namespace or the allow-list), in which case the
+    the host is trusted by name (the allow-list), in which case the
     caller connects the usual way. Raises :class:`UnsafeUrlError` when the URL must not be reached.
     """
     try:

@@ -109,6 +109,13 @@ func ragSourceInstance(obj *unifaiv1.UnifaiRAGSource) (string, map[string]any, e
 		instance["include"], instance["exclude"] = append([]string{}, w.Include...), append([]string{}, w.Exclude...)
 		instance["maxPages"] = w.MaxPages
 		instance["metadata"] = w.Metadata
+		if len(w.Rewrites) > 0 { // only when set: the hash of existing sources stays the same
+			rewrites := make([]map[string]any, 0, len(w.Rewrites))
+			for _, r := range w.Rewrites {
+				rewrites = append(rewrites, map[string]any{"match": r.Match, "replace": r.Replace})
+			}
+			instance["rewrites"] = rewrites
+		}
 		return sourceTypeWeb, instance, nil
 	case sourceTypeGit:
 		g := obj.Spec.Git
