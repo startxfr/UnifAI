@@ -101,6 +101,21 @@ the release bot. The tag starts `release.yml`:
 Requirements before the first run: the settings of the GitHub bot, the environments `release-bot`, `quay-weekly`,
 `quay-release`, `quay-test`, the rulesets, `devel` as default branch, the quay robot and test repositories.
 
+## Rolling the stack images back
+
+The operator never goes down (OLM does not downgrade it); the five stack images can be pinned back to an earlier
+release under the newer operator. This was tested on demo333 on 2026-11-12 (0.1.69 → 0.1.68 → 0.1.69, golden path
+green each time). It is safe only while the newer images did not write data the older ones refuse. Known case:
+
+- **0.1.69, `docs_rag.source_merge`**: a `docs_rag` retriever saved through the API by an image of 0.1.69 or later
+  stores `"source_merge": "score"` in its config even when nobody set it, and the retriever config rejects unknown
+  fields; a 0.1.68 image rejects it (`Extra inputs are not permitted`, checked 2026-11-12 with the 0.1.68 image).
+  Before a rollback to 0.1.68 or earlier, list the stored retrievers (`resources` collection, `category` retrievers,
+  `type` docs_rag) and remove `cfg_dict.source_merge` from those that carry it. Retrievers saved by 0.1.68 or
+  earlier are not affected.
+
+A release that adds a field to a stored element config therefore needs a line here.
+
 ## Weekly automation (phase 3)
 
 - **`upstream-sync.yml`**, Thursday 06:00 UTC (and Run workflow): fast-forwards `main` to upstream `main` (read only,
