@@ -490,6 +490,13 @@ func TestUnifaiStack(t *testing.T) {
 		}
 	})
 
+	t.Run("a resource in use is force-deleted by detach, replace or cascade (R-552)", func(t *testing.T) {
+		if os.Getenv("E2E_FULL") == "" {
+			t.Skip("E2E_FULL=1 to run: forced deletion of resources in use")
+		}
+		checkResourceDeletion(t, ns)
+	})
+
 	t.Run("deletion with deletionPolicy Delete removes everything", func(t *testing.T) {
 		must(t, c.Get(ctx, client.ObjectKeyFromObject(st), st))
 		must(t, c.Delete(ctx, st))
