@@ -63,6 +63,35 @@ def _scan_refs(node: Any, bucket: set[str]) -> None:
             _scan_refs(v, bucket)
 
 
+# Plan step fields that hold a resource id (stored bare, without the ``$ref:`` prefix, by the operator and by
+# API clients). ``after`` and ``branches`` hold step uids, never resource ids, and are left alone.
+_PLAN_RID_KEYS = ("node", "exit_condition")
+
+
+def remap_plan_rids(spec_dict: dict, mapping: dict[str, str]) -> dict:
+    """Replace old resource ids by new ones in the bare ``node`` / ``exit_condition`` of the plan steps.
+
+    ``RefRemapper`` only rewrites ``$ref:<rid>`` strings; a plan step that names its condition (or node) by the
+    bare rid kept the deleted id after a ``replace``, and the graph build then failed with "Condition reference
+    ... not found" (R-552, found on the live stack 2026-11-12). Returns a copy.
+    """
+    plan = spec_dict.get("plan")
+    if not isinstance(plan, list):
+        return spec_dict
+    result = dict(spec_dict)
+    steps = []
+    for step in plan:
+        if isinstance(step, dict):
+            step = dict(step)
+            for key in _PLAN_RID_KEYS:
+                value = step.get(key)
+                if isinstance(value, str) and value in mapping:
+                    step[key] = mapping[value]
+        steps.append(step)
+    result["plan"] = steps
+    return result
+
+
 def remove_resource_ref_from_nested_dict(d: dict, rid: str) -> dict:
     """Remove ``$ref:rid`` from a nested dict (resource cfg_dict style).
 

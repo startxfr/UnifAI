@@ -10,6 +10,7 @@ from mas.core.ref import RefRemapper
 from mas.core.ref.raw_blueprint_spec import (
     dedupe_blueprint_catalogue,
     extract_ref_ids_from_raw_spec,
+    remap_plan_rids,
     remove_resource_ref_from_catalogue,
     remove_resource_ref_from_nested_dict,
 )
@@ -50,6 +51,7 @@ class BlueprintRefService:
         """Replace old rids with new rids in a blueprint's spec."""
         bp_doc = self._repo.load(blueprint_id)
         spec = RefRemapper.remap(bp_doc.spec_dict, mapping)
+        spec = remap_plan_rids(spec, mapping)
         spec = dedupe_blueprint_catalogue(spec)
         self._save_spec(blueprint_id, spec)
 

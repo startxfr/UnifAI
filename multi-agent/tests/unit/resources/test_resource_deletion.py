@@ -357,6 +357,38 @@ class TestForceDelete:
         }
         assert set(stored_bp.rid_refs) == {"new", "bare-keep", "other"}
 
+    def test_replace_rewrites_the_bare_rids_of_the_plan(self):
+        """R-552: a plan step names its condition by the bare rid; after a replace it must follow the new one."""
+        target = _resource("old", ResourceCategory.CONDITION)
+        replacement = _resource("new", ResourceCategory.CONDITION)
+        harness = _service(
+            target,
+            replacement,
+            blueprints=[
+                (
+                    "bp-1",
+                    {
+                        "name": "Workflow",
+                        "conditions": [{"rid": "$ref:old"}],
+                        "plan": [
+                            {"uid": "ask", "node": "user_question", "exit_condition": "old", "branches": {"a": "old"}},
+                            {"uid": "old", "node": "agent", "after": "old"},
+                        ],
+                    },
+                    ["old"],
+                ),
+            ],
+        )
+
+        harness.service.force_delete("old", "replace", "new", caller=harness.caller, username="bob")
+
+        spec = harness.bp_repo.load("bp-1").spec_dict
+        assert spec["conditions"] == [{"rid": "$ref:new"}]
+        assert spec["plan"][0]["exit_condition"] == "new"
+        # step uids and branch targets are not resource ids: left alone even when they look like the old rid
+        assert spec["plan"][0]["branches"] == {"a": "old"}
+        assert spec["plan"][1] == {"uid": "old", "node": "agent", "after": "old"}
+
     def test_wrong_mode_does_not_mutate(self):
         target = _resource("old", ResourceCategory.LLM)
         parent = _resource(
