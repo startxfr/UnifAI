@@ -41,7 +41,8 @@ def test_mcp_sse_transport_refuses(url):
 
 @pytest.mark.parametrize("url", BAD)
 def test_oauth_discovery_get_refuses(url):
-    from adapters.outbound.http.httpx_client import HttpxClient
+    # Imported the way bootstrap/container.py does: "adapters" can resolve to tests/unit/adapters in a full run.
+    from outbound.http.httpx_client import HttpxClient
 
     with pytest.raises(UnsafeUrlError):
         asyncio.run(HttpxClient().get(url))
