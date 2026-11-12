@@ -1,0 +1,130 @@
+# Upstream test debt: unit tests that already fail on upstream main, so fork-tests.yml (job `unit`) does not run them.
+# Measured 2026-11-12 on upstream main dbc1fef3f (PR #279): multi-agent 78 failed + 21 errors, identity 22 errors,
+# rag none. devel fails on exactly the same tests, so everything else (fork tests included) must pass.
+#
+# Format: `<suite directory> <path or pytest node id>`, relative to the suite directory. A path without `::` is
+# ignored as a whole (it does not collect); a node id is deselected. fork/ci/run_unit_tests.py reads this file.
+#
+# After an upstream sync that breaks more upstream tests, check on upstream main itself before adding them here: a
+# test that fails only on devel is a fork regression, never debt. Remove the entries upstream fixes.
+
+# identity: every test of these modules needs a live MongoDB (pymongo ServerSelectionTimeoutError)
+shared-resources/identity tests/unit/test_auth_routes.py
+shared-resources/identity tests/unit/test_health_endpoints.py
+
+# the StepContext test helper passes a Mock as metadata (pydantic refuses it)
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionBasic::test_no_outgoing_packets_returns_empty_string
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionBasic::test_no_packets_returns_empty_string
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionEdgeCases::test_empty_adjacent_nodes
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionEdgeCases::test_malformed_packets_handled_gracefully
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionEdgeCases::test_packets_without_dst_attribute
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionEdgeCases::test_packets_without_src_attribute
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionEdgeCases::test_state_without_inter_packets_attribute
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionPerformance::test_deduplication_of_targets
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionPerformance::test_performance_with_many_irrelevant_packets
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionPerformance::test_performance_with_many_packets
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionRouting::test_filters_expired_packets
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionRouting::test_filters_non_adjacent_nodes
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionRouting::test_handles_mixed_packet_types
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionRouting::test_multiple_targets_returns_tuple
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionRouting::test_single_target_returns_string
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsBasic::test_duplicate_targets_are_deduplicated
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsBasic::test_empty_packets_returns_empty_set
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsBasic::test_multiple_outgoing_packets_returns_all_targets
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsBasic::test_no_inter_packets_attribute_returns_empty_set
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsBasic::test_single_outgoing_packet_returns_target
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsEdgeCases::test_malformed_packets_handled_gracefully
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsEdgeCases::test_packets_with_invalid_address_objects
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsEdgeCases::test_packets_without_dst_attribute
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsEdgeCases::test_packets_without_is_expired_attribute
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsEdgeCases::test_packets_without_src_attribute
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsFiltering::test_empty_adjacent_nodes_returns_empty_set
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsFiltering::test_filters_expired_packets
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsFiltering::test_filters_non_adjacent_nodes
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsFiltering::test_filters_packets_from_other_nodes
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsIntegrationWithCondition::test_integration_multiple_targets_scenario
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsIntegrationWithCondition::test_integration_no_targets_scenario
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsIntegrationWithCondition::test_integration_single_target_scenario
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsPacketTypes::test_handles_debug_packets
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsPacketTypes::test_handles_mixed_packet_types
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsPacketTypes::test_handles_system_packets
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsPacketTypes::test_handles_task_packets
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsPerformance::test_performance_with_many_adjacent_nodes
+multi-agent tests/unit/iem_system/core/test_iem_utils_routing.py::TestGetOutgoingTargetsPerformance::test_performance_with_many_packets
+multi-agent tests/unit/iem_system/messaging/test_default_messenger.py::TestDefaultInterMessenger::test_broadcast_functionality
+multi-agent tests/unit/iem_system/messaging/test_default_messenger.py::TestDefaultInterMessenger::test_complex_messaging_scenario
+multi-agent tests/unit/iem_system/messaging/test_default_messenger.py::TestDefaultInterMessenger::test_get_adjacent_nodes_with_context
+multi-agent tests/unit/iem_system/messaging/test_messenger_factory.py::TestMessengerFactory::test_adjacency_function_creation_from_context
+multi-agent tests/unit/iem_system/messaging/test_messenger_factory.py::TestMessengerFactory::test_integration_test_all_factory_types
+multi-agent tests/unit/iem_system/messaging/test_messenger_factory.py::TestMessengerFactory::test_messenger_from_ctx_adjacency_disabled
+multi-agent tests/unit/iem_system/messaging/test_messenger_factory.py::TestMessengerFactory::test_messenger_from_ctx_basic
+multi-agent tests/unit/iem_system/messaging/test_messenger_factory.py::TestMessengerFactory::test_messenger_from_ctx_empty_adjacent_nodes
+multi-agent tests/unit/iem_system/messaging/test_messenger_factory.py::TestMessengerFactory::test_messenger_from_ctx_with_different_contexts
+multi-agent tests/unit/iem_system/messaging/test_messenger_factory.py::TestMessengerFactory::test_messenger_from_ctx_with_middleware
+
+# the agent iterator's tracing service is None in the test setup
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_action_approval_callback_approval
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_action_approval_callback_rejection
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_batch_execution_preserves_action_order
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_confirm_action_execution
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_confirm_action_rejection
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_conversation_message_updates_finish
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_conversation_message_updates_planning
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_error_handling_non_recoverable
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_error_handling_recoverable
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_guided_mode_pending_actions
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_multiple_actions_batch_execution
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_single_action_execution_auto_mode
+multi-agent tests/unit/agent_system/execution/test_agent_iterator.py::TestAgentIterator::test_streaming_events_emission
+
+# offset-naive and offset-aware datetimes are subtracted
+multi-agent tests/unit/iem_system/core/test_base_packet.py::TestBaseIEMPacket::test_packet_expiration_logic_expired
+multi-agent tests/unit/iem_system/core/test_base_packet.py::TestBaseIEMPacket::test_packet_expiration_with_timezone_issues
+multi-agent tests/unit/iem_system/lifecycle/test_packet_lifecycle.py::TestPacketLifecycle::test_packet_expiration_handling
+multi-agent tests/unit/iem_system/lifecycle/test_packet_lifecycle.py::TestPacketLifecycle::test_packet_purging_strategies
+multi-agent tests/unit/iem_system/messaging/test_default_messenger.py::TestDefaultInterMessenger::test_packet_inbox_excludes_expired
+multi-agent tests/unit/iem_system/messaging/test_default_messenger.py::TestDefaultInterMessenger::test_packet_purging_by_age
+multi-agent tests/unit/iem_system/middleware/test_middleware_validation.py::TestMiddlewareValidation::test_content_validation_expired_packets
+
+# markers 'orchestrator' and 'workload' are not registered (--strict-markers): the module is not collected
+multi-agent tests/unit/orchestrator/test_orchestrator_edge_cases.py
+multi-agent tests/unit/orchestrator/test_orchestrator_phases.py
+multi-agent tests/unit/orchestrator/test_orchestrator_response_handling.py
+multi-agent tests/unit/orchestrator/test_orchestrator_simple.py
+multi-agent tests/unit/orchestrator/test_thread_hierarchy.py
+multi-agent tests/unit/orchestrator/test_work_plan_state_machine.py
+multi-agent tests/unit/orchestrator/test_workload_models.py
+
+# ReActStrategy.think()/build_context() signatures changed; a module 'elements' no longer exists
+multi-agent tests/unit/agent_system/strategies/test_react_strategy.py::TestReActStrategy::test_build_context_with_observations
+multi-agent tests/unit/agent_system/strategies/test_react_strategy.py::TestReActStrategy::test_error_recovery_with_system_feedback
+multi-agent tests/unit/agent_system/strategies/test_react_strategy.py::TestReActStrategy::test_reasoning_validation_too_short
+multi-agent tests/unit/agent_system/strategies/test_react_strategy.py::TestReActStrategy::test_think_with_final_answer
+multi-agent tests/unit/agent_system/strategies/test_react_strategy.py::TestReActStrategy::test_think_with_multiple_tool_calls
+multi-agent tests/unit/agent_system/strategies/test_react_strategy.py::TestReActStrategy::test_think_with_parse_error
+multi-agent tests/unit/agent_system/strategies/test_react_strategy.py::TestReActStrategy::test_think_with_single_tool_call
+
+# ToolCall / ChatMessage models are stricter than the parser tests expect
+multi-agent tests/unit/agent_system/parsers/test_parser_edge_cases.py::TestParserEdgeCases::test_empty_and_none_values
+multi-agent tests/unit/agent_system/parsers/test_parser_edge_cases.py::TestParserEdgeCases::test_extremely_large_content
+multi-agent tests/unit/agent_system/parsers/test_parser_edge_cases.py::TestParserEdgeCases::test_malformed_tool_call_structures
+multi-agent tests/unit/agent_system/parsers/test_parser_edge_cases.py::TestParserEdgeCases::test_many_tool_calls_boundary
+multi-agent tests/unit/agent_system/parsers/test_tool_call_parser.py::TestToolCallParser::test_parse_invalid_tool_args
+multi-agent tests/unit/agent_system/parsers/test_tool_call_parser.py::TestToolCallParser::test_parse_no_tool_calls_none_content
+
+# assertions out of date with the router condition and RTGraphPlan behaviour
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionBasic::test_no_context_returns_empty_string
+multi-agent tests/unit/conditions/test_router_direct_condition.py::TestRouterDirectConditionEdgeCases::test_none_adjacent_nodes
+multi-agent tests/unit/graph/topology/test_rtgraphplan_integration.py::TestRTGraphPlanTopologyIntegration::test_rtgraphplan_creates_topology_for_multiple_paths
+multi-agent tests/unit/graph/topology/test_rtgraphplan_integration.py::TestRTGraphPlanTopologyIntegration::test_rtgraphplan_creates_topology_for_simple_chain
+multi-agent tests/unit/graph/topology/test_rtgraphplan_integration.py::TestRTGraphPlanTopologyIntegration::test_rtgraphplan_handles_branching_conditions
+multi-agent tests/unit/graph/topology/test_rtgraphplan_integration.py::TestRTGraphPlanTopologyIntegration::test_rtgraphplan_handles_cycles
+
+# fixture 'mock_element_registry' no longer exists
+multi-agent tests/unit/graph/topology/test_rtgraphplan_integration.py::TestRTGraphPlanStepContextInjection::test_all_nodes_receive_step_context
+multi-agent tests/unit/graph/topology/test_rtgraphplan_integration.py::TestRTGraphPlanStepContextInjection::test_nodes_without_set_context_method
+multi-agent tests/unit/graph/topology/test_rtgraphplan_integration.py::TestRTGraphPlanStepContextInjection::test_step_context_contains_correct_topology
+multi-agent tests/unit/graph/topology/test_rtgraphplan_integration.py::TestRTGraphPlanStepContextInjection::test_step_context_includes_adjacent_nodes
+
+# imports adapters.outbound..., which resolves to tests/unit/adapters in a full run
+multi-agent tests/unit/resources/test_resource_deletion.py

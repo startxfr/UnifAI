@@ -34,7 +34,10 @@ verifies all of it before deploying
   change whose own run was cancelled or replaced in the queue. A manual run builds everything, or the `components`
   input (e.g. `rag,operator`).
 - `.github/workflows/fork-tests.yml` runs, without a cluster, the guarded MCP and A2A clients against real local
-  servers (`multi-agent/tests/integration/external_servers`), the outbound guard unit tests and the `fork/ci` tests.
+  servers (`multi-agent/tests/integration/external_servers`), the outbound guard unit tests, the `fork/ci` tests and
+  the unit tests of rag and identity, multi-agent next (`fork/ci/run_unit_tests.py`). Those skip only the tests that
+  already fail on upstream main, listed in `fork/ci/unit-test-debt.txt`; any other failure is red, and a red
+  fork-tests skips the weekly release.
 - Both environments hold `QUAY_USERNAME` and `QUAY_TOKEN` of a quay robot with write access to `unifai-*`.
 - The identity zuno accepts is the workflow path and ref: do not rename the workflow file or change its triggers without changing
   zuno-demo's `platform/supply-chain/image-identities.yaml`.
