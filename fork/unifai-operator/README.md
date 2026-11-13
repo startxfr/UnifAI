@@ -188,8 +188,14 @@ report each step; a bundle listed by name in the ConfigMap `unifai-agent-revocat
 
 The OKF format, and how to write, sign and publish a bundle and the `UnifaiAgentBundle` that deploys it, are documented
 by the project that specifies the format and serves as the reference example,
-[zuno-demo-agents](https://github.com/startxfr/zuno-demo-agents): see its
-[README](https://github.com/startxfr/zuno-demo-agents#readme) and [RELEASING.md](https://github.com/startxfr/zuno-demo-agents/blob/main/RELEASING.md).
+[zuno-demo-agents](https://github.com/startxfr/zuno-demo-agents) (links pinned to its tag v0.14.4):
+- [the `UnifaiAgentBundle` resource](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/unifaiagentbundle.md): every `spec` field, the
+  [artifact types](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/unifaiagentbundle.md#artifact-types), the
+  [conditions](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/unifaiagentbundle.md#conditions) and the [revocation](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/unifaiagentbundle.md#revocation);
+- [the OKF field reference](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/okf-reference.md) and [the files of a bundle](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/bundle-files.md);
+- [adding an agent](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/add-an-agent.md);
+- [publishing and verifying a release](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/publish-and-verify.md), including
+  [rollback](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/publish-and-verify.md#roll-back).
 
 **Contract headers.** The emitted LLMs, MCP providers and A2A nodes send the gateways behind them headers named
 `X-<Namespace>-<Name>`: `Agent`, `Task`, `Data-Classification`, `Run-Id`, `Max-Tokens`, and on A2A calls
@@ -354,48 +360,18 @@ the digests a CI run of `publish-images.yml` reports: they are the signed ones.
 
 Free-form delegation stays refused: the CRD refuses an `UnifaiAgent` of type `a2a_agent_node`, and a workflow or a
 template holding an A2A node (inline or through `$ref`) goes to `Error`. Workflows built by hand in the UnifAI UI do not
-go through these checks.
-
-An agent bundle may delegate, read-only, through an A2A gateway that checks the caller's groups, the declared targets,
-the delegation depth and cycles:
-
-```yaml
-spec:
-  delegation:
-    gatewayURL: http://a2a-gateway.gateways.svc:8080
-    maxRounds: 5                                # orchestrator rounds per turn (default 5)
-  ceilings:
-    delegationTargets: [arkos/draft-architecture-testimonial]
-```
-
-- Without `spec.delegation`, a bundle declaring `zuno.delegation.targets` is `Valid=False` (`DelegationUnsupported`).
-  A target missing from `ceilings.delegationTargets` is `WithinCeilings=False` (`Widening`).
-- Each target is resolved against its `Verified`, `Ready` `UnifaiAgentBundle` in the namespace. Only the target's primary
-  task can be reached until the gateway reads `X-<Namespace>-Task`; other tasks are `DelegationTargetUnresolved`.
-- Every task of a delegating agent becomes an orchestrator (`<task>-orchestrator`) over the task's work agent and one
-  inline `a2a_agent_node` per target (`<gatewayURL>/agents/<agent>`). The work agent is the only agent of
-  `retrieve_reason_respond` and the drafting stage of `plan_draft_write` (plan, then the orchestrator, then the draft
-  stage or an A2A node, then write). The A2A node forwards the user's token and the chain
-  headers the gateway verifies: `X-<Namespace>-Delegated-By: <agent>:<task>` and `X-<Namespace>-Delegation-Depth: 1`. A worker runs only
-  on the work the orchestrator sends it, so a target is not called on a turn that does not need it.
-- Classification is monotone and applied statically: every task of a delegating agent runs at the highest level of the
-  task and its targets, from its first call (a C1 agent delegating to a C3 one is C3, local models only).
-- Only a workflow owned by such a bundle may hold A2A nodes, and only towards its own gateway. A target is never
-  raised by what delegates to it: its own tasks keep their classification.
+go through these checks. Only a workflow owned by an `UnifaiAgentBundle` may hold A2A nodes, and only towards its own
+gateway. Setting up delegation (`spec.delegation`, `ceilings.delegationTargets`, the classification it implies) is
+documented in [the resource page](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/unifaiagentbundle.md#delegation-delegation) and in the
+[OKF reference](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/okf-reference.md#delegation-v03).
 
 ### Limits of a bundle's agents
 
-Applied by UnifAI (no longer listed in `status.unmapped`):
-
-- `zuno.limits.max_steps` (task, else agent): the agent's `max_rounds`, at most `spec.ceilings.maxSteps` (default 50).
-- `zuno.limits.max_tokens` (task, alias `zuno.max_tokens`, else agent, else `spec.llm.maxTokens`; 1 to 8192): sent on
-  the task's LLM as the `X-<Namespace>-Max-Tokens` header and as the client's `max_tokens`, for the model gateway to
-  enforce; with none declared nothing is sent.
-- `zuno.limits.memory.history` (alias `zuno.memory.history`; `enabled`, `max_turns` 1-50, `token_budget` 100-32000),
-  per agent: the agents get `history_enabled`, `history_max_turns` and `history_token_budget`. The oldest turns are
-  dropped whole, the newest is always kept, and tokens are estimated at 4 characters each. `custom_agent_node` bounds
-  the conversation messages and, with `history_token_budget`, the "previous agent results" block (the workspace keeps
-  every result of a thread); `orchestrator_node` bounds the conversation messages.
+UnifAI applies `max_steps`, `max_tokens` (as the client's `max_tokens` and the `X-<Namespace>-Max-Tokens` header, for
+the model gateway to enforce), `max_tokens_per_turn` and the conversation history limits; the model roles, guardrails
+and quotas are enforced by the platform around UnifAI and reported in `status.unmapped`. The fields are described in the
+[OKF reference](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/okf-reference.md#limits-v03) and the ceilings in
+[the resource page](https://github.com/startxfr/zuno-demo-agents/blob/v0.14.4/docs/unifaiagentbundle.md#ceilings-ceilings).
 
 `spec.llm.config.timeout_seconds` is the client's request timeout (default 120 s): raise it above the slowest cold
 model start of the gateway path.
