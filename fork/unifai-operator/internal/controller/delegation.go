@@ -12,17 +12,12 @@ import (
 	"github.com/startxfr/unifai-operator/internal/okf"
 )
 
-// Read-only A2A delegation through the zuno a2a-gateway (zuno ADR-0401/0403/0585, WP-173 short path). A bundle declaring
-// zuno.delegation.targets, with spec.delegation set, emits each task as an orchestrator over the task's own agent and
-// one A2A node per target. The gateway checks the user's groups, the declared targets, depth and cycles from the
-// chain headers the node sends; the operator makes sure only a reviewed bundle can send them.
+// Read-only A2A delegation through an A2A gateway. A bundle declaring zuno.delegation.targets (the OKF key), with
+// spec.delegation set, emits each task as an orchestrator over the task's own agent and one A2A node per target. The
+// gateway checks the user's groups, the declared targets, depth and cycles from the chain headers the node sends; the
+// operator makes sure only a reviewed bundle can send them.
 
-const (
-	defaultDelegationRounds = 5
-	headerDelegatedBy       = "X-Zuno-Delegated-By"
-	headerDelegationDepth   = "X-Zuno-Delegation-Depth"
-	headerTargetTask        = "X-Zuno-Task"
-)
+const defaultDelegationRounds = 5
 
 // delegationTarget is a declared target resolved against its UnifaiAgentBundle in the namespace.
 type delegationTarget struct {
@@ -122,7 +117,7 @@ func delegatingTask(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, t okf.Task, c
 	obj := &unifaiv1.UnifaiAgent{ObjectMeta: childMeta(cr, orch), Spec: unifaiv1.UnifaiAgentSpec{
 		CommonSpec: common, Type: "orchestrator_node",
 		ConfigSpec: unifaiv1.ConfigSpec{Config: rawJSON(orchestratorConfig(cr, b, t, taskName, stageUID(at), targets))}}}
-	return obj, delegatingBlueprint(cond, orch, stages, at, a2aNodes(cr.Spec.Delegation, b.Name, t.Name, level, generationCeiling(b.Tokens(t), cr.Spec.LLM.MaxTokens), targets))
+	return obj, delegatingBlueprint(cond, orch, stages, at, a2aNodes(contractOf(cr.Spec.ContractNamespace), cr.Spec.Delegation, b.Name, t.Name, level, generationCeiling(b.Tokens(t), cr.Spec.LLM.MaxTokens), targets))
 }
 
 // orchestratorConfig coordinates a delegating task: its own agent does the task's work, and a target is called whenever the request names it or asks for what it provides (never answered in its place).
@@ -163,22 +158,21 @@ func agentTitle(b *okf.Bundle) string {
 }
 
 // a2aNodes are the inline blueprint nodes of the targets. They carry the user's own token and the delegation chain
-// (<caller agent>:<task>, depth 1) that the gateway verifies; X-Zuno-Task names the target task for when the gateway
-// reads it (it is the primary task today). They also carry the run's classification, as the LLM and MCP calls do.
-func a2aNodes(d *unifaiv1.BundleDelegation, agent, task string, level okf.Level, maxTokens int, targets []delegationTarget) []map[string]any {
+// (<caller agent>:<task>, depth 1) that the gateway verifies; X-<Namespace>-Task names the target task for when the
+// gateway reads it (it is the primary task today). They also carry the run's classification, as the LLM and MCP calls do.
+func a2aNodes(c contract, d *unifaiv1.BundleDelegation, agent, task string, level okf.Level, maxTokens int, targets []delegationTarget) []map[string]any {
 	out := make([]map[string]any, 0, len(targets))
 	for _, tg := range targets {
-		headers := map[string]any{
-			headerRunID:           "{session_id}",
-			headerDelegatedBy:     agent + ":" + task,
-			headerDelegationDepth: "1",
-			headerTargetTask:      tg.Task,
-		}
+		headers := map[string]any{}
+		c.set(headers, headerRunID, "{session_id}")
+		c.set(headers, headerDelegatedBy, agent+":"+task)
+		c.set(headers, headerDelegationDepth, "1")
+		c.set(headers, headerTargetTask, tg.Task)
 		if level > 0 { // the run's classification (raised by its targets) goes with the call; the gateway takes the higher of it and the target's
-			headers[headerClassification] = level.String()
+			c.set(headers, headerClassification, level.String())
 		}
 		if maxTokens > 0 { // the caller's generation ceiling follows the hop (R-519); the gateway forwards it
-			headers[headerMaxTokens] = strconv.Itoa(maxTokens)
+			c.set(headers, headerMaxTokens, strconv.Itoa(maxTokens))
 		}
 		config := map[string]any{
 			"type":               a2aNodeType,

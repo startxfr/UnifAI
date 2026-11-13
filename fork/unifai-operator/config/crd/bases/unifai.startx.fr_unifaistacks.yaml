@@ -119,6 +119,15 @@ spec:
                 required:
                 - s3
                 type: object
+              contractNamespace:
+                description: |-
+                  Namespace of the contract names multiagent recognises in the headers it sends (X-<Namespace>-Data-Classification,
+                  -Max-Tokens) and uses for the A2A metadata it exchanges (<namespace>.approval, <namespace>.classification), as the
+                  gateways it calls expect them (UNIFAI_CONTRACT_NAMESPACE). Set it like the contractNamespace of the stack's
+                  UnifaiAgentBundles. Unset = both unifai and zuno until 0.2, unifai only from 0.2.
+                maxLength: 30
+                pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+                type: string
               deletionPolicy:
                 default: Retain
                 description: Retain keeps PVCs, the generated secret and the Keycloak

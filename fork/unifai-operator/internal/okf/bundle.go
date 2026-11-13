@@ -1,6 +1,6 @@
-// Package okf reads Zuno OKF agent bundles (ADR-0564): the `agents/<name>/` tree of Markdown files with YAML
-// frontmatter that zuno-demo signs with its platform key. It is Zuno-specific and fork-only: only the
-// UnifaiAgentBundle controller imports it.
+// Package okf reads OKF agent bundles: the `agents/<name>/` tree of Markdown files with YAML frontmatter, in the format
+// github.com/startxfr/zuno-demo-agents specifies (its keys live under `zuno:`), signed by their publisher. It is
+// fork-only: only the UnifaiAgentBundle controller imports it.
 package okf
 
 import (

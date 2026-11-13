@@ -23,6 +23,7 @@ from a2a.types import (
 )
 from a2a.utils import get_text_parts
 
+from mas.core.contract import metadata_keys
 from mas.elements.llms.common.chat.message import ChatMessage, Role
 from mas.elements.providers.a2a_client.result import A2AResult, ResultKind
 
@@ -112,8 +113,9 @@ class A2AConverter:
             feedback: str = "",
     ) -> Message:
         """The answer to an approval request: a new message on the same task and context carrying a data part
-        ``{"zuno.approval": {request_id, decision, feedback}}``."""
-        data = {"zuno.approval": {"request_id": request_id, "decision": decision, "feedback": feedback}}
+        ``{"<namespace>.approval": {request_id, decision, feedback}}`` under every contract namespace in force."""
+        answer = {"request_id": request_id, "decision": decision, "feedback": feedback}
+        data = {key: dict(answer) for key in metadata_keys("approval")}
         return Message(
             role=A2ARole.user,
             parts=[Part(root=DataPart(data=data))],

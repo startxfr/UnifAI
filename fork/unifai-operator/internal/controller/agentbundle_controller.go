@@ -56,14 +56,7 @@ type AgentBundleReconciler struct {
 // +kubebuilder:rbac:groups=unifai.startx.fr,resources=unifaillms;unifaiagents;unifaiconditions;unifaiworkflows;unifaiproviders;unifaiteams,verbs=create;delete
 // +kubebuilder:rbac:groups=unifai.startx.fr,resources=unifaiteams,verbs=get;list;watch
 
-// Zuno headers the emitted LLMs send to the model gateway (ADR-0563, ADR-0565).
 const (
-	headerAgent          = "X-Zuno-Agent"
-	headerTask           = "X-Zuno-Task"
-	headerClassification = "X-Zuno-Data-Classification"
-	headerRunID          = "X-Zuno-Run-Id"
-	headerMaxTokens      = "X-Zuno-Max-Tokens"
-
 	// defaultMaxRounds bounds an emitted agent's reasoning/tool loop (custom_agent_node's own default is 100): a tool
 	// that keeps answering the same thing then ends in a final answer instead of a timeout. spec.agentConfig.max_rounds
 	// overrides it.
@@ -412,12 +405,13 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...dele
 		if h, ok := llm["default_headers"].(map[string]any); ok {
 			headers = h
 		}
-		headers[headerAgent] = b.Name
-		headers[headerTask] = t.Name
-		headers[headerClassification] = level.String()
-		headers[headerRunID] = "{session_id}"
+		c := contractOf(cr.Spec.ContractNamespace)
+		c.set(headers, headerAgent, b.Name)
+		c.set(headers, headerTask, t.Name)
+		c.set(headers, headerClassification, level.String())
+		c.set(headers, headerRunID, "{session_id}")
 		if tokens := generationCeiling(b.Tokens(t), cr.Spec.LLM.MaxTokens); tokens > 0 {
-			headers[headerMaxTokens] = strconv.Itoa(tokens)
+			c.set(headers, headerMaxTokens, strconv.Itoa(tokens))
 			llm["max_tokens"] = tokens
 		}
 		llm["default_headers"] = headers
@@ -445,10 +439,10 @@ func renderBundle(cr *unifaiv1.UnifaiAgentBundle, b *okf.Bundle, targets ...dele
 				if h, ok := mcp["additional_headers"].(map[string]any); ok {
 					mcpHeaders = h
 				}
-				mcpHeaders[headerAgent] = b.Name
-				mcpHeaders[headerTask] = t.Name
-				mcpHeaders[headerClassification] = level.String()
-				mcpHeaders[headerRunID] = "{session_id}"
+				c.set(mcpHeaders, headerAgent, b.Name)
+				c.set(mcpHeaders, headerTask, t.Name)
+				c.set(mcpHeaders, headerClassification, level.String())
+				c.set(mcpHeaders, headerRunID, "{session_id}")
 				mcp["additional_headers"] = mcpHeaders
 				objs = append(objs, &unifaiv1.UnifaiProvider{ObjectMeta: childMeta(cr, name), Spec: unifaiv1.UnifaiProviderSpec{
 					CommonSpec: common, Type: "mcp_server",

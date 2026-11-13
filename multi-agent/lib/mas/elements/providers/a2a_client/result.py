@@ -24,6 +24,8 @@ from a2a.types import (
     JSONRPCError,
 )
 
+from mas.core.contract import metadata_keys
+
 
 class ResultKind(str, Enum):
     """Discriminator for A2A result type."""
@@ -105,23 +107,26 @@ class A2AResult(BaseModel):
 
     @property
     def classification(self) -> Optional[str]:
-        """Data classification the remote agent answered at (``zuno.classification`` in the metadata of a completed
-        task, ADR-0403 clause 5); None when absent."""
+        """Data classification the remote agent answered at (``<namespace>.classification`` in the metadata of a
+        completed task, under a contract namespace in force); None when absent."""
+        keys = metadata_keys("classification")
         for source in (self.task, self.message):
-            value = (getattr(source, "metadata", None) or {}).get("zuno.classification") if source else None
-            if value:
-                return str(value)
+            metadata = (getattr(source, "metadata", None) or {}) if source else {}
+            for key in keys:
+                if value := metadata.get(key):
+                    return str(value)
         return None
 
     @property
     def approval(self) -> Optional[Dict[str, Any]]:
-        """The approval the remote agent asks for (``zuno.approval`` in the metadata of the status message of an
+        """The approval the remote agent asks for (``<namespace>.approval`` in the metadata of the status message of an
         input-required task: request_id, operation, args, reasoning); None when absent or without a request_id."""
         sources = [getattr(self.status_message_obj, "metadata", None), getattr(self.task, "metadata", None)]
         for metadata in sources:
-            value = (metadata or {}).get("zuno.approval")
-            if isinstance(value, dict) and value.get("request_id"):
-                return value
+            for key in metadata_keys("approval"):
+                value = (metadata or {}).get(key)
+                if isinstance(value, dict) and value.get("request_id"):
+                    return value
         return None
 
     @property

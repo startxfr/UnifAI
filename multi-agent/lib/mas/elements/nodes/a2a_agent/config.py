@@ -130,7 +130,7 @@ class A2AAgentNodeConfig(NodeBaseConfig):
     approval_mode: HITLMode = Field(
         default=HITLMode.SKIP,
         description=("What happens when the remote agent asks for an approval before a write (input-required with "
-                     "zuno.approval): ask relays it to the human of the session, skip rejects it (the remote agent "
+                     "<namespace>.approval): ask relays it to the human of the session, skip rejects it (the remote agent "
                      "does not run the write), dynamic relays it only when the session has human approval enabled. "
                      "Session auto-approve rules never answer it"),
         title="Approval mode",

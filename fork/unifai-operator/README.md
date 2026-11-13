@@ -176,34 +176,27 @@ metadata: {name: zuno-gateway}
 spec: {owner: ai-ops-01, builtin: true, type: openai_compatible, config: {model_name: auto, base_url: "http://ai-gateway:8080/v1"}}
 ```
 
-### Zuno OKF agent bundles (fork-only)
+### OKF agent bundles (fork-only)
 
-`UnifaiAgentBundle` (`internal/okf`, [`examples/agent/agentbundle-tekos.yaml`](examples/agent/agentbundle-tekos.yaml))
-maps one signed Zuno OKF agent bundle onto the object kinds above (zuno-demo ADR-0564). It is Zuno-specific and never
-proposed upstream. The pipeline runs in a fixed order and a failed step emits nothing, leaving what a previous good
-version emitted:
+`UnifaiAgentBundle` deploys one signed OKF agent bundle, pulled from an OCI registry and pinned by digest, as the object
+kinds above: per task an LLM, an agent (or the stages of its graph shape), the MCP provider of its tools, a workflow, and
+an optional team restricted to the bundle's access groups. It verifies the signature (`spec.verify`: a PEM public key or
+a keyless Sigstore identity, checked offline), validates every document against the OKF schemas, checks the bundle
+against `spec.ceilings` (a bundle can narrow what the CR allows, never widen it), then emits; a failed step emits nothing
+and leaves what the last good version emitted. Conditions `Verified`, `Valid`, `WithinCeilings`, `Emitted` and `Ready`
+report each step; a bundle listed by name in the ConfigMap `unifai-agent-revocations` (key `revoked`) is withdrawn.
 
-1. **Pull** `spec.source.oci.reference`, pinned by digest (tags are refused at admission); optional
-   `pullSecretRef` (dockerconfigjson). Layout: artifact type `application/vnd.zuno.okf.bundle.v1`, one
-   `application/vnd.zuno.okf.bundle.v1.tar+gzip` layer holding the `agents/<name>/` tree, and the
-   `cosign sign-blob` signature of the bundle digest in the manifest annotation `zuno.okf.signature`.
-2. **Verified**: the digest is recomputed exactly as zuno-demo's `sign_okf_bundle.py` does and the ECDSA signature
-   is checked against the PEM key in `spec.verify.publicKeyRef`, before any file is parsed.
-3. **Valid**: every OKF document's frontmatter is validated against the schemas embedded in `internal/okf/schema/`
-   (copies of zuno-demo `platform/okf/schema/`, OKF v0.2). The bundle must declare a graph shape that has a
-   blueprint template (only `retrieve_reason_respond` today). A bundle declaring `zuno.access.groups` is refused
-   (`EntitlementUnsupported`) unless `spec.entitlement: GatewayOnly`, since UnifAI cannot gate visibility by group.
-4. **WithinCeilings**: the tools and knowledge domains the tasks declare must be in `spec.ceilings`, and the
-   classification must not be below `ceilings.minClassification`.
-5. **Emitted** (owned, labelled `unifai.startx.fr/agent-bundle`): `<bundle>-direct` condition; per task
-   `<bundle>-<task>` LLM (the `spec.llm` template plus `X-Zuno-Agent`, `X-Zuno-Task`,
-   `X-Zuno-Data-Classification` and `X-Zuno-Run-Id: {session_id}` in `default_headers`) and agent (system prompt
-   from `prompts/<task>.md`, providers and retriever when the task declares tools or knowledge), and a linear
-   workflow, named `<bundle>` for the primary task. `classificationOverrides` may only raise a task's level.
-   Objects of a task removed from the bundle are deleted.
+The OKF format, and how to write, sign and publish a bundle and the `UnifaiAgentBundle` that deploys it, are documented
+by the project that specifies the format and serves as the reference example,
+[zuno-demo-agents](https://github.com/startxfr/zuno-demo-agents): see its
+[README](https://github.com/startxfr/zuno-demo-agents#readme) and [RELEASING.md](https://github.com/startxfr/zuno-demo-agents/blob/main/RELEASING.md).
 
-Not mapped (listed in `status.unmapped`): per-task tool allow-lists (enforced by mcp-gateway), `rag.top_k`, UI
-fields and prompt examples.
+**Contract headers.** The emitted LLMs, MCP providers and A2A nodes send the gateways behind them headers named
+`X-<Namespace>-<Name>`: `Agent`, `Task`, `Data-Classification`, `Run-Id`, `Max-Tokens`, and on A2A calls
+`Delegated-By` and `Delegation-Depth`. `spec.contractNamespace` of the bundle picks the namespace (`zuno` sends
+`X-Zuno-Agent`); set `spec.contractNamespace` of the `UnifaiStack` the same way, so multiagent recognises those headers
+and exchanges the A2A metadata `<namespace>.approval` and `<namespace>.classification` with the remote agents.
+Unset, both `unifai` and `zuno` are sent and accepted until 0.2, `unifai` only from 0.2.
 
 ### RAG sources and search settings
 
@@ -357,18 +350,19 @@ is deployed exactly as written: the charts receive a readable stand-in tag (`sha
 what the `APP_VERSION` variables show) and the post-renderer replaces it with the digest in every container image. Pin
 the digests a CI run of `publish-images.yml` reports: they are the signed ones.
 
-### A2A delegation (zuno WP-173)
+### A2A delegation
 
 Free-form delegation stays refused: the CRD refuses an `UnifaiAgent` of type `a2a_agent_node`, and a workflow or a
 template holding an A2A node (inline or through `$ref`) goes to `Error`. Workflows built by hand in the UnifAI UI do not
 go through these checks.
 
-An agent bundle may delegate, read-only, through the zuno a2a-gateway (ADR-0401/0403/0585):
+An agent bundle may delegate, read-only, through an A2A gateway that checks the caller's groups, the declared targets,
+the delegation depth and cycles:
 
 ```yaml
 spec:
   delegation:
-    gatewayURL: http://a2a-gateway.zuno-ai-run.svc:8080
+    gatewayURL: http://a2a-gateway.gateways.svc:8080
     maxRounds: 5                                # orchestrator rounds per turn (default 5)
   ceilings:
     delegationTargets: [arkos/draft-architecture-testimonial]
@@ -377,12 +371,12 @@ spec:
 - Without `spec.delegation`, a bundle declaring `zuno.delegation.targets` is `Valid=False` (`DelegationUnsupported`).
   A target missing from `ceilings.delegationTargets` is `WithinCeilings=False` (`Widening`).
 - Each target is resolved against its `Verified`, `Ready` `UnifaiAgentBundle` in the namespace. Only the target's primary
-  task can be reached until the gateway reads `X-Zuno-Task`; other tasks are `DelegationTargetUnresolved`.
+  task can be reached until the gateway reads `X-<Namespace>-Task`; other tasks are `DelegationTargetUnresolved`.
 - Every task of a delegating agent becomes an orchestrator (`<task>-orchestrator`) over the task's work agent and one
   inline `a2a_agent_node` per target (`<gatewayURL>/agents/<agent>`). The work agent is the only agent of
   `retrieve_reason_respond` and the drafting stage of `plan_draft_write` (plan, then the orchestrator, then the draft
   stage or an A2A node, then write). The A2A node forwards the user's token and the chain
-  headers the gateway verifies: `X-Zuno-Delegated-By: <agent>:<task>` and `X-Zuno-Delegation-Depth: 1`. A worker runs only
+  headers the gateway verifies: `X-<Namespace>-Delegated-By: <agent>:<task>` and `X-<Namespace>-Delegation-Depth: 1`. A worker runs only
   on the work the orchestrator sends it, so a target is not called on a turn that does not need it.
 - Classification is monotone and applied statically: every task of a delegating agent runs at the highest level of the
   task and its targets, from its first call (a C1 agent delegating to a C3 one is C3, local models only).
@@ -395,8 +389,8 @@ Applied by UnifAI (no longer listed in `status.unmapped`):
 
 - `zuno.limits.max_steps` (task, else agent): the agent's `max_rounds`, at most `spec.ceilings.maxSteps` (default 50).
 - `zuno.limits.max_tokens` (task, alias `zuno.max_tokens`, else agent, else `spec.llm.maxTokens`; 1 to 8192): sent on
-  the task's LLM as the `X-Zuno-Max-Tokens` header and as the client's `max_tokens`. The ai-gateway reads the
-  header (ADR-0544); with none declared nothing is sent.
+  the task's LLM as the `X-<Namespace>-Max-Tokens` header and as the client's `max_tokens`, for the model gateway to
+  enforce; with none declared nothing is sent.
 - `zuno.limits.memory.history` (alias `zuno.memory.history`; `enabled`, `max_turns` 1-50, `token_budget` 100-32000),
   per agent: the agents get `history_enabled`, `history_max_turns` and `history_token_budget`. The oldest turns are
   dropped whole, the newest is always kept, and tokens are estimated at 4 characters each. `custom_agent_node` bounds

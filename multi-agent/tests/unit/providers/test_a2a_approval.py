@@ -238,3 +238,25 @@ def test_the_count_is_per_session_and_shared_by_every_gate_of_the_session():
 
     local = _Local()
     assert [local.count_remote_approval("a"), local.count_remote_approval("a"), local.count_remote_approval("b")] == [1, 2, 1]
+
+
+def test_the_approval_answer_goes_under_every_contract_namespace(monkeypatch):
+    message = A2AConverter().to_approval_message("t1", "c1", "r1", "approve")
+    data = message.parts[0].root.data
+    assert set(data) == {"unifai.approval", "zuno.approval"}
+    monkeypatch.setenv("UNIFAI_CONTRACT_NAMESPACE", "acme")
+    data = A2AConverter().to_approval_message("t1", "c1", "r1", "reject", "no").parts[0].root.data
+    assert data == {"acme.approval": {"request_id": "r1", "decision": "reject", "feedback": "no"}}
+
+
+def test_the_approval_and_classification_are_read_under_the_contract_namespaces(monkeypatch):
+    from a2a.types import Task, TaskStatus
+
+    def task(metadata):
+        return A2AResult.from_task(Task(id="t1", context_id="c1", status=TaskStatus(state=TaskState.completed), metadata=metadata))
+
+    assert task({"unifai.classification": "C3"}).classification == "C3"
+    assert task({"zuno.classification": "C2"}).classification == "C2"
+    monkeypatch.setenv("UNIFAI_CONTRACT_NAMESPACE", "acme")
+    assert task({"zuno.classification": "C2"}).classification is None
+    assert task({"acme.classification": "C1"}).classification == "C1"

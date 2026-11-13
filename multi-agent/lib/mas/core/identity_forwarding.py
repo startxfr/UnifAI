@@ -31,12 +31,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from mas.core.auth.target_policy import forwarding_target_allowed
+from mas.core.contract import header_names
 from mas.core.execution_context import SESSION_TAGS_TAG, ExecutionContextHolder, classification_rank
 
 logger = logging.getLogger(__name__)
 
-#: The header carrying the run's data classification (a run raised by a delegated answer never sends less).
-CLASSIFICATION_HEADER = "x-zuno-data-classification"
+#: The contract header carrying the run's data classification, X-<Namespace>-Data-Classification (a run raised by a
+#: delegated answer never sends less).
+CLASSIFICATION_HEADER = "data-classification"
 
 #: ``auth_method`` value that presents the acting user's own platform token to a downstream server.
 FORWARD_USER_TOKEN = "forward_user_token"
@@ -231,8 +233,9 @@ class IdentityForwarder:
         floor = self._holder.run_classification() if self._holder is not None else ""
         if not floor:
             return
+        names = header_names(CLASSIFICATION_HEADER)
         for name, value in out.items():
-            if name.lower() == CLASSIFICATION_HEADER and classification_rank(floor) > classification_rank(value):
+            if name.lower() in names and classification_rank(floor) > classification_rank(value):
                 out[name] = floor
 
     def headers(self, templates: Mapping[str, Any] | None = None, forward_token: bool = False) -> dict[str, str]:

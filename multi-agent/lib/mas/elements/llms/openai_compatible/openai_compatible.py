@@ -35,6 +35,7 @@ from .stream_aggregator import (
 )
 from .response_lookup import DEFAULT_LOOKUP_TIMEOUT_S, fetch_routing
 from mas.core.tracing import TracingService
+from mas.core.contract import header_names
 from mas.core.identity_forwarding import IdentityForwarder
 
 
@@ -346,15 +347,17 @@ class OpenAICompatibleLLM(BaseLLM):
         return uuid.uuid4().hex if self._request_id_header else None
 
     def _call_metadata(self, request_id: Optional[str] = None) -> Dict[str, Any]:
-        """What this call sends that bounds it, for the trace: the generation ceiling and the X-Zuno-Max-Tokens header (R-519)."""
+        """What this call sends that bounds it, for the trace: the generation ceiling and the X-<Namespace>-Max-Tokens header
+        (R-519), recorded as x_<namespace>_max_tokens."""
         meta: Dict[str, Any] = {"max_tokens": self._max_tokens}
         # The tools this call offers, as sent: a turn without delegation says whether delegate_task was among them.
         # "(none)" when the request offers no tool: an empty value is dropped by trace backends and reads as a missing attribute.
         meta["tool_names"] = ",".join(t["function"]["name"] for t in (self._tools or []))[:2000] or "(none)"
         sent = (self._request_options(request_id).get("extra_headers") or {})
+        max_tokens_headers = header_names("max-tokens")
         for name, value in sent.items():
-            if name.lower() == "x-zuno-max-tokens":
-                meta["x_zuno_max_tokens"] = value
+            if name.lower() in max_tokens_headers:
+                meta[name.lower().replace("-", "_")] = value
         return meta
 
     def _request_options(self, request_id: Optional[str] = None) -> Dict[str, Any]:

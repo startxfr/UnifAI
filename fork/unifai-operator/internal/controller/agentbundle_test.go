@@ -182,8 +182,11 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		cfg := map[string]any{}
 		Expect(json.Unmarshal(llm.Spec.Config.Raw, &cfg)).To(Succeed())
 		Expect(cfg["forward_user_token"]).To(BeTrue())
+		// No contractNamespace: the headers go under both unifai and zuno until 0.2.
 		Expect(cfg["default_headers"]).To(Equal(map[string]any{"X-Extra": "kept", "X-Zuno-Agent": "tekos",
-			"X-Zuno-Task": "write-code", "X-Zuno-Data-Classification": "C3", "X-Zuno-Run-Id": "{session_id}"}))
+			"X-Zuno-Task": "write-code", "X-Zuno-Data-Classification": "C3", "X-Zuno-Run-Id": "{session_id}",
+			"X-Unifai-Agent": "tekos", "X-Unifai-Task": "write-code", "X-Unifai-Data-Classification": "C3",
+			"X-Unifai-Run-Id": "{session_id}"}))
 
 		var agent unifaiv1.UnifaiAgent
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos-answer-technical-question"}, &agent)).To(Succeed())
@@ -217,7 +220,9 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		Expect(json.Unmarshal(p.Spec.Config.Raw, &cfg)).To(Succeed())
 		Expect(cfg["auth_method"]).To(Equal("forward_user_token"))
 		Expect(cfg["additional_headers"]).To(Equal(map[string]any{"X-Extra": "kept", "X-Zuno-Agent": "tekos",
-			"X-Zuno-Task": "answer-technical-question", "X-Zuno-Data-Classification": "C1", "X-Zuno-Run-Id": "{session_id}"}))
+			"X-Zuno-Task": "answer-technical-question", "X-Zuno-Data-Classification": "C1", "X-Zuno-Run-Id": "{session_id}",
+			"X-Unifai-Agent": "tekos", "X-Unifai-Task": "answer-technical-question", "X-Unifai-Data-Classification": "C1",
+			"X-Unifai-Run-Id": "{session_id}"}))
 
 		var agent unifaiv1.UnifaiAgent
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos-answer-technical-question"}, &agent)).To(Succeed())

@@ -545,6 +545,20 @@ func TestOutboundAllowedHostsAddToTheNamespace(t *testing.T) {
 	}
 }
 
+// spec.contractNamespace reaches both multiagent pods as UNIFAI_CONTRACT_NAMESPACE; unset, nothing is rendered.
+func TestContractNamespaceReachesMultiagent(t *testing.T) {
+	off := renderAll(t, testPlan(t, nil))
+	on := renderAll(t, testPlan(t, func(s *unifaiv1.UnifaiStackSpec) { s.ContractNamespace = "acme" }))
+	for _, rel := range []string{"unifai-multiagent-be", "unifai-multiagent-temporal-worker"} {
+		if strings.Contains(off[rel], "UNIFAI_CONTRACT_NAMESPACE") {
+			t.Errorf("%s: UNIFAI_CONTRACT_NAMESPACE must not be rendered by default (it would roll existing stacks)", rel)
+		}
+		if !regexp.MustCompile(`name: UNIFAI_CONTRACT_NAMESPACE\s+value: acme\n`).MatchString(on[rel]) {
+			t.Errorf("%s: UNIFAI_CONTRACT_NAMESPACE is not spec.contractNamespace", rel)
+		}
+	}
+}
+
 // spec.rag.bearerAudience sets the RAG token audience; unset, nothing is rendered (TestRAGSettings) and the RAG default applies.
 func TestRAGBearerAudience(t *testing.T) {
 	out := renderAll(t, testPlan(t, func(s *unifaiv1.UnifaiStackSpec) { s.RAG.BearerAudience = "rag-api" }))

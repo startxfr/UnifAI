@@ -405,6 +405,20 @@ def test_a_run_raised_by_a_delegated_answer_never_sends_a_lower_classification()
         assert fwd.headers({"X-Other": "v"}) == {"X-Other": "v"}
 
 
+def test_the_classification_floor_follows_the_contract_namespace(monkeypatch):
+    templates = {"X-Unifai-Data-Classification": "C1", "X-Zuno-Data-Classification": "C1", "X-Acme-Data-Classification": "C1"}
+    holder = _holder()
+    fwd = IdentityForwarder(StaticSource(), holder)
+    with bind_current_node("n1", "Researcher", "CustomAgentNode"):
+        fwd.raise_classification("C3")
+        # unset: unifai and zuno until 0.2
+        assert fwd.headers(templates) == {"X-Unifai-Data-Classification": "C3", "X-Zuno-Data-Classification": "C3",
+                                          "X-Acme-Data-Classification": "C1"}
+        monkeypatch.setenv("UNIFAI_CONTRACT_NAMESPACE", "acme")
+        assert fwd.headers(templates) == {"X-Unifai-Data-Classification": "C1", "X-Zuno-Data-Classification": "C1",
+                                          "X-Acme-Data-Classification": "C3"}
+
+
 def test_the_node_raises_the_run_with_the_level_the_remote_agent_answered_at():
     from mas.elements.nodes.a2a_agent.a2a_agent_node import A2AAgentNode
 

@@ -32,7 +32,7 @@ CANCEL_TIMEOUT_SECONDS = 5.0
 # Approvals one delegation may relay (R-535 step 5); beyond that the remote task is cancelled.
 MAX_APPROVALS_PER_DELEGATION = 5
 
-# Decides an approval request of the remote agent: (zuno.approval payload) -> (decision, feedback).
+# Decides an approval request of the remote agent: (<namespace>.approval payload) -> (decision, feedback).
 # Blocking (it may wait for a human); the provider runs it in a worker thread. v1 sends "approve" or "reject" only.
 ApprovalHandler = Callable[[Dict[str, Any]], Tuple[str, str]]
 
@@ -174,7 +174,7 @@ class A2AProvider:
             max_poll_attempts: Maximum polling attempts
             blocking: False makes the send return the task at once, so that the polling above (and its bound) is what
                 waits for the answer; None keeps the server's default (the request is held until the task is done)
-            on_approval: decides the approval requests of the remote agent (input-required with ``zuno.approval``);
+            on_approval: decides the approval requests of the remote agent (input-required with ``<namespace>.approval``);
                 without it every request is rejected (fail closed)
             
         Returns:
@@ -225,7 +225,7 @@ class A2AProvider:
     ) -> A2AResult:
         """Poll the task to its end, relaying the approval requests of the remote agent on the way (R-535 step 5).
 
-        An input-required task carrying ``zuno.approval`` is answered by a new message on the same task and context,
+        An input-required task carrying ``<namespace>.approval`` is answered by a new message on the same task and context,
         then polled again. Authentication required is an error. More than MAX_APPROVALS_PER_DELEGATION requests
         cancel the remote task.
         """

@@ -365,6 +365,14 @@ type UnifaiStackSpec struct {
 	// +kubebuilder:validation:items:Pattern=`^\.?[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`
 	// +optional
 	OutboundAllowedHosts []string `json:"outboundAllowedHosts,omitempty"`
+	// Namespace of the contract names multiagent recognises in the headers it sends (X-<Namespace>-Data-Classification,
+	// -Max-Tokens) and uses for the A2A metadata it exchanges (<namespace>.approval, <namespace>.classification), as the
+	// gateways it calls expect them (UNIFAI_CONTRACT_NAMESPACE). Set it like the contractNamespace of the stack's
+	// UnifaiAgentBundles. Unset = both unifai and zuno until 0.2, unifai only from 0.2.
+	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`
+	// +kubebuilder:validation:MaxLength=30
+	// +optional
+	ContractNamespace string `json:"contractNamespace,omitempty"`
 	// Added to every UnifAI pod.
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`

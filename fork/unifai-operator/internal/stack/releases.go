@@ -343,6 +343,9 @@ func multiagentValues(p *Plan, v map[string]any) map[string]any {
 	if len(allowed) > 0 {
 		set(v, "env.OUTBOUND_ALLOWED_HOSTS", strings.Join(allowed, ","))
 	}
+	if ns := p.Spec.ContractNamespace; ns != "" { // only when set: existing stacks do not roll
+		set(v, "env.UNIFAI_CONTRACT_NAMESPACE", ns)
+	}
 	lf := p.Spec.Integrations.Langfuse
 	set(v, "env.LANGFUSE_ENABLED", fmt.Sprint(lf != nil))
 	if lf != nil && lf.BaseURL != "" {

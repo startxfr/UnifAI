@@ -11,7 +11,7 @@ const AgentBundleLabel = "unifai.startx.fr/agent-bundle"
 
 // OCIBundleSource pins a signed OKF bundle in an OCI registry.
 type OCIBundleSource struct {
-	// Reference pinned by digest, e.g. quay.io/zuno/okf-tekos@sha256:<64 hex>. Tags are refused.
+	// Reference pinned by digest, e.g. registry.example.com/agents/okf-myagent@sha256:<64 hex>. Tags are refused.
 	// +kubebuilder:validation:XValidation:rule="self.matches('^[^@]+@sha256:[a-f0-9]{64}$')",message="reference must be pinned by a sha256 digest"
 	Reference string `json:"reference"`
 	// kubernetes.io/dockerconfigjson Secret for a private repository (anonymous pull when unset).
@@ -27,8 +27,8 @@ type BundleSource struct {
 // BundleVerify says how the bundle signature is checked: with a public key, or keyless (ADR-0578). Exactly one.
 // +kubebuilder:validation:XValidation:rule="has(self.publicKeyRef) != has(self.keyless)",message="set exactly one of publicKeyRef or keyless"
 type BundleVerify struct {
-	// PEM public half of the signing key (for zuno, the Vault Transit key exported as
-	// agents/zuno-platform-signer.pub): no access to Vault is needed. Checks the bundle content digest.
+	// PEM public half of the signing key (e.g. a KMS or Vault Transit key exported once): the operator needs no access
+	// to the key store. Checks the bundle content digest.
 	// +optional
 	PublicKeyRef *SecretKeySelector `json:"publicKeyRef,omitempty"`
 	// Keyless cosign signature of the artifact manifest digest, checked offline against a Sigstore trusted root.
@@ -79,11 +79,12 @@ type BundleCeilings struct {
 	DelegationTargets []string `json:"delegationTargets,omitempty"`
 }
 
-// BundleDelegation lets the bundle's tasks delegate over A2A, read-only, through the zuno a2a-gateway (ADR-0585).
+// BundleDelegation lets the bundle's tasks delegate over A2A, read-only, through an A2A gateway that checks the caller's
+// groups, the declared targets, the delegation depth and cycles from the contract headers the A2A node sends.
 // Each task is then emitted as an orchestrator over its own agent and one A2A node per declared target, runs at
 // the highest classification of the task and its targets, and forwards the user's token to the gateway.
 type BundleDelegation struct {
-	// Base URL of the a2a-gateway; a target agent is called at <gatewayURL>/agents/<agent>.
+	// Base URL of the A2A gateway; a target agent is called at <gatewayURL>/agents/<agent>.
 	// +kubebuilder:validation:Pattern=`^https?://[^/?#@]+$`
 	GatewayURL string `json:"gatewayURL"`
 	// Rounds of a delegating task's orchestrator (each target is called at most once per turn).
@@ -115,8 +116,8 @@ type BundleDelegation struct {
 	MaxApprovals int32 `json:"maxApprovals,omitempty"`
 }
 
-// BundleLLM is the template of the LLM emitted for every task: the bundle adds the Zuno headers
-// (agent, task, effective classification, run id) to `config.default_headers`.
+// BundleLLM is the template of the LLM emitted for every task: the bundle adds the contract headers X-<Namespace>-Agent,
+// -Task, -Data-Classification (effective) and -Run-Id (see contractNamespace) to `config.default_headers`.
 type BundleLLM struct {
 	// +kubebuilder:validation:Enum=openai_compatible
 	// +kubebuilder:default=openai_compatible
@@ -124,7 +125,7 @@ type BundleLLM struct {
 	Type       string `json:"type,omitempty"`
 	ConfigSpec `json:",inline"`
 	// Generation ceiling, in tokens per model call, of every task that declares none (zuno.limits.max_tokens). It is
-	// sent as the X-Zuno-Max-Tokens header (ADR-0544, enforced by the ai-gateway) and as the client's max_tokens. A
+	// sent as the X-<Namespace>-Max-Tokens header (for the model gateway to enforce) and as the client's max_tokens. A
 	// task's own limit wins. Unset = the client default and no header.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=8192
@@ -133,7 +134,7 @@ type BundleLLM struct {
 }
 
 // BundleMCP is the template of the MCP provider emitted for every task that declares allowed_tools: the
-// bundle adds the Zuno headers (agent, task, effective classification, run id) to `config.additional_headers`,
+// bundle adds the contract headers (agent, task, effective classification, run id) to `config.additional_headers`,
 // so the gateway behind it can apply that agent task's own tool declaration.
 type BundleMCP struct {
 	ConfigSpec `json:",inline"`
@@ -173,12 +174,12 @@ type UnifaiAgentBundleSpec struct {
 	// +optional
 	RetrieveFirst bool      `json:"retrieveFirst,omitempty"`
 	LLM           BundleLLM `json:"llm"`
-	// MCP provider emitted per task that declares allowed_tools, carrying the Zuno headers. It is attached
+	// MCP provider emitted per task that declares allowed_tools, carrying the contract headers. It is attached
 	// before `providers`.
 	// +optional
 	MCP *BundleMCP `json:"mcp,omitempty"`
 	// UnifaiProvider names (MCP servers) attached to the tasks that declare allowed_tools, shared by all
-	// tasks and sent without the Zuno headers.
+	// tasks and sent without the contract headers.
 	// +kubebuilder:validation:MaxItems=64
 	// +kubebuilder:validation:items:MaxLength=253
 	// +kubebuilder:validation:XValidation:rule="self.all(p, p.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'))",message="providers are UnifaiProvider names (lower-case DNS labels)"
@@ -194,7 +195,7 @@ type UnifaiAgentBundleSpec struct {
 	// +kubebuilder:validation:Type=object
 	// +optional
 	AgentConfig *runtime.RawExtension `json:"agentConfig,omitempty"`
-	// Delegation over A2A through the zuno a2a-gateway. Unset = a bundle declaring zuno.delegation.targets is refused
+	// Delegation over A2A through an A2A gateway. Unset = a bundle declaring zuno.delegation.targets is refused
 	// (DelegationUnsupported).
 	// +optional
 	Delegation *BundleDelegation `json:"delegation,omitempty"`
@@ -203,6 +204,13 @@ type UnifaiAgentBundleSpec struct {
 	// +kubebuilder:validation:MaxProperties=256
 	// +optional
 	ClassificationOverrides map[string]string `json:"classificationOverrides,omitempty"`
+	// Namespace of the contract headers the emitted LLMs, MCP providers and A2A nodes send to the gateways
+	// behind them: X-<Namespace>-Agent, -Task, -Data-Classification, -Run-Id, -Max-Tokens, -Delegated-By and
+	// -Delegation-Depth (e.g. zuno sends X-Zuno-Agent). Unset = both unifai and zuno until 0.2, unifai only from 0.2.
+	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`
+	// +kubebuilder:validation:MaxLength=30
+	// +optional
+	ContractNamespace string `json:"contractNamespace,omitempty"`
 }
 
 // BundleTaskStatus is what was emitted for one task.
@@ -267,7 +275,8 @@ type UnifaiAgentBundleStatus struct {
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.message`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// UnifaiAgentBundle turns a signed Zuno OKF agent bundle into UnifAI LLMs, agents, a condition and workflows.
+// UnifaiAgentBundle turns a signed OKF agent bundle (format specified by github.com/startxfr/zuno-demo-agents) into
+// UnifAI LLMs, agents, a condition and workflows.
 type UnifaiAgentBundle struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

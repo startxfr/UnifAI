@@ -47,7 +47,7 @@ func TestBundleMayDelegate(t *testing.T) {
 }
 
 func TestA2ABaseURLs(t *testing.T) {
-	bp := delegatingBlueprint("c", "orch", []string{"agent"}, 0, a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "tekos", "answer", okf.C2, 0,
+	bp := delegatingBlueprint("c", "orch", []string{"agent"}, 0, a2aNodes(contractOf(""), &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "tekos", "answer", okf.C2, 0,
 		[]delegationTarget{{Agent: "arkos", Task: "draft"}, {Agent: "comage", Task: "check"}}))
 	got := a2aBaseURLs(normalise(t, bp))
 	if len(got) != 2 || got[0] != "http://gw:8080/agents/arkos" || got[1] != "http://gw:8080/agents/comage" {
@@ -106,7 +106,7 @@ const (
 )
 
 func TestDelegatingBlueprintShapes(t *testing.T) {
-	a2a := a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "arkos", "draft", okf.C2, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})
+	a2a := a2aNodes(contractOf(""), &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "arkos", "draft", okf.C2, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})
 	stepsOf := func(bp map[string]any) map[string]map[string]any {
 		out := map[string]map[string]any{}
 		for _, s := range normalise(t, bp["plan"]).([]any) {
@@ -219,13 +219,13 @@ func TestOrchestratorPromptNamesTheNodeUIDs(t *testing.T) {
 
 func TestA2ANodeCarriesTheGenerationCeiling(t *testing.T) {
 	headers := func(maxTokens int) map[string]any {
-		nodes := a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "arkos", "draft", okf.C2, maxTokens, []delegationTarget{{Agent: "tekos", Task: "answer"}})
+		nodes := a2aNodes(contractOf(""), &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "arkos", "draft", okf.C2, maxTokens, []delegationTarget{{Agent: "tekos", Task: "answer"}})
 		return nodes[0]["config"].(map[string]any)["additional_headers"].(map[string]any)
 	}
-	if h := headers(2048); h[headerMaxTokens] != "2048" {
+	if h := headers(2048); h[headerName("zuno", headerMaxTokens)] != "2048" {
 		t.Errorf("a declared ceiling follows the hop: %v", h)
 	}
-	if h := headers(0); h[headerMaxTokens] != nil {
+	if h := headers(0); h[headerName("zuno", headerMaxTokens)] != nil {
 		t.Errorf("no declared ceiling, no header (existing blueprints keep their hash): %v", h)
 	}
 }
@@ -233,7 +233,7 @@ func TestA2ANodeCarriesTheGenerationCeiling(t *testing.T) {
 func TestA2ANodeCarriesTheWaitBound(t *testing.T) {
 	config := func(timeout int32) map[string]any {
 		d := &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080", TimeoutSeconds: timeout}
-		return a2aNodes(d, "arkos", "draft", okf.C2, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})[0]["config"].(map[string]any)
+		return a2aNodes(contractOf(""), d, "arkos", "draft", okf.C2, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})[0]["config"].(map[string]any)
 	}
 	if c := config(12); c["timeout_seconds"] != int32(12) {
 		t.Errorf("a declared wait follows the node: %v", c)
@@ -245,13 +245,13 @@ func TestA2ANodeCarriesTheWaitBound(t *testing.T) {
 
 func TestA2ANodeCarriesTheRunClassification(t *testing.T) {
 	headers := func(level okf.Level) map[string]any {
-		nodes := a2aNodes(&unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "arkos", "draft", level, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})
+		nodes := a2aNodes(contractOf(""), &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080"}, "arkos", "draft", level, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})
 		return nodes[0]["config"].(map[string]any)["additional_headers"].(map[string]any)
 	}
-	if h := headers(okf.C3); h[headerClassification] != "C3" {
+	if h := headers(okf.C3); h[headerName("zuno", headerClassification)] != "C3" {
 		t.Errorf("the call carries the run's level: %v", h)
 	}
-	if h := headers(0); h[headerClassification] != nil {
+	if h := headers(0); h[headerName("zuno", headerClassification)] != nil {
 		t.Errorf("no level, no header: %v", h)
 	}
 }
@@ -259,7 +259,7 @@ func TestA2ANodeCarriesTheRunClassification(t *testing.T) {
 func TestA2ANodeCarriesTheApprovalMode(t *testing.T) {
 	config := func(approval string) map[string]any {
 		d := &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080", Approval: approval}
-		return a2aNodes(d, "arkos", "draft", okf.C2, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})[0]["config"].(map[string]any)
+		return a2aNodes(contractOf(""), d, "arkos", "draft", okf.C2, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})[0]["config"].(map[string]any)
 	}
 	if c := config("ask"); c["approval_mode"] != "ask" {
 		t.Errorf("a declared mode follows the node: %v", c)
@@ -272,7 +272,7 @@ func TestA2ANodeCarriesTheApprovalMode(t *testing.T) {
 func TestA2ANodeCarriesTheApprovalCapOfTheSession(t *testing.T) {
 	config := func(max int32) map[string]any {
 		d := &unifaiv1.BundleDelegation{GatewayURL: "http://gw:8080", MaxApprovals: max}
-		return a2aNodes(d, "arkos", "draft", okf.C2, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})[0]["config"].(map[string]any)
+		return a2aNodes(contractOf(""), d, "arkos", "draft", okf.C2, 0, []delegationTarget{{Agent: "tekos", Task: "answer"}})[0]["config"].(map[string]any)
 	}
 	if c := config(2); c["max_approvals_per_session"] != int32(2) {
 		t.Errorf("a declared cap follows the node: %v", c)
