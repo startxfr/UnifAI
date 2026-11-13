@@ -2,9 +2,8 @@
 # - outbound-guard: the platform's MCP and A2A clients against real local servers through the guarded transport
 #   (redirects, address pinning, rebinding), which the cluster e2e has no MCP/A2A fixture for;
 # - fork-ci: the signing and provenance scripts of the image and release workflows;
-# - unit: the unit tests of rag and identity, minus the tests that already fail on upstream main
-#   (fork/ci/unit-test-debt.txt); multi-agent joins with its outbound guard test fix (R-553 part 2). This workflow
-#   gates the weekly release (fork/ci/release_gate.py): a red run skips it.
+# - unit: the unit tests of multi-agent, rag and identity, minus the tests that already fail on upstream main
+#   (fork/ci/unit-test-debt.txt). This workflow gates the weekly release (fork/ci/release_gate.py): a red run skips it.
 name: fork-tests
 
 on:
@@ -82,9 +81,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # multi-agent (install: -e "./multi-agent[all]" -e "./global_utils[multi-agent]" -r multi-agent/requirements-test.txt)
-        # joins with its outbound guard test fix, which rebuilds the app images: after the 0.1.70 release (R-553 part 2).
         include:
+          - suite: multi-agent
+            install: '-e "./multi-agent[all]" -e "./global_utils[multi-agent]" -r multi-agent/requirements-test.txt'
           - suite: rag
             install: '-e ./rag -e "./global_utils[rag]" pytest pytest-timeout'
           - suite: shared-resources/identity

@@ -35,7 +35,7 @@ verifies all of it before deploying
   input (e.g. `rag,operator`).
 - `.github/workflows/fork-tests.yml` runs, without a cluster, the guarded MCP and A2A clients against real local
   servers (`multi-agent/tests/integration/external_servers`), the outbound guard unit tests, the `fork/ci` tests and
-  the unit tests of rag and identity, multi-agent next (`fork/ci/run_unit_tests.py`). Those skip only the tests that
+  the unit tests of multi-agent, rag and identity (`fork/ci/run_unit_tests.py`). Those skip only the tests that
   already fail on upstream main, listed in `fork/ci/unit-test-debt.txt`; any other failure is red, and a red
   fork-tests skips the weekly release.
 - Both environments hold `QUAY_USERNAME` and `QUAY_TOKEN` of a quay robot with write access to `unifai-*`.
