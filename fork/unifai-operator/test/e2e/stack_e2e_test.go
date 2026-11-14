@@ -358,6 +358,13 @@ func TestUnifaiStack(t *testing.T) {
 		checkAgentBundleDelegation(t, ns)
 	})
 
+	t.Run("an agent bundle in OKF profile 1.0 is read and emitted (WP-264)", func(t *testing.T) {
+		if os.Getenv("E2E_AGENTBUNDLE") == "0" {
+			t.Skip("E2E_AGENTBUNDLE=0: no access to quay.io/zuno/okf-tekos")
+		}
+		checkAgentBundleProfile10(t, ns)
+	})
+
 	t.Run("a turn is cut by the token ceiling of the bundle (R-543)", func(t *testing.T) {
 		if os.Getenv("E2E_TOKEN_CEILING") != "1" {
 			t.Skip("E2E_TOKEN_CEILING=1 to run: proof of the token ceiling of one turn")

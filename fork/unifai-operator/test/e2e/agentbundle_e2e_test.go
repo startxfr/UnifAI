@@ -244,3 +244,55 @@ func checkAgentBundleDelegation(t *testing.T, ns string) {
 		return free.Status.Phase == "Error" && strings.Contains(free.Status.Message, "A2A delegation is disabled"), free.Status.Phase + " " + free.Status.Message
 	})
 }
+
+// tekos of zuno-demo-agents v1.0.0 (OKF profile 1.0, ADR-0615), pulled anonymously and pinned by digest. Builds are
+// deterministic: the digest is the one of the devel d4281f9 artifact, so it carries the signature of the release
+// workflow (publish.yml on a v* tag) as well as the development one.
+const (
+	profile10Artifact = "quay.io/zuno/okf-tekos@sha256:f1ba6c4543a39f51ba9159c953cee4f0b3a198c7a4ef8e9b87ade7ef3e7cef97"
+	releaseSubject    = `^https://github\.com/startxfr/zuno-demo-agents/\.github/workflows/publish\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$`
+)
+
+// checkAgentBundleProfile10 reads a bundle in OKF profile 1.0 (ADR-0615, WP-264) end to end: the keyless signature of
+// the release workflow is verified, the nine frozen profile schemas accept the documents, the Valid condition names
+// the profile, the public sheet carries the maintainer, and the operator emits its objects. The other bundle checks
+// pull legacy (v0.2 and v0.3) artifacts, so this one is what proves the profile on a cluster.
+func checkAgentBundleProfile10(t *testing.T, ns string) {
+	t.Helper()
+	ensureMockLLM(t, ns)
+	root, err := os.ReadFile(trustedRootFile)
+	must(t, err)
+	if err := c.Get(ctx, client.ObjectKey{Namespace: ns, Name: "e2e-sigstore-trusted-root"}, &corev1.Secret{}); err != nil {
+		create(t, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "e2e-sigstore-trusted-root", Namespace: ns},
+			Data: map[string][]byte{"trusted_root.json": root}})
+	}
+	b := delegationBundle(ns, "e2e-profile10", profile10Artifact)
+	b.Spec.Verify.Keyless.SubjectRegExp = releaseSubject
+	// The release candidate declares the observability tools of the cluster on top of what the legacy tekos declares.
+	b.Spec.Ceilings.ToolCapabilities = append(b.Spec.Ceilings.ToolCapabilities,
+		"k8s.events.read", "k8s.logs.read", "k8s.resource.list", "k8s.resource.read", "metrics.query")
+	create(t, b)
+	eventually(t, "bundle "+b.Name+" Ready", 10*time.Minute, func() (bool, string) {
+		if err := getObj(b); err != nil {
+			return false, err.Error()
+		}
+		return b.Status.Phase == "Ready", b.Status.Phase + " " + b.Status.Message
+	})
+	if !b.Status.Verified || !regexp.MustCompile(releaseSubject).MatchString(b.Status.Signer) || b.Status.ResolvedDigest == "" {
+		t.Errorf("profile 1.0 bundle: verified %v, signer %q, digest %q", b.Status.Verified, b.Status.Signer, b.Status.ResolvedDigest)
+	}
+	// status.okfVersion says "0.2" (the upstream version): the Valid condition is what names the profile.
+	valid := meta.FindStatusCondition(b.Status.Conditions, "Valid")
+	if valid == nil || valid.Status != metav1.ConditionTrue || !strings.Contains(valid.Message, "OKF 0.2, profile 1.0") {
+		t.Errorf("Valid condition of a profile 1.0 bundle: %+v", valid)
+	}
+	if b.Status.OKFVersion != "0.2" {
+		t.Errorf("status.okfVersion %q, want 0.2", b.Status.OKFVersion)
+	}
+	if b.Status.Display == nil || b.Status.Display.Maintainer == "" {
+		t.Errorf("the public sheet lacks the maintainer (zuno.maintainer): %+v", b.Status.Display)
+	}
+	if len(b.Status.Children) == 0 || len(b.Status.Tasks) == 0 {
+		t.Errorf("nothing emitted: children %v, tasks %v", b.Status.Children, b.Status.Tasks)
+	}
+}
