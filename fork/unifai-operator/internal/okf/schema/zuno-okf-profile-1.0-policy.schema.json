@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/startxfr/zuno-demo-agents/blob/main/platform/okf/schema/zuno-okf-profile-1.0-policy.schema.json",
+  "title": "Zuno OKF profile 1.0: policy document",
+  "description": "Frontmatter of agents/<name>/policies/<name>.md, a constraint that may only narrow the corp policies in a Zuno OKF profile 1.0 bundle: the upstream Open Knowledge Format 0.2 envelope (https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md) plus the namespaced `zuno` block. Frozen (zuno-demo ADR-0615): a change needs a new profile version.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "okf_version": {
+      "description": "[OKF] Version of the upstream Open Knowledge Format this document follows (SPEC §12): always the quoted string \"0.2\". Repeated in every document so a reader can dispatch one file at a time (a declared deviation: upstream declares it once, in the bundle-root index.md).",
+      "type": "string",
+      "const": "0.2"
+    },
+    "type": {
+      "description": "[OKF] Document kind (SPEC §4): always \"policy\" in this schema.",
+      "type": "string",
+      "const": "policy"
+    },
+    "title": {
+      "description": "[OKF] Human-readable name (SPEC §4).",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "[OKF] One-line summary of the document (SPEC §4)."
+    },
+    "resource": {
+      "description": "[OKF] Canonical URI of this document (SPEC §4): its file on the main branch of the repository that publishes it.",
+      "type": "string",
+      "pattern": "^https://"
+    },
+    "tags": {
+      "description": "[OKF] Free classification tags (SPEC §4).",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._-]*$"
+      }
+    },
+    "sources": {
+      "description": "[OKF] What the document was derived from (SPEC §5 provenance). Descriptive, never a grant: the tasks' declarations are the authorization surface.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "resource"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          },
+          "resource": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "author": {
+            "type": "string",
+            "minLength": 1
+          },
+          "usage_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_modified": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+          }
+        }
+      }
+    },
+    "generated": {
+      "description": "[OKF] How the content was produced (SPEC §5 trust): an actor (`human:<id>`, `process:<id>` or `<producer>/<version>`) and an instant.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "by"
+      ],
+      "properties": {
+        "by": {
+          "type": "string",
+          "pattern": "^((human|process):[A-Za-z0-9._@/-]+|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)$"
+        },
+        "at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+        }
+      }
+    },
+    "verified": {
+      "description": "[OKF] Independent confirmations (SPEC §5 trust). Absent or empty: unverified; machine actors only: machine-confirmed; a `human:` actor: human-reviewed. Advisory, never a grant. Always a list (a declared deviation: upstream also tolerates a bare mapping).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "by",
+          "at"
+        ],
+        "properties": {
+          "by": {
+            "type": "string",
+            "pattern": "^((human|process):[A-Za-z0-9._@/-]+|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)$"
+          },
+          "at": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+          }
+        }
+      }
+    },
+    "status": {
+      "description": "[OKF] Lifecycle of the document (SPEC §5): absent means stable. For an agent it agrees with zuno.status: draft for placeholder, stable for active, deprecated for deprecated or retired.",
+      "type": "string",
+      "enum": [
+        "draft",
+        "stable",
+        "deprecated"
+      ]
+    },
+    "stale_after": {
+      "description": "[OKF] Instant after which the content should be reviewed again (SPEC §5), with an offset.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "zuno": {
+      "description": "[ZUNO EXT] The additional, narrowing-only constraint this note records.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "narrows_platform_policy",
+        "constraint_type",
+        "applies_to",
+        "rationale",
+        "enforcement"
+      ],
+      "properties": {
+        "profile": {
+          "description": "[ZUNO] Version of the Zuno OKF profile this document follows: always the quoted string \"1.0\" (zuno-demo ADR-0615).",
+          "type": "string",
+          "const": "1.0"
+        },
+        "narrows_platform_policy": {
+          "description": "Self-documenting guardrail: authoring a policy addendum is an explicit acknowledgment that it can only restrict what agent.okf.md/tasks/*.md and the root-level policies/ files already allow, never grant or widen it. Always true - there is no schema-legal way to write a widening addendum.",
+          "type": "boolean",
+          "const": true
+        },
+        "constraint_type": {
+          "description": "What kind of additional constraint this is.",
+          "type": "string",
+          "enum": [
+            "human_review_required",
+            "quota_override",
+            "data_handling_addendum",
+            "escalation_requirement",
+            "other"
+          ]
+        },
+        "applies_to": {
+          "description": "What this constraint narrows. `tasks` is required - a policy addendum with no task scope applies to nothing checkable. `tools`/`knowledge` further scope it to specific declarations those tasks already carry (their own `allowed_tools`/`allowed_knowledge`), never to a tool or domain the task doesn't already declare.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tasks"
+          ],
+          "properties": {
+            "tasks": {
+              "description": "Task names (agents/<name>/tasks/<task>.md) this constraint applies to.",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "description": "Optional: restrict this constraint to specific tools among the listed tasks' `allowed_tools`.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "knowledge": {
+              "description": "Optional: restrict this constraint to specific knowledge domains among the listed tasks' `allowed_knowledge`.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^knowledge\\.[a-z][a-z0-9_-]*$"
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "rationale": {
+          "description": "Why this constraint exists - the business, security or operational reason a maintainer would need to know before relaxing it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "enforcement": {
+          "description": "Whether anything actually enforces this constraint today, or whether it is agreed-but-manual.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mechanism"
+          ],
+          "properties": {
+            "mechanism": {
+              "description": "`manual-process`: enforced by human process/review, not code. `external-system`: enforced by a named system outside this repository's OKF-consuming services. `none-yet`: agreed but not enforced anywhere - a documented gap, not a false claim of enforcement.",
+              "type": "string",
+              "enum": [
+                "manual-process",
+                "external-system",
+                "none-yet"
+              ]
+            },
+            "notes": {
+              "description": "Free-text detail on the mechanism (which process, which system, or what would be needed to close a none-yet gap).",
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "okf_version",
+    "type",
+    "title",
+    "resource",
+    "zuno"
+  ]
+}

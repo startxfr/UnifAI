@@ -186,6 +186,11 @@ against `spec.ceilings` (a bundle can narrow what the CR allows, never widen it)
 and leaves what the last good version emitted. Conditions `Verified`, `Valid`, `WithinCeilings`, `Emitted` and `Ready`
 report each step; a bundle listed by name in the ConfigMap `unifai-agent-revocations` (key `revoked`) is withdrawn.
 
+[docs/okf-agent-bundles.md](docs/okf-agent-bundles.md) describes how the operator pulls, verifies, validates and maps a
+bundle, the mapping of each field (and what lands in `status.unmapped`), and the profile and schema versions each
+operator version reads: Zuno OKF profile 1.0 (upstream [OKF 0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md))
+from 0.1.71, the legacy `v0.2` and `v0.3` documents until the weekly release of 2026-11-27.
+
 The OKF format, and how to write, sign and publish a bundle and the `UnifaiAgentBundle` that deploys it, are documented
 by the project that specifies the format and serves as the reference example,
 [zuno-demo-agents](https://github.com/startxfr/zuno-demo-agents) (links pinned to its tag v0.14.4):

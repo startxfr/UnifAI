@@ -1,12 +1,14 @@
-// Package okf reads OKF agent bundles: the `agents/<name>/` tree of Markdown files with YAML frontmatter, in the format
-// github.com/startxfr/zuno-demo-agents specifies (its keys live under `zuno:`), signed by their publisher. It is
-// fork-only: only the UnifaiAgentBundle controller imports it.
+// Package okf reads OKF agent bundles: the `agents/<name>/` tree of Markdown files with YAML frontmatter, in the Zuno
+// OKF profile github.com/startxfr/zuno-demo-agents specifies over upstream OKF 0.2 (its keys live under `zuno:`), signed
+// by their publisher. It reads profile 1.0 and the legacy v0.2 and v0.3 documents (DocumentVersion). It is fork-only:
+// only the UnifaiAgentBundle controller imports it. docs/okf-agent-bundles.md describes the mapping.
 package okf
 
 import (
 	"bytes"
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -18,8 +20,15 @@ type Files map[string][]byte
 
 // Bundle is the subset of an OKF agent bundle the operator maps onto UnifAI objects.
 type Bundle struct {
-	Name           string
-	OKFVersion     string
+	Name string
+	// OKFVersion is the okf_version of agent.okf.md as written: "v0.2" or "v0.3" for a legacy bundle, "0.2" (the
+	// upstream OKF version) for a profile bundle. status.okfVersion shows it.
+	OKFVersion string
+	// Version is the version DocumentVersion dispatches agent.okf.md to: "v0.2", "v0.3" or "1.0". Compare
+	// VersionLevel(Version), never Version itself.
+	Version string
+	// Profile is the zuno.profile of agent.okf.md, "" for a legacy bundle.
+	Profile        string
 	Title          string
 	Description    string
 	Status         string
@@ -28,7 +37,8 @@ type Bundle struct {
 	Classification Level
 	RAGTopK        int
 	AccessGroups   []string
-	Maintainer     string
+	// Maintainer is zuno.maintainer (profile 1.0), else provenance.maintainer (legacy).
+	Maintainer string
 	// UI is the tile presentation (displayName, tileDescription, color, icon); string values only.
 	UI map[string]string
 	// DelegationTargets are the agents this agent may delegate to over A2A (zuno.delegation.targets, ADR-0401).
@@ -215,15 +225,20 @@ type Skill struct {
 	Body string
 }
 
+// agentFrontmatter is what Parse reads of agent.okf.md. The envelope is descriptive metadata and is not read, except the
+// maintainer for the public sheet: zuno.maintainer in profile 1.0, provenance.maintainer in a legacy document.
 type agentFrontmatter struct {
 	OKFVersion  string `json:"okf_version"`
 	Type        string `json:"type"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
-	Provenance  struct {
+	// Provenance is the legacy envelope (v0.2, v0.3); profile 1.0 has no such key.
+	Provenance struct {
 		Maintainer string `json:"maintainer"`
 	} `json:"provenance"`
 	Zuno struct {
+		// Maintainer replaces provenance.maintainer in profile 1.0 (zuno-demo ADR-0615 clause 4).
+		Maintainer  string   `json:"maintainer"`
 		Name        string   `json:"name"`
 		Status      string   `json:"status"`
 		GraphShape  string   `json:"graph_shape"`
@@ -298,8 +313,42 @@ func SplitFrontmatter(b []byte) (front, body []byte, err error) {
 	return rest[:end], bytes.TrimSpace(rest[end+5:]), nil
 }
 
+// readAgentFrontmatter dispatches the frontmatter of agent.okf.md (DocumentVersion), then decodes what Parse reads of it.
+func readAgentFrontmatter(front []byte) (*agentFrontmatter, string, error) {
+	var keys map[string]any
+	if err := yaml.Unmarshal(front, &keys); err != nil {
+		return nil, "", fmt.Errorf("agent.okf.md frontmatter: %w", err)
+	}
+	version, err := DocumentVersion(keys)
+	if err != nil {
+		return nil, "", fmt.Errorf("agent.okf.md: %w", err)
+	}
+	var af agentFrontmatter
+	if err := yaml.Unmarshal(front, &af); err != nil {
+		return nil, "", fmt.Errorf("agent.okf.md frontmatter: %w", err)
+	}
+	return &af, version, nil
+}
+
+// maintainer is zuno.maintainer (profile 1.0), else provenance.maintainer (legacy).
+func (af *agentFrontmatter) maintainer() string {
+	if m := strings.TrimSpace(af.Zuno.Maintainer); m != "" {
+		return m
+	}
+	return strings.TrimSpace(af.Provenance.Maintainer)
+}
+
+// profileOf is the zuno.profile of a version DocumentVersion returned, "" for a legacy version.
+func profileOf(version string) string {
+	if slices.Contains(Profiles, version) {
+		return version
+	}
+	return ""
+}
+
 // Parse reads the agent bundle. It fails on anything the mapping cannot honour safely: a missing
-// agent.okf.md, a task named in zuno.tasks without its file, or an unknown classification.
+// agent.okf.md or one whose version DocumentVersion refuses, a task named in zuno.tasks without its file, or an unknown
+// classification.
 func Parse(files Files) (*Bundle, error) {
 	raw, ok := files["agent.okf.md"]
 	if !ok {
@@ -309,9 +358,9 @@ func Parse(files Files) (*Bundle, error) {
 	if err != nil {
 		return nil, fmt.Errorf("agent.okf.md: %w", err)
 	}
-	var af agentFrontmatter
-	if err := yaml.Unmarshal(front, &af); err != nil {
-		return nil, fmt.Errorf("agent.okf.md frontmatter: %w", err)
+	af, version, err := readAgentFrontmatter(front)
+	if err != nil {
+		return nil, err
 	}
 	if af.Type != "agent" {
 		return nil, fmt.Errorf("agent.okf.md: type is %q, want agent", af.Type)
@@ -324,10 +373,11 @@ func Parse(files Files) (*Bundle, error) {
 		return nil, fmt.Errorf("agent.okf.md zuno.model.preferred_classification: %w", err)
 	}
 	b := &Bundle{
-		Name: af.Zuno.Name, OKFVersion: af.OKFVersion, Title: af.Title, Description: strings.TrimSpace(af.Description),
+		Name: af.Zuno.Name, OKFVersion: af.OKFVersion, Version: version, Profile: profileOf(version),
+		Title: af.Title, Description: strings.TrimSpace(af.Description),
 		Status: af.Zuno.Status, GraphShape: af.Zuno.GraphShape, PrimaryTask: af.Zuno.PrimaryTask,
 		Classification: cls, RAGTopK: af.Zuno.RAG.TopK, AccessGroups: af.Zuno.Access.Groups,
-		Maintainer: strings.TrimSpace(af.Provenance.Maintainer), UI: stringValues(af.Zuno.UI),
+		Maintainer: af.maintainer(), UI: stringValues(af.Zuno.UI),
 		DelegationTargets: af.Zuno.Delegation.Targets,
 	}
 	if b.MaxSteps, err = maxSteps(af.Zuno.Limits, "agent.okf.md"); err != nil {

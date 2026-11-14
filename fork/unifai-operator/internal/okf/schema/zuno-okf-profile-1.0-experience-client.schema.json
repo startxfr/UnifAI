@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/startxfr/zuno-demo-agents/blob/main/platform/okf/schema/zuno-okf-profile-1.0-experience-client.schema.json",
+  "title": "Zuno OKF profile 1.0: experience-client document",
+  "description": "Frontmatter of experience-clients/<name>/client.okf.md in a Zuno OKF profile 1.0 bundle: the upstream Open Knowledge Format 0.2 envelope (https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md) plus the namespaced `zuno` block. Frozen (zuno-demo ADR-0615): a change needs a new profile version.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "okf_version": {
+      "description": "[OKF] Version of the upstream Open Knowledge Format this document follows (SPEC §12): always the quoted string \"0.2\". Repeated in every document so a reader can dispatch one file at a time (a declared deviation: upstream declares it once, in the bundle-root index.md).",
+      "type": "string",
+      "const": "0.2"
+    },
+    "type": {
+      "description": "[OKF] Document kind (SPEC §4): always \"experience-client\" in this schema.",
+      "type": "string",
+      "const": "experience-client"
+    },
+    "title": {
+      "description": "[OKF] Human-readable name (SPEC §4).",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "description": "[OKF] One-line summary of the document (SPEC §4).",
+      "type": "string",
+      "minLength": 1
+    },
+    "resource": {
+      "description": "[OKF] Canonical URI of this document (SPEC §4): its file on the main branch of the repository that publishes it.",
+      "type": "string",
+      "pattern": "^https://"
+    },
+    "tags": {
+      "description": "[OKF] Free classification tags (SPEC §4).",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._-]*$"
+      }
+    },
+    "sources": {
+      "description": "[OKF] What the document was derived from (SPEC §5 provenance). Descriptive, never a grant: the tasks' declarations are the authorization surface.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "resource"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          },
+          "resource": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "author": {
+            "type": "string",
+            "minLength": 1
+          },
+          "usage_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_modified": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+          }
+        }
+      }
+    },
+    "generated": {
+      "description": "[OKF] How the content was produced (SPEC §5 trust): an actor (`human:<id>`, `process:<id>` or `<producer>/<version>`) and an instant.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "by"
+      ],
+      "properties": {
+        "by": {
+          "type": "string",
+          "pattern": "^((human|process):[A-Za-z0-9._@/-]+|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)$"
+        },
+        "at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+        }
+      }
+    },
+    "verified": {
+      "description": "[OKF] Independent confirmations (SPEC §5 trust). Absent or empty: unverified; machine actors only: machine-confirmed; a `human:` actor: human-reviewed. Advisory, never a grant. Always a list (a declared deviation: upstream also tolerates a bare mapping).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "by",
+          "at"
+        ],
+        "properties": {
+          "by": {
+            "type": "string",
+            "pattern": "^((human|process):[A-Za-z0-9._@/-]+|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)$"
+          },
+          "at": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+          }
+        }
+      }
+    },
+    "status": {
+      "description": "[OKF] Lifecycle of the document (SPEC §5): absent means stable. For an agent it agrees with zuno.status: draft for placeholder, stable for active, deprecated for deprecated or retired.",
+      "type": "string",
+      "enum": [
+        "draft",
+        "stable",
+        "deprecated"
+      ]
+    },
+    "stale_after": {
+      "description": "[OKF] Instant after which the content should be reviewed again (SPEC §5), with an offset.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "zuno": {
+      "description": "[ZUNO EXT] What the mcp-gateway needs to entitle the logical agent name.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "name",
+        "tasks",
+        "access"
+      ],
+      "properties": {
+        "profile": {
+          "description": "[ZUNO] Version of the Zuno OKF profile this document follows: always the quoted string \"1.0\" (zuno-demo ADR-0615).",
+          "type": "string",
+          "const": "1.0"
+        },
+        "name": {
+          "description": "The logical agent name the client sends as X-Zuno-Agent. Matches the experience-clients/<name> directory and must not be the name of an agent.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "tasks": {
+          "description": "Task names the client sends; each is tasks/<task>.md of the client, of which only allowed_tools is read.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "uniqueItems": true
+        },
+        "classification": {
+          "description": "The data classification the client declares on its requests (descriptive; the client's deployment sets the X-Zuno-Data-Classification header). Its tasks should only allow tools whose min_classification it reaches.",
+          "type": "string",
+          "enum": [
+            "C1",
+            "C2",
+            "C3"
+          ]
+        },
+        "access": {
+          "description": "Who may use the logical agent name.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "groups"
+          ],
+          "properties": {
+            "groups": {
+              "description": "Keycloak `zuno` realm groups (JWT `groups` claim, without the leading slash) whose members may call the mcp-gateway under this name. Unlike an agent, an experience client serves every employee, so these are business groups (sales, consultant, ...), not an agent_* entitlement group; the tool policy still narrows each tool to its own allowed_groups.",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "maintainer": {
+          "description": "[ZUNO] Who maintains the bundle, shown by consumers.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "required": [
+    "okf_version",
+    "type",
+    "title",
+    "description",
+    "resource",
+    "zuno"
+  ]
+}

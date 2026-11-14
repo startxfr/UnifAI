@@ -29,6 +29,7 @@ import (
 
 	unifaiv1 "github.com/startxfr/unifai-operator/api/v1alpha1"
 	"github.com/startxfr/unifai-operator/internal/okf"
+	"github.com/startxfr/unifai-operator/internal/okf/okftest"
 )
 
 // bundleRegistry stands in for the OCI registry: reference -> artifact.
@@ -85,9 +86,16 @@ func (r *bundleRegistry) put(files okf.Files, sig []byte) string {
 }
 
 func tekosFiles() okf.Files {
+	files, err := readTekosTestdata()
+	Expect(err).NotTo(HaveOccurred())
+	return files
+}
+
+// readTekosTestdata reads the okf package's testdata copy of agents/tekos.
+func readTekosTestdata() (okf.Files, error) {
 	root := filepath.Join("..", "okf", "testdata", "tekos")
 	files := okf.Files{}
-	Expect(filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -95,8 +103,8 @@ func tekosFiles() okf.Files {
 		rel, _ := filepath.Rel(root, p)
 		files[filepath.ToSlash(rel)] = b
 		return err
-	})).To(Succeed())
-	return files
+	})
+	return files, err
 }
 
 // sign produces what `cosign sign-blob --output-signature` writes for the bundle digest.
@@ -599,6 +607,32 @@ var _ = Describe("UnifaiAgentBundle controller", func() {
 		msg, _ := cfg["system_message"].(string)
 		Expect(strings.Index(msg, "SKILL-ONE")).To(BeNumerically(">", 0))
 		Expect(strings.Index(msg, "SKILL-TWO")).To(BeNumerically(">", strings.Index(msg, "SKILL-ONE")))
+	})
+
+	It("emits a profile 1.0 bundle and shows its zuno.maintainer on the sheet (zuno-demo ADR-0615)", func() {
+		ns := setup("bundle-profile10")
+		files := okf.Files(okftest.Profile10Tekos(tekosFiles()))
+		files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "  maintainer: "+okftest.Maintainer+"\n",
+			"  maintainer: Profile maintainers\n", 1))
+		Expect(k8sClient.Create(ctx, newBundle(ns, fakeBundles.put(files, sign(key, files)), nil))).To(Succeed())
+		Eventually(func() string { return status(ns)().Phase }, timeout, interval).Should(Equal("Ready"), func() string { return status(ns)().Message })
+		st := status(ns)()
+		Expect(st.OKFVersion).To(Equal("0.2"))
+		Expect(meta.FindStatusCondition(st.Conditions, ConditionValid).Message).To(HavePrefix("OKF 0.2, profile 1.0, 4 tasks"))
+		Expect(st.Display).NotTo(BeNil())
+		Expect(st.Display.Maintainer).To(Equal("Profile maintainers"))
+		Expect(st.Tasks).To(HaveLen(4))
+		var agent unifaiv1.UnifaiAgent
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: "tekos-answer-technical-question"}, &agent)).To(Succeed())
+		cfg := map[string]any{}
+		Expect(json.Unmarshal(agent.Spec.Config.Raw, &cfg)).To(Succeed())
+		Expect(cfg["system_message"]).To(And(HavePrefix("You are Tekos"), ContainSubstring("Never reveal credentials")))
+	})
+
+	It("refuses a document whose zuno.profile this operator does not embed, and emits nothing", func() {
+		files := okf.Files(okftest.Profile10Tekos(tekosFiles()))
+		files["tasks/write-code.md"] = []byte(strings.Replace(string(files["tasks/write-code.md"]), `profile: "1.0"`, `profile: "1.1"`, 1))
+		refused(setup("bundle-profile11"), func(*unifaiv1.UnifaiAgentBundle) {}, files, ConditionValid, "SchemaInvalid")
 	})
 
 	v03WithSteps := func(agentSteps, taskSteps string) okf.Files {

@@ -232,10 +232,10 @@ func (r *AgentBundleReconciler) reconcile(ctx context.Context, cr *unifaiv1.Unif
 	}
 	if b.Status == statusDeprecated {
 		// Still usable; the sheet (Display.State) says so.
-		cond(ConditionValid, true, "Deprecated", fmt.Sprintf("zuno.status is deprecated, still served; OKF %s, %d tasks, shape %s%s",
-			b.OKFVersion, len(b.Tasks), b.GraphShape, withReason(cr)))
+		cond(ConditionValid, true, "Deprecated", fmt.Sprintf("zuno.status is deprecated, still served; %s, %d tasks, shape %s%s",
+			okfLabel(b), len(b.Tasks), b.GraphShape, withReason(cr)))
 	} else {
-		cond(ConditionValid, true, "Valid", fmt.Sprintf("OKF %s, %d tasks, shape %s", b.OKFVersion, len(b.Tasks), b.GraphShape))
+		cond(ConditionValid, true, "Valid", fmt.Sprintf("%s, %d tasks, shape %s", okfLabel(b), len(b.Tasks), b.GraphShape))
 	}
 
 	// 4. A bundle can narrow its ceilings, never widen them.
@@ -906,6 +906,15 @@ func (r *AgentBundleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&unifaiv1.UnifaiLLM{}).Owns(&unifaiv1.UnifaiAgent{}).
 		Owns(&unifaiv1.UnifaiCondition{}).Owns(&unifaiv1.UnifaiWorkflow{}).Owns(&unifaiv1.UnifaiProvider{}).Owns(&unifaiv1.UnifaiTeam{}).
 		Named("unifaiagentbundle").Complete(r)
+}
+
+// okfLabel names the bundle's version in the Valid condition: "OKF v0.3" for a legacy bundle, "OKF 0.2, profile 1.0"
+// for a profile bundle (status.okfVersion alone says "0.2", easy to mistake for the legacy "v0.2").
+func okfLabel(b *okf.Bundle) string {
+	if b.Profile != "" {
+		return fmt.Sprintf("OKF %s, profile %s", b.OKFVersion, b.Profile)
+	}
+	return "OKF " + b.OKFVersion
 }
 
 // bundleDisplay builds the public sheet from the admitted bundle (ADR-0582 clause 3). It is a closed list of

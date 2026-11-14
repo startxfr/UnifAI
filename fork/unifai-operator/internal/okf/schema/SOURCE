@@ -1,0 +1,40 @@
+# Embedded OKF schemas of unifai-operator (internal/okf/schema). Written by hack/sync-okf-schemas.sh: do not edit
+# the profile section by hand. internal/okf/schema_sync_test.go checks every line "<sha256>  <file>" below against
+# the embedded file, and that every embedded schema is listed.
+agents-repository: https://github.com/startxfr/zuno-demo-agents
+agents-commit: 03e0ba895e467b3e8218b74149471a01345c26ec
+agents-describe: 03e0ba8
+
+# Profile schemas: copies of platform/okf/schema/ at agents-commit, checked against its SHA256SUMS. A profile is
+# frozen (zuno-demo ADR-0615 clause 7): a change upstream is a new profile version, synchronized by this script.
+1b178d258af0b308dd45e268e98dd1377a234d43917baf67fb6b5b080405d64b  zuno-okf-profile-1.0-agent.schema.json
+69b2190d1662367057f91034b962ab10f9da0b7aa829da37783d36a352c3c9f6  zuno-okf-profile-1.0-experience-client.schema.json
+9f66466173c2d3742f596652d8adaf4001754239c8dfd282a00374ff38d30b0e  zuno-okf-profile-1.0-index.schema.json
+c502f602e99001d24312afec89f9c01c1635226ac53cfc0bd09faebcb5a9c9db  zuno-okf-profile-1.0-policy.schema.json
+41dd94bd8f68fd1da4b3ef2772d9e161659a7658600b3b45dcabb56452e51a2b  zuno-okf-profile-1.0-prompt.schema.json
+f1356f8cb3d24261b942edbb39e0c64690f3d3a12fd7f16a27f3a019b4332f03  zuno-okf-profile-1.0-rag.schema.json
+0e833e76a204831cb365a531740273a4f5fe3723a62e9303d7654a50439a313f  zuno-okf-profile-1.0-skill.schema.json
+1ee3a635bc520882c202a01033542028366b72d679531390d5095b5e7437f59c  zuno-okf-profile-1.0-task.schema.json
+144e6784405d5ae9f5f4703fc0a6051f25004024a424dbbfbc17da194c8412c2  zuno-okf-profile-1.0-tool.schema.json
+
+# Legacy schemas (okf_version v0.2 and v0.3, no zuno.profile). Not synchronized: frozen as the operator embedded
+# them before profile 1.0. The weekly operator release of 2026-11-27 refuses legacy documents and deletes them with
+# this section (zuno-demo ADR-0615 clause 13, WP-268). Known differences from the same files in zuno-demo-agents,
+# all intentional:
+# - zuno-okf-v0.2.schema.json: zuno.status also accepts deprecated and retired. The operator serves both states
+#   (zuno-demo ADR-0584); the agents repository keeps v0.2 at active and placeholder.
+# - zuno-okf-v0.3.schema.json, zuno-okf-task-v0.3.schema.json: the description of zuno.limits.max_tokens_per_turn
+#   is worded for this operator (R-543). The constraint itself is the same.
+0c26393f347c759896df46dd9a19db50d4ad2927d85dc5eb8ee214ea64e9a30b  zuno-okf-policy-v0.2.schema.json
+514509c6940ffcf8899f330f91d41ada28a297ea21f69efd1edabd124109b96d  zuno-okf-policy-v0.3.schema.json
+f3cc29f1add84f38bb56d3238bdba695092484c0240f1fc4cad30b8b3aa3048e  zuno-okf-prompt-v0.2.schema.json
+5654e5031c36cda74a3d89701622b5f2d52811c6ad65eea138465e85c3d78c20  zuno-okf-prompt-v0.3.schema.json
+2c0f76aee6d92d5853cf1e7fe05fcbe272e3fefc5be151a2098fa43f534e7c54  zuno-okf-rag-v0.2.schema.json
+eeba0c1dae2654b16ca86a8be17ca94354cd2202d3730a7ca7a423fab400d419  zuno-okf-rag-v0.3.schema.json
+67cfced07a074b81a621defd90f1b9735f8ae5b5ed889c83d53c65a7bdbdf35a  zuno-okf-skill-v0.3.schema.json
+6c27d392d75d95e5a665b84ac4df431d4a8b883b0e3d448a96690d630bc3e47d  zuno-okf-task-v0.2.schema.json
+e1eaa1284104438d2ab97fb071e276ca1515bd2a130ebb2da748061e214447ee  zuno-okf-task-v0.3.schema.json
+83d769f501812e7c0f140d791facfb71c38f65da3502fa1da7bb4ade660aca41  zuno-okf-tool-v0.2.schema.json
+d1300489191995f02b6ba09475a4b0706b54dadb5466c81a1cd02410508124b0  zuno-okf-tool-v0.3.schema.json
+c7133a10c812d4e467397f31fbe478e0224f73f7ea1fc6bf9b31698ae7af5e92  zuno-okf-v0.2.schema.json
+fdfd6df7152dd32a1850f02c276dcd94812445bb60d83c26e980f02e18663a96  zuno-okf-v0.3.schema.json

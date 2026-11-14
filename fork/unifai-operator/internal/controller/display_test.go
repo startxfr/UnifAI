@@ -9,6 +9,7 @@ import (
 
 	unifaiv1 "github.com/startxfr/unifai-operator/api/v1alpha1"
 	"github.com/startxfr/unifai-operator/internal/okf"
+	"github.com/startxfr/unifai-operator/internal/okf/okftest"
 )
 
 // hiddenFieldSentinels are put in every non-public place of a bundle; none may reach the sheet (ADR-0582 clause 4).
@@ -46,6 +47,44 @@ func TestBundleDisplayCarriesPublicFieldsOnly(t *testing.T) {
 	if !reflect.DeepEqual(*d, want) {
 		t.Fatalf("sheet %+v, want %+v", *d, want)
 	}
+}
+
+// zuno-demo ADR-0615 clause 4: the sheet's maintainer is zuno.maintainer in profile 1.0, provenance.maintainer in a
+// legacy bundle; the Valid condition names the profile.
+func TestBundleDisplayMaintainerAndVersionLabel(t *testing.T) {
+	files := okf.Files(okftest.Profile10Tekos(tekosTestdata(t)))
+	files["agent.okf.md"] = []byte(strings.Replace(string(files["agent.okf.md"]), "  maintainer: "+okftest.Maintainer+"\n",
+		"  maintainer: Profile maintainers\n", 1))
+	b, err := okf.Parse(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bundleDisplay(b).Maintainer; got != "Profile maintainers" {
+		t.Errorf("profile 1.0 sheet maintainer %q, want zuno.maintainer", got)
+	}
+	if got := okfLabel(b); got != "OKF 0.2, profile 1.0" {
+		t.Errorf("profile 1.0 label %q", got)
+	}
+	legacy, err := okf.Parse(tekosTestdata(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bundleDisplay(legacy).Maintainer; got != "Zuno Demo architecture team" {
+		t.Errorf("legacy sheet maintainer %q, want provenance.maintainer", got)
+	}
+	if got := okfLabel(legacy); got != "OKF v0.2" {
+		t.Errorf("legacy label %q", got)
+	}
+}
+
+// tekosTestdata is tekosFiles for a plain test (tekosFiles needs a running Ginkgo spec).
+func tekosTestdata(t *testing.T) okf.Files {
+	t.Helper()
+	files, err := readTekosTestdata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }
 
 // The sheet type is a closed list: adding a field to it is a disclosure decision that must update this test and
