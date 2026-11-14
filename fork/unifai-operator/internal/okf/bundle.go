@@ -24,9 +24,6 @@ type Bundle struct {
 	// OKFVersion is the okf_version of agent.okf.md as written: "v0.2" or "v0.3" for a legacy bundle, "0.2" (the
 	// upstream OKF version) for a profile bundle. status.okfVersion shows it.
 	OKFVersion string
-	// Version is the version DocumentVersion dispatches agent.okf.md to: "v0.2", "v0.3" or "1.0". Compare
-	// VersionLevel(Version), never Version itself.
-	Version string
 	// Profile is the zuno.profile of agent.okf.md, "" for a legacy bundle.
 	Profile        string
 	Title          string
@@ -373,7 +370,7 @@ func Parse(files Files) (*Bundle, error) {
 		return nil, fmt.Errorf("agent.okf.md zuno.model.preferred_classification: %w", err)
 	}
 	b := &Bundle{
-		Name: af.Zuno.Name, OKFVersion: af.OKFVersion, Version: version, Profile: profileOf(version),
+		Name: af.Zuno.Name, OKFVersion: af.OKFVersion, Profile: profileOf(version),
 		Title: af.Title, Description: strings.TrimSpace(af.Description),
 		Status: af.Zuno.Status, GraphShape: af.Zuno.GraphShape, PrimaryTask: af.Zuno.PrimaryTask,
 		Classification: cls, RAGTopK: af.Zuno.RAG.TopK, AccessGroups: af.Zuno.Access.Groups,
@@ -444,6 +441,17 @@ func Parse(files Files) (*Bundle, error) {
 	return b, nil
 }
 
+// checkVersion refuses a document whose version DocumentVersion refuses, so that Parse does not depend on
+// ValidateSchemas having run first: every document it reads is dispatched, not only agent.okf.md.
+func checkVersion(front []byte) error {
+	var m map[string]any
+	if err := yaml.Unmarshal(front, &m); err != nil {
+		return err
+	}
+	_, err := DocumentVersion(m)
+	return err
+}
+
 func parseTask(files Files, name string) (*Task, error) {
 	p := path.Join("tasks", name+".md")
 	raw, ok := files[p]
@@ -452,6 +460,9 @@ func parseTask(files Files, name string) (*Task, error) {
 	}
 	front, body, err := SplitFrontmatter(raw)
 	if err != nil {
+		return nil, fmt.Errorf("%s: %w", p, err)
+	}
+	if err := checkVersion(front); err != nil {
 		return nil, fmt.Errorf("%s: %w", p, err)
 	}
 	var tf taskFrontmatter
@@ -508,6 +519,9 @@ func parseSkill(files Files, ref string) (*Skill, []string, []string, error) {
 	}
 	front, body, err := SplitFrontmatter(raw)
 	if err != nil {
+		return nil, nil, nil, fmt.Errorf("%s: %w", p, err)
+	}
+	if err := checkVersion(front); err != nil {
 		return nil, nil, nil, fmt.Errorf("%s: %w", p, err)
 	}
 	var sf skillFrontmatter

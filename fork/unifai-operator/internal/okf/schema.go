@@ -33,13 +33,6 @@ var (
 	SchemaVersions = []string{"v0.2", "v0.3", Profile10}
 )
 
-// versionLevel orders the document versions: legacy v0.2 < legacy v0.3 < profile 1.0 (ADR-0615 clause 6).
-var versionLevel = map[string]int{"v0.2": 2, "v0.3": 3, Profile10: 4}
-
-// VersionLevel is the level of a version DocumentVersion returned, 0 for any other value. A rule that applies "from
-// v0.3" compares levels (VersionLevel(v) >= VersionLevel("v0.3")), never versions, so that profile 1.0 keeps it.
-func VersionLevel(version string) int { return versionLevel[version] }
-
 // DocumentVersion is the dispatch rule of zuno-demo ADR-0615 clause 5, the one zuno-demo-agents implements in
 // platform/okf/okf_profile.py. It returns the version a document's frontmatter follows, or an error naming the
 // refused value:

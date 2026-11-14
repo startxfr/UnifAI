@@ -72,16 +72,6 @@ func TestDocumentVersionDispatchTable(t *testing.T) {
 	}
 }
 
-// ADR-0615 clause 6: profile 1.0 keeps every rule that applies from v0.3.
-func TestVersionLevelOrdersLegacyBelowProfile(t *testing.T) {
-	if VersionLevel("v0.2") >= VersionLevel("v0.3") || VersionLevel("v0.3") >= VersionLevel(Profile10) {
-		t.Fatalf("levels v0.2=%d v0.3=%d 1.0=%d", VersionLevel("v0.2"), VersionLevel("v0.3"), VersionLevel(Profile10))
-	}
-	if VersionLevel("0.2") != 0 || VersionLevel("v0.4") != 0 {
-		t.Fatal("a value DocumentVersion never returns has a level")
-	}
-}
-
 func TestValidateSchemasAcceptsProfile10(t *testing.T) {
 	files := profile10Tekos(t)
 	if _, ok := files["index.md"]; !ok {
@@ -186,8 +176,8 @@ func TestParseProfile10(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.OKFVersion != UpstreamOKFVersion || b.Version != Profile10 || b.Profile != Profile10 {
-		t.Fatalf("versions: okf_version %q, version %q, profile %q", b.OKFVersion, b.Version, b.Profile)
+	if b.OKFVersion != UpstreamOKFVersion || b.Profile != Profile10 {
+		t.Fatalf("versions: okf_version %q, profile %q", b.OKFVersion, b.Profile)
 	}
 	if b.Name != "tekos" || b.Status != "active" || b.Classification != C1 || len(b.Tasks) != 4 || b.Description == "" {
 		t.Fatalf("unexpected bundle %+v", b)
@@ -228,7 +218,7 @@ func TestParseMaintainer(t *testing.T) {
 		t.Fatalf("profile 1.0 without zuno.maintainer: %q, %v", b.Maintainer, err)
 	}
 	legacy, err := Parse(loadTekos(t))
-	if err != nil || legacy.Maintainer != "Zuno Demo architecture team" || legacy.Version != "v0.2" || legacy.Profile != "" {
+	if err != nil || legacy.Maintainer != "Zuno Demo architecture team" || legacy.Profile != "" {
 		t.Fatalf("legacy v0.2: %+v, %v", legacy, err)
 	}
 	// zuno.maintainer wins when both are present (only a document no schema admits has both).
@@ -247,5 +237,18 @@ func TestParseRefusesAnUnsupportedVersion(t *testing.T) {
 		if _, err := Parse(edit(t, profile10Tekos(t), "agent.okf.md", c.old, c.new)); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: got %v, want %q", c.new, err, c.want)
 		}
+	}
+}
+
+// Parse dispatches every document it reads, not only agent.okf.md, so it does not rely on ValidateSchemas having run
+// first (the invalid-task-unsupported-version case of zuno-demo-agents).
+func TestParseRefusesAnUnsupportedVersionInATask(t *testing.T) {
+	files := edit(t, profile10Tekos(t), "tasks/write-code.md", "okf_version: \"0.2\"", "okf_version: \"0.9\"")
+	if _, err := Parse(files); err == nil || !strings.Contains(err.Error(), `tasks/write-code.md: unsupported okf_version "0.9"`) {
+		t.Fatalf("a task with okf_version 0.9 parsed: %v", err)
+	}
+	files = edit(t, v03Tekos(t), "tasks/write-code.md", "okf_version: v0.3", "okf_version: v0.4")
+	if _, err := Parse(files); err == nil || !strings.Contains(err.Error(), `tasks/write-code.md: unsupported okf_version "v0.4"`) {
+		t.Fatalf("a legacy task with okf_version v0.4 parsed: %v", err)
 	}
 }
