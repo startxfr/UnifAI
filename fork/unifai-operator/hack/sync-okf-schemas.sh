@@ -4,12 +4,15 @@
 # commit and the sha256 of every embedded schema. internal/okf/schema_sync_test.go fails when an embedded schema differs
 # from SOURCE (zuno-demo ADR-0615 clause 7).
 #
-#   hack/sync-okf-schemas.sh <dir>   a zuno-demo-agents checkout: the files committed at its HEAD
+#   hack/sync-okf-schemas.sh <dir>   a zuno-demo-agents checkout, or any directory inside one: the files committed at the
+#                                    HEAD of its repository
 #   hack/sync-okf-schemas.sh <ref>   a tag, branch or commit of $AGENTS_REPO, a local clone or a git URL
 #                                    (default https://github.com/startxfr/zuno-demo-agents.git)
 #
 # Files are read from the commit, never from a working tree, so SOURCE always names the commit that holds them. They
-# are checked against the SHA256SUMS the agents repository commits next to them before anything is copied.
+# are checked against the SHA256SUMS the agents repository commits next to them before anything is copied (only the
+# lines of the profile files it copies: SHA256SUMS may list other files). The agents-repository line of SOURCE is the
+# origin URL of a local clone, or the default URL when it has none.
 # The legacy v0.2 and v0.3 schemas are not synchronized: they are frozen until the operator stops reading legacy
 # documents (WP-268), and the legacy section of SOURCE is kept as it is. Run from anywhere; then `go test ./internal/okf/`.
 set -euo pipefail
@@ -21,13 +24,24 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 if [ -d "$src" ]; then
-  repo=$src
+  repo=$(git -C "$src" rev-parse --show-toplevel) || {
+    echo "error: $src is not inside a git repository" >&2
+    exit 1
+  }
   ref=HEAD
 else
   repo=${AGENTS_REPO:-https://github.com/startxfr/zuno-demo-agents.git}
   ref=$src
 fi
 label=$repo
+default_url=https://github.com/startxfr/zuno-demo-agents
+if [ -d "$repo" ]; then
+  repo_url=$(git -C "$repo" remote get-url origin 2>/dev/null || echo "$default_url")
+else
+  repo_url=$repo
+fi
+# An ssh remote is written as the public https URL, without ".git".
+repo_url=$(printf '%s' "$repo_url" | sed -E 's|^git@([^:]+):|https://\1/|; s|\.git$||')
 if [ ! -d "$repo" ]; then
   git clone --quiet --bare --filter=blob:none "$repo" "$work/agents.git"
   repo=$work/agents.git
@@ -57,7 +71,8 @@ for f in "${files[@]}"; do
     exit 1
   fi
 done
-(cd "$work/schema" && sha256sum --check --quiet --strict ../SHA256SUMS) || {
+for f in "${files[@]}"; do grep -E "^[0-9a-f]{64}  $f\$" "$work/SHA256SUMS"; done >"$work/profile.sums"
+(cd "$work/schema" && sha256sum --check --quiet --strict ../profile.sums) || {
   echo "error: the profile schemas at $commit do not match its SHA256SUMS" >&2
   exit 1
 }
@@ -69,13 +84,15 @@ else
   {
     cat <<'EOF'
 # Legacy schemas (okf_version v0.2 and v0.3, no zuno.profile). Not synchronized: frozen as the operator embedded
-# them before profile 1.0. The weekly operator release of 2026-11-27 refuses legacy documents and deletes them with
-# this section (zuno-demo ADR-0615 clause 13, WP-268). Known differences from the same files in zuno-demo-agents,
+# them before profile 1.0. The 0.1 line keeps reading legacy documents; a later line of the operator (0.2) refuses
+# them and deletes them with this section (zuno-demo ADR-0615 clause 13, WP-268). Known differences from the same files in zuno-demo-agents,
 # all intentional:
 # - zuno-okf-v0.2.schema.json: zuno.status also accepts deprecated and retired. The operator serves both states
 #   (zuno-demo ADR-0584); the agents repository keeps v0.2 at active and placeholder.
 # - zuno-okf-v0.3.schema.json, zuno-okf-task-v0.3.schema.json: the description of zuno.limits.max_tokens_per_turn
 #   is worded for this operator (R-543). The constraint itself is the same.
+# - zuno-okf-v0.3.schema.json: the description of zuno.status is longer than in the agents repository (description
+#   only, no constraint differs).
 EOF
     (cd "$dst" && for f in zuno-okf-*.schema.json; do [[ $f == zuno-okf-profile-* ]] || sha256sum "$f"; done)
   } >"$work/legacy"
@@ -90,7 +107,7 @@ done
 # Embedded OKF schemas of unifai-operator (internal/okf/schema). Written by hack/sync-okf-schemas.sh: do not edit
 # the profile section by hand. internal/okf/schema_sync_test.go checks every line "<sha256>  <file>" below against
 # the embedded file, and that every embedded schema is listed.
-agents-repository: https://github.com/startxfr/zuno-demo-agents
+agents-repository: $repo_url
 agents-commit: $commit
 agents-describe: $describe
 

@@ -2,6 +2,9 @@ package okf
 
 import (
 	"encoding/json"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -250,5 +253,47 @@ func TestParseRefusesAnUnsupportedVersionInATask(t *testing.T) {
 	files = edit(t, v03Tekos(t), "tasks/write-code.md", "okf_version: v0.3", "okf_version: v0.4")
 	if _, err := Parse(files); err == nil || !strings.Contains(err.Error(), `tasks/write-code.md: unsupported okf_version "v0.4"`) {
 		t.Fatalf("a legacy task with okf_version v0.4 parsed: %v", err)
+	}
+}
+
+// loadRealProfile10Tekos reads testdata/tekos-profile10: the agent tekos as zuno-demo-agents v1.0.0 published it
+// (quay.io/zuno/okf-tekos@sha256:f1ba6c4543a39f51ba9159c953cee4f0b3a198c7a4ef8e9b87ade7ef3e7cef97, cosign-verified when
+// copied), unmodified. The derived fixture above is for the negative cases, which edit strings of the bundle.
+func loadRealProfile10Tekos(t *testing.T) Files {
+	t.Helper()
+	const root = "testdata/tekos-profile10"
+	files := Files{}
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, p)
+		files[filepath.ToSlash(rel)] = b
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+func TestARealMigratedAgentIsReadAsProfile10(t *testing.T) {
+	files := loadRealProfile10Tekos(t)
+	if err := ValidateSchemas(files); err != nil {
+		t.Fatalf("the published tekos v1.0.0 fails the embedded schemas: %v", err)
+	}
+	b, err := Parse(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.OKFVersion != UpstreamOKFVersion || b.Profile != Profile10 || b.Name != "tekos" || b.Maintainer != "Zuno Demo architecture team" {
+		t.Fatalf("okf_version %q, profile %q, name %q, maintainer %q", b.OKFVersion, b.Profile, b.Name, b.Maintainer)
+	}
+	if len(b.Tasks) != 4 || b.PrimaryTask != "answer-technical-question" {
+		t.Fatalf("tasks %d, primary %q", len(b.Tasks), b.PrimaryTask)
 	}
 }

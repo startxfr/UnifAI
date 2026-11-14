@@ -15,7 +15,7 @@ import (
 
 // Document versions (zuno-demo ADR-0615 clause 5). A profile document says okf_version "0.2", the version of the
 // upstream Open Knowledge Format as a quoted string, and zuno.profile "1.0". A legacy document says okf_version "v0.2"
-// or "v0.3" and has no zuno.profile; the weekly operator release of 2026-11-27 stops reading them (ADR-0615 clause 13,
+// or "v0.3" and has no zuno.profile; the 0.1 line keeps reading them, a later line (0.2) stops (ADR-0615 clause 13,
 // WP-268).
 const (
 	// UpstreamOKFVersion is the okf_version of every profile document.

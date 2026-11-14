@@ -18,13 +18,15 @@ f1356f8cb3d24261b942edbb39e0c64690f3d3a12fd7f16a27f3a019b4332f03  zuno-okf-profi
 144e6784405d5ae9f5f4703fc0a6051f25004024a424dbbfbc17da194c8412c2  zuno-okf-profile-1.0-tool.schema.json
 
 # Legacy schemas (okf_version v0.2 and v0.3, no zuno.profile). Not synchronized: frozen as the operator embedded
-# them before profile 1.0. The weekly operator release of 2026-11-27 refuses legacy documents and deletes them with
-# this section (zuno-demo ADR-0615 clause 13, WP-268). Known differences from the same files in zuno-demo-agents,
+# them before profile 1.0. The 0.1 line keeps reading legacy documents; a later line of the operator (0.2) refuses
+# them and deletes them with this section (zuno-demo ADR-0615 clause 13, WP-268). Known differences from the same files in zuno-demo-agents,
 # all intentional:
 # - zuno-okf-v0.2.schema.json: zuno.status also accepts deprecated and retired. The operator serves both states
 #   (zuno-demo ADR-0584); the agents repository keeps v0.2 at active and placeholder.
 # - zuno-okf-v0.3.schema.json, zuno-okf-task-v0.3.schema.json: the description of zuno.limits.max_tokens_per_turn
 #   is worded for this operator (R-543). The constraint itself is the same.
+# - zuno-okf-v0.3.schema.json: the description of zuno.status is longer than in the agents repository (description
+#   only, no constraint differs).
 0c26393f347c759896df46dd9a19db50d4ad2927d85dc5eb8ee214ea64e9a30b  zuno-okf-policy-v0.2.schema.json
 514509c6940ffcf8899f330f91d41ada28a297ea21f69efd1edabd124109b96d  zuno-okf-policy-v0.3.schema.json
 f3cc29f1add84f38bb56d3238bdba695092484c0240f1fc4cad30b8b3aa3048e  zuno-okf-prompt-v0.2.schema.json
