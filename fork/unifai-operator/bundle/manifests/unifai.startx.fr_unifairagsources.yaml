@@ -236,22 +236,26 @@ spec:
                   (optionally) the pages they link to.
                 properties:
                   crawl:
-                    default: redhat-docs
+                    default: generic
                     description: |-
-                      Discovery of linked pages: redhat-docs (same host, /html/ or /html-single/ book paths), generic
-                      (same host, under the seed's directory) or none (the seeds only).
+                      Discovery of linked pages: generic (same host, under the seed's directory), site (same host, any path: narrow
+                      it with include) or none (the seeds only). redhat-docs is deprecated and removed in 0.2: it is site with the
+                      include patterns */html/* and */html-single/* and the docs.redhat.com /documentation/ to /en/documentation/
+                      rewrite, which a source now declares itself.
                     enum:
-                    - redhat-docs
                     - generic
+                    - site
                     - none
+                    - redhat-docs
                     type: string
                   exclude:
                     items:
                       type: string
                     type: array
                   include:
-                    description: Shell-style patterns a discovered URL must match
-                      (empty = all) and must not match.
+                    description: |-
+                      Shell-style patterns a discovered URL must match (empty = all) and must not match. They apply before
+                      maxPages, which counts only the pages kept.
                     items:
                       type: string
                     type: array
@@ -267,6 +271,27 @@ spec:
                     description: Fields stamped on every chunk of the source (e.g.
                       product, version, language).
                     type: object
+                  rewrites:
+                    description: |-
+                      Rewrites applied in turn to every discovered URL before the scope checks, for a site that serves a page
+                      under several URLs: the first match of the regular expression (Python syntax) is replaced; the replacement
+                      may refer to its groups (\1).
+                    items:
+                      description: 'RAGWebRewrite rewrites a discovered URL: the first
+                        match of Match is replaced by Replace.'
+                      properties:
+                        match:
+                          maxLength: 500
+                          minLength: 1
+                          type: string
+                        replace:
+                          maxLength: 500
+                          type: string
+                      required:
+                      - match
+                      type: object
+                    maxItems: 20
+                    type: array
                   urls:
                     description: |-
                       Seed pages. Each is fetched on every sync (its links are the discovery input); the pages found

@@ -119,6 +119,15 @@ spec:
                 required:
                 - s3
                 type: object
+              contractNamespace:
+                description: |-
+                  Namespace of the contract names multiagent recognises in the headers it sends (X-<Namespace>-Data-Classification,
+                  -Max-Tokens) and uses for the A2A metadata it exchanges (<namespace>.approval, <namespace>.classification), as the
+                  gateways it calls expect them (UNIFAI_CONTRACT_NAMESPACE). Set it like the contractNamespace of the stack's
+                  UnifaiAgentBundles. Unset = both unifai and zuno until 0.2, unifai only from 0.2.
+                maxLength: 30
+                pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+                type: string
               deletionPolicy:
                 default: Retain
                 description: Retain keeps PVCs, the generated secret and the Keycloak
@@ -674,6 +683,17 @@ spec:
                 required:
                 - endpoint
                 type: object
+              outboundAllowedHosts:
+                description: |-
+                  Hosts the multiagent pods may call besides the services of the stack's own namespace, through the outbound URL
+                  guard of MCP, A2A and OAuth discovery calls (OUTBOUND_ALLOWED_HOSTS): a host name, or a suffix starting with a dot
+                  (.gateways.svc). Added to the stack namespace, which is always allowed. An extraEnv OUTBOUND_ALLOWED_HOSTS entry
+                  still replaces the whole value.
+                items:
+                  pattern: ^\.?[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$
+                  type: string
+                maxItems: 50
+                type: array
               paused:
                 description: Stop reconciling (nothing is changed or deleted).
                 type: boolean
@@ -688,6 +708,14 @@ spec:
               rag:
                 description: RAGSpec configures the RAG data pipeline.
                 properties:
+                  bearerAudience:
+                    description: |-
+                      Audience a user token must carry for the RAG server to accept it: on the bearer search API
+                      (/api/sources/query.bearer) and for the groups that unlock shared sources (RAG_BEARER_AUDIENCE). Have the
+                      identity provider add it to the tokens of the callers (e.g. a Keycloak audience mapper). Unset = the RAG default,
+                      unifai-rag.
+                    maxLength: 255
+                    type: string
                   confluence:
                     description: Credentials of the Confluence source type.
                     properties:

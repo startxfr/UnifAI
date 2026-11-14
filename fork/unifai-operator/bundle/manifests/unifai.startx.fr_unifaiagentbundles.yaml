@@ -38,8 +38,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: UnifaiAgentBundle turns a signed Zuno OKF agent bundle into UnifAI
-          LLMs, agents, a condition and workflows.
+        description: |-
+          UnifaiAgentBundle turns a signed OKF agent bundle (format specified by github.com/startxfr/zuno-demo-agents) into
+          UnifAI LLMs, agents, a condition and workflows.
         properties:
           apiVersion:
             description: |-
@@ -129,9 +130,17 @@ spec:
                 x-kubernetes-validations:
                 - message: classification overrides are C1, C2 or C3
                   rule: self.all(k, self[k] in ['C1', 'C2', 'C3'])
+              contractNamespace:
+                description: |-
+                  Namespace of the contract headers the emitted LLMs, MCP providers and A2A nodes send to the gateways
+                  behind them: X-<Namespace>-Agent, -Task, -Data-Classification, -Run-Id, -Max-Tokens, -Delegated-By and
+                  -Delegation-Depth (e.g. zuno sends X-Zuno-Agent). Unset = both unifai and zuno until 0.2, unifai only from 0.2.
+                maxLength: 30
+                pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+                type: string
               delegation:
                 description: |-
-                  Delegation over A2A through the zuno a2a-gateway. Unset = a bundle declaring zuno.delegation.targets is refused
+                  Delegation over A2A through an A2A gateway. Unset = a bundle declaring zuno.delegation.targets is refused
                   (DelegationUnsupported).
                 properties:
                   approval:
@@ -146,7 +155,7 @@ spec:
                     - dynamic
                     type: string
                   gatewayURL:
-                    description: Base URL of the a2a-gateway; a target agent is called
+                    description: Base URL of the A2A gateway; a target agent is called
                       at <gatewayURL>/agents/<agent>.
                     pattern: ^https?://[^/?#@]+$
                     type: string
@@ -197,8 +206,8 @@ spec:
                 type: boolean
               llm:
                 description: |-
-                  BundleLLM is the template of the LLM emitted for every task: the bundle adds the Zuno headers
-                  (agent, task, effective classification, run id) to `config.default_headers`.
+                  BundleLLM is the template of the LLM emitted for every task: the bundle adds the contract headers X-<Namespace>-Agent,
+                  -Task, -Data-Classification (effective) and -Run-Id (see contractNamespace) to `config.default_headers`.
                 properties:
                   config:
                     type: object
@@ -206,7 +215,7 @@ spec:
                   maxTokens:
                     description: |-
                       Generation ceiling, in tokens per model call, of every task that declares none (zuno.limits.max_tokens). It is
-                      sent as the X-Zuno-Max-Tokens header (ADR-0544, enforced by the ai-gateway) and as the client's max_tokens. A
+                      sent as the X-<Namespace>-Max-Tokens header (for the model gateway to enforce) and as the client's max_tokens. A
                       task's own limit wins. Unset = the client default and no header.
                     format: int32
                     maximum: 8192
@@ -246,7 +255,7 @@ spec:
                 type: object
               mcp:
                 description: |-
-                  MCP provider emitted per task that declares allowed_tools, carrying the Zuno headers. It is attached
+                  MCP provider emitted per task that declares allowed_tools, carrying the contract headers. It is attached
                   before `providers`.
                 properties:
                   config:
@@ -286,7 +295,7 @@ spec:
               providers:
                 description: |-
                   UnifaiProvider names (MCP servers) attached to the tasks that declare allowed_tools, shared by all
-                  tasks and sent without the Zuno headers.
+                  tasks and sent without the contract headers.
                 items:
                   maxLength: 253
                   type: string
@@ -338,7 +347,7 @@ spec:
                         type: object
                         x-kubernetes-map-type: atomic
                       reference:
-                        description: Reference pinned by digest, e.g. quay.io/zuno/okf-tekos@sha256:<64
+                        description: Reference pinned by digest, e.g. registry.example.com/agents/okf-myagent@sha256:<64
                           hex>. Tags are refused.
                         type: string
                         x-kubernetes-validations:
@@ -399,8 +408,8 @@ spec:
                     type: object
                   publicKeyRef:
                     description: |-
-                      PEM public half of the signing key (for zuno, the Vault Transit key exported as
-                      agents/zuno-platform-signer.pub): no access to Vault is needed. Checks the bundle content digest.
+                      PEM public half of the signing key (e.g. a KMS or Vault Transit key exported once): the operator needs no access
+                      to the key store. Checks the bundle content digest.
                     properties:
                       key:
                         type: string
