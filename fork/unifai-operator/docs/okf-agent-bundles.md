@@ -12,7 +12,7 @@ the resource, are documented in zuno-demo-agents.
 |---|---|---|
 | 0.1.70 and earlier | refused | read |
 | every 0.1 release from 0.1.71 | read | read |
-| a later line (0.2, not before the promotion of 2026-12-15; to be decided with zuno-demo WP-268) | read | may be refused |
+| operator line 0.2, from 2027-01-05 (zuno-demo WP-268, R-556) | read | refused |
 
 A reader accepts only the profile versions whose schemas it embeds. A new profile version (1.1) therefore needs an
 operator release. `status.okfVersion` shows `okf_version` as written, so `0.2` for a profile bundle and `v0.2` for a
