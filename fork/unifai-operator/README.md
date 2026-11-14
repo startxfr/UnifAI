@@ -450,7 +450,7 @@ from a pod without the internal-client label, LLM/agent/workflow/chat, no needle
 Delete-policy cleanup; `E2E_UPGRADE=1` (canary only): a stack deployed by the OLM instance is handed to the candidate
 (same encryption key, same UnifAI objects, chat); `E2E_KEYCLOAK=1`: managed Keycloak (RHBK install, realm import,
 removal); `E2E_FULL=1`: docling + TEI deployed; `E2E_KEEP=1` keeps the namespaces. Cluster-specific defaults
-(`E2E_STORAGE_CLASS=gp3-csi`, `E2E_SHARED_STORAGE_CLASS=nfs`, `E2E_NODE_SELECTOR=workload=unifai`) are in the Makefile.
+(`E2E_STORAGE_CLASS=gp3-csi`, `E2E_SHARED_STORAGE_CLASS=nfs`) are in the Makefile; `E2E_NODE_SELECTOR` (empty by default) pins the stack pods to labelled nodes, e.g. `workload=unifai`.
 
 `make charts` refreshes `internal/stack/assets` from `../../helm`. `make docker-build` compiles inside the image
 (needs several GB on the container storage); `docker-build-local` compiles on the host. Both are for local

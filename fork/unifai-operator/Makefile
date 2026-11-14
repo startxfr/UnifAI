@@ -121,7 +121,9 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 E2E_TIMEOUT ?= 30m
 E2E_STORAGE_CLASS ?= gp3-csi
 E2E_SHARED_STORAGE_CLASS ?= nfs
-E2E_NODE_SELECTOR ?= workload=unifai
+# No node selector by default: since ADR-0614 (zuno) the workloads run on the general workers, which carry no label.
+# A cluster that dedicates nodes sets it, e.g. E2E_NODE_SELECTOR=workload=unifai.
+E2E_NODE_SELECTOR ?=
 E2E_GO_TIMEOUT ?= 90m
 
 .PHONY: test-e2e
