@@ -189,7 +189,7 @@ report each step; a bundle listed by name in the ConfigMap `unifai-agent-revocat
 [docs/okf-agent-bundles.md](docs/okf-agent-bundles.md) describes how the operator pulls, verifies, validates and maps a
 bundle, the mapping of each field (and what lands in `status.unmapped`), and the profile and schema versions each
 operator version reads: Zuno OKF profile 1.0 (upstream [OKF 0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md))
-from 0.1.71, the legacy `v0.2` and `v0.3` documents until the weekly release of 2026-11-27.
+from 0.1.71, and the legacy `v0.2` and `v0.3` documents for as long as the 0.1 line lives (a later line may stop reading them).
 
 The OKF format, and how to write, sign and publish a bundle and the `UnifaiAgentBundle` that deploys it, are documented
 by the project that specifies the format and serves as the reference example,

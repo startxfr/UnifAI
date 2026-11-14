@@ -11,8 +11,8 @@ the resource, are documented in zuno-demo-agents.
 | Operator | Profile 1.0: `okf_version: "0.2"` and `zuno.profile: "1.0"` | Legacy: `okf_version: v0.2` or `v0.3` |
 |---|---|---|
 | 0.1.70 and earlier | refused | read |
-| 0.1.71 | read | read |
-| weekly release of 2026-11-27 and later (planned, zuno-demo WP-268) | read | refused |
+| every 0.1 release from 0.1.71 | read | read |
+| a later line (0.2, not before the promotion of 2026-12-15; to be decided with zuno-demo WP-268) | read | may be refused |
 
 A reader accepts only the profile versions whose schemas it embeds. A new profile version (1.1) therefore needs an
 operator release. `status.okfVersion` shows `okf_version` as written, so `0.2` for a profile bundle and `v0.2` for a
