@@ -59,7 +59,7 @@ func TestParseV03AppendsSkillsInOrderAndReportsPlatformSettings(t *testing.T) {
 	}
 	var task Task
 	for _, tk := range b.Tasks {
-		if tk.Name == "answer-technical-question" {
+		if tk.Name == tekosPrimaryTask {
 			task = tk
 		}
 	}

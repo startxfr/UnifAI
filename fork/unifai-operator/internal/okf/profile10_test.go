@@ -182,7 +182,7 @@ func TestParseProfile10(t *testing.T) {
 	if b.OKFVersion != UpstreamOKFVersion || b.Profile != Profile10 {
 		t.Fatalf("versions: okf_version %q, profile %q", b.OKFVersion, b.Profile)
 	}
-	if b.Name != "tekos" || b.Status != "active" || b.Classification != C1 || len(b.Tasks) != 4 || b.Description == "" {
+	if b.Name != tekosName || b.Status != "active" || b.Classification != C1 || len(b.Tasks) != 4 || b.Description == "" {
 		t.Fatalf("unexpected bundle %+v", b)
 	}
 	if b.Maintainer != okftest.Maintainer {
@@ -290,10 +290,10 @@ func TestARealMigratedAgentIsReadAsProfile10(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.OKFVersion != UpstreamOKFVersion || b.Profile != Profile10 || b.Name != "tekos" || b.Maintainer != "Zuno Demo architecture team" {
+	if b.OKFVersion != UpstreamOKFVersion || b.Profile != Profile10 || b.Name != tekosName || b.Maintainer != "Zuno Demo architecture team" {
 		t.Fatalf("okf_version %q, profile %q, name %q, maintainer %q", b.OKFVersion, b.Profile, b.Name, b.Maintainer)
 	}
-	if len(b.Tasks) != 4 || b.PrimaryTask != "answer-technical-question" {
+	if len(b.Tasks) != 4 || b.PrimaryTask != tekosPrimaryTask {
 		t.Fatalf("tasks %d, primary %q", len(b.Tasks), b.PrimaryTask)
 	}
 }

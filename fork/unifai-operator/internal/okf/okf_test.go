@@ -20,6 +20,10 @@ import (
 // made with the throwaway key testdata/fixture-cosign.pub.
 const tekosDigest = "5d12482fa2a04ef926506709a2586266864e0087a8ec52f1b0a11f321faa781c"
 
+// tekosPrimaryTask is the primary task of the tekos fixtures (goconst: three tests compare it).
+const tekosPrimaryTask = "answer-technical-question"
+const tekosName = "tekos"
+
 // loadTekos reads the testdata copy of agents/tekos.
 func loadTekos(t *testing.T) Files {
 	const root = "testdata/tekos"
@@ -97,7 +101,7 @@ func TestParseTekos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.Name != "tekos" || b.PrimaryTask != "answer-technical-question" || b.Classification != C1 ||
+	if b.Name != tekosName || b.PrimaryTask != tekosPrimaryTask || b.Classification != C1 ||
 		b.GraphShape != ShapeRetrieveReasonRespond || len(b.Tasks) != 4 {
 		t.Fatalf("unexpected bundle %+v", b)
 	}
