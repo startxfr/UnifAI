@@ -59,7 +59,7 @@ def plan(version: str, calendar: dict, tag: dict | None, tags: list[str], today:
         if tag["kind"] not in ("weekly", "manual"):
             errors.append(f"v{version} is a {tag['kind'] or 'unknown'} release, not a weekly or manual one")
         else:
-            age = (today - dt.datetime.fromisoformat(tag["date"]).date()).days
+            age = (today - dt.datetime.fromisoformat(tag["date"].replace("Z", "+00:00")).date()).days  # Python < 3.11 refuses the Z
             if age < min_days:
                 soft.append(f"v{version} is {age} day(s) old: it must run {min_days} days on alpha first")
     freeze = dt.date.fromisoformat(str(entry["freeze"]["from"]))
