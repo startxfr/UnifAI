@@ -19,6 +19,12 @@ the released commit are copied to `vX.Y.Z` and co-signed with the release identi
 Each release publishes a GitHub release (notes generated from the conventional commits) and a `release.json` listing every
 digest and the signing identity, which zuno-demo uses to pin.
 
+**Tag policy (owner decision, 2026-11-18).** The `vX.Y.Z` tags of the `quay.io/zuno` repositories (and the git tags) are
+immutable and kept: a published version is never retagged, moved or deleted; a fix is a new version. The images are
+`linux/amd64` only and readable without credentials. This is the fork's rule, not a registry-enforced setting: consumers
+(helm charts, zuno-demo) pin by **digest** from `release.json`, never by tag, and never to `devel`. There is no official
+UnifAI logo yet.
+
 ## Promoted lines (no version collision)
 
 A line `0.X` receives the weekly and manual releases of its quarter (`0.X.0`, `0.X.1`, …, channel `alpha`). On the promote
