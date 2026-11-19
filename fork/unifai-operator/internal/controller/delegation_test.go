@@ -207,7 +207,8 @@ func TestOrchestratorPromptNamesTheNodeUIDs(t *testing.T) {
 	targets := []delegationTarget{{Agent: "tekos", Task: "answer-technical-question", Title: "Tekos", Description: "Technical consultant"}}
 	cfg := orchestratorConfig(cr, &okf.Bundle{Name: "arkos"}, okf.Task{Name: "write-code"}, "arkos-write-code", stageUID(1), targets)
 	msg, _ := cfg["system_message"].(string)
-	for _, want := range []string{"dst_uid", "REMOTE work item", "`agent-2`", "`a2a-tekos` Tekos (tekos/answer-technical-question)"} {
+	for _, want := range []string{"dst_uid", "REMOTE work item", "`agent-2`", "`a2a-tekos` Tekos (tekos/answer-technical-question)",
+		"before anything else", "never delegate the same request to it again", "not a reason to ask again", "once at most"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("system message lacks %q:\n%s", want, msg)
 		}
