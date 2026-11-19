@@ -416,7 +416,9 @@ class A2AProvider:
                         )
 
                 conversion = self._converter.to_chat_message(result)
-                if conversion.message.content:
+                # A status update without text ("Task status: working") is not part of the answer: the caller
+                # concatenates the chunks (R-558).
+                if conversion.message.content and not conversion.status_only:
                     yield conversion.message
 
     def send_message_sync(

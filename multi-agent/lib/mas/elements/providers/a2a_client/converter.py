@@ -46,6 +46,10 @@ class ConversionResult(BaseModel):
     metadata: Dict[str, Any]
     files: Tuple[FileInfo, ...] = ()
     data: Tuple[Dict[str, Any], ...] = ()
+    # True when the update carried no text and the content is only the "Task status: <state>" fallback of a state that
+    # says nothing the caller needs (submitted, working, completed without text): a stream must not append it to the
+    # answer (R-558). Input required, auth required, canceled and errors keep their informative text.
+    status_only: bool = False
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -136,7 +140,9 @@ class A2AConverter:
             error_text = self._format_error(result)
             text = f"{error_text}\n\n{text}" if text else error_text
 
+        status_only = False
         if not text:
+            status_only = not (result.requires_input or result.requires_auth or result.is_canceled)
             text = self._fallback_text(result)
 
         message = ChatMessage(role=Role.ASSISTANT, content=text)
@@ -147,6 +153,7 @@ class A2AConverter:
             metadata=metadata,
             files=tuple(files),
             data=tuple(data),
+            status_only=status_only and bool(text),
         )
 
     def to_chat_message_simple(self, result: A2AResult) -> ChatMessage:
