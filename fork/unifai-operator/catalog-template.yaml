@@ -152,6 +152,8 @@ entries:
     replaces: unifai-operator.v0.1.70
   - name: unifai-operator.v0.1.72
     replaces: unifai-operator.v0.1.71
+  - name: unifai-operator.v0.1.73
+    replaces: unifai-operator.v0.1.72
 - schema: olm.channel
   package: unifai-operator
   name: stable
@@ -391,3 +393,5 @@ entries:
   image: quay.io/zuno/unifai-operator-bundle:v0.1.71
 - schema: olm.bundle
   image: quay.io/zuno/unifai-operator-bundle:v0.1.72
+- schema: olm.bundle
+  image: quay.io/zuno/unifai-operator-bundle:v0.1.73
