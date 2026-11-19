@@ -77,7 +77,7 @@ sent while it is unset.
 | agent | `zuno.model.preferred_classification` | each task's level: raised by `spec.classificationOverrides` and by delegation targets, never lowered. It goes to `X-<Ns>-Data-Classification` and `status.display.classification` |
 | agent | `zuno.access.groups` | the members of the `spec.groupTeam` team. Also listed in `status.unmapped` (the gateways enforce it) |
 | agent | `zuno.ui` | `status.display.displayName`, `tileDescription`, `icon` and `color`. Also listed in `status.unmapped` |
-| agent | `zuno.delegation.targets` | A2A nodes towards `spec.delegation`, behind an orchestrator |
+| agent | `zuno.delegation.targets` | A2A nodes towards `spec.delegation`, behind an orchestrator. The orchestrator marks the work item of an answered agent done (tool `workplan.mark`, which some models see as `workplan_mark`) and asks that agent again once at most; `MAS_MAX_DELEGATIONS_PER_ITEM` (3 by default, set through `spec.extraEnv` of multiagent and its worker) closes an item past that number with the answers it has. Delegation is not read-only: a target may ask for an approval before a write, the multiagent relays it to the human of the session (3 per session, 5 per delegation) and refuses it when there is no human |
 | agent, task | `zuno.limits.max_steps` | the agents' `max_rounds` (the task value wins) |
 | agent, task | `zuno.limits.max_tokens` (task alias `zuno.max_tokens`) | the LLM's `max_tokens` and the `X-<Ns>-Max-Tokens` header |
 | agent, task | `zuno.limits.max_tokens_per_turn` | the agents' `max_tokens_per_turn`, or `spec.ceilings.maxTokensPerTurn` when no value is declared |
