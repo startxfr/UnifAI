@@ -194,7 +194,9 @@ jobs:
             src="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["images"][sys.argv[2]]["ref"])' "$RUNNER_TEMP/images.json" "$c")"
             digest="${src#*@}"
             repo="quay.io/zuno/$PREFIX-$c"
-            q skopeo copy --preserve-digests --dest-creds "$creds" "docker://$src" "docker://$repo:v$VERSION" > /dev/null
+            # --all: a CI build is an image index (the image and its build attestation); without it skopeo copies only
+            # the amd64 image and the tag then has another digest than the one the release records.
+            q skopeo copy --all --preserve-digests --dest-creds "$creds" "docker://$src" "docker://$repo:v$VERSION" > /dev/null
             got="$(q skopeo inspect --creds "$creds" --no-tags --format '{{.Digest}}' "docker://$repo:v$VERSION")"
             [ "$got" = "$digest" ] || { echo "::error::$repo:v$VERSION is $got, not $digest"; exit 1; }
             sbom="${digest/:/-}.sbom"
