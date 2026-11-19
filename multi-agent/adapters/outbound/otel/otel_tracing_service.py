@@ -54,6 +54,12 @@ _SPAN_STACK: ContextVar[Tuple[Span, ...]] = ContextVar("mas_otel_span_stack", de
 
 _SCALAR = (str, bool, int, float)
 
+# Tool arguments never reach a span, except these identifiers (no user content): a delegation is followed from the
+# trace by the work item it serves and the node it goes to (tool name -> {argument: span attribute}).
+_TOOL_SPAN_IDENTIFIERS: Dict[str, Dict[str, str]] = {
+    "iem.delegate_task": {"work_item_id": "mas.delegation.work_item_id", "dst_uid": "mas.delegation.target"},
+}
+
 
 @dataclass
 class _Observation:
@@ -288,11 +294,15 @@ class OtelTracingService(TracingService):
         tool_name: str,
         tool_input: Optional[Dict[str, Any]] = None,
     ) -> Iterator[ObservationHandle]:
-        # tool_input is deliberately ignored: no tool arguments on spans.
+        # Tool arguments are deliberately left off spans, but for the identifiers of _TOOL_SPAN_IDENTIFIERS.
         attrs = {
             "gen_ai.operation.name": "execute_tool",
             "gen_ai.tool.name": tool_name,
         }
+        for arg, attribute in _TOOL_SPAN_IDENTIFIERS.get(tool_name, {}).items():
+            value = (tool_input or {}).get(arg)
+            if isinstance(value, str) and value:
+                attrs[attribute] = value
         obs: Optional[_Observation] = None
         try:
             with self._observe(SCOPE_TOOL, f"execute_tool {tool_name}", attrs) as obs:

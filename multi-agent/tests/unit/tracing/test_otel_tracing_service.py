@@ -176,6 +176,27 @@ class TestOtelSpanTree:
         assert span.status.status_code == StatusCode.ERROR
         assert span.status.description == "tool failed"
 
+    def test_delegate_task_span_carries_the_work_item_and_the_target_only(self, otel):
+        service, exporter, _, _ = otel
+        args = {"dst_uid": "a2a-tekos", "work_item_id": "launch_audit", "content": "SECRET REQUEST", "data": {"k": "v"}}
+        with service.trace_tool("iem.delegate_task", tool_input=args):
+            pass
+        with service.trace_tool("search", tool_input={"work_item_id": "w", "dst_uid": "n"}):
+            pass
+        spans = _by_name(exporter)
+        attrs = spans["execute_tool iem.delegate_task"].attributes
+        assert attrs["mas.delegation.work_item_id"] == "launch_audit"
+        assert attrs["mas.delegation.target"] == "a2a-tekos"
+        assert "SECRET REQUEST" not in str(dict(attrs))
+        assert not any(k.startswith("mas.delegation") for k in spans["execute_tool search"].attributes)
+
+    def test_delegate_task_span_without_arguments_has_no_delegation_attributes(self, otel):
+        service, exporter, _, _ = otel
+        with service.trace_tool("iem.delegate_task", tool_input={"work_item_id": ""}):
+            pass
+        attrs = _by_name(exporter)["execute_tool iem.delegate_task"].attributes
+        assert not any(k.startswith("mas.delegation") for k in attrs)
+
     def test_bind_to_current_context_crosses_threads(self, otel):
         service, exporter, _, provider = otel
         tracer = provider.get_tracer("test")
