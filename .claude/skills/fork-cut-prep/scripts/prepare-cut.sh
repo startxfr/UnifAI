@@ -52,12 +52,18 @@ FREEZE="$(python3 - <<'PY'
 import datetime as dt, sys, yaml
 sys.path.insert(0, "fork/ci")
 from release_gate import active_freeze, PARIS
-cal = yaml.safe_load(open("fork/calendar.yaml")); today = dt.datetime.now(PARIS).date()
+cal = yaml.safe_load(open("fork/calendar.yaml")) or {}; today = dt.datetime.now(PARIS).date()
 line = active_freeze(cal, today)
-nxt = min((l for l in cal["lines"] if dt.date.fromisoformat(str(l["freeze"]["from"])) > today),
-          key=lambda l: str(l["freeze"]["from"]), default=None)
-print(f"freeze ACTIVE for line {line['line']} until {line['freeze']['to']}: fixes only, no feat" if line
-      else f"no freeze today; next: line {nxt['line']} from {nxt['freeze']['from']} (promote {nxt['promote']})")
+# Empty calendar, or every freeze in the past (after the last line): no next freeze, not a crash.
+future = [l for l in cal.get("lines") or [] if (l.get("freeze") or {}).get("from")
+          and dt.date.fromisoformat(str(l["freeze"]["from"])) > today]
+nxt = min(future, key=lambda l: str(l["freeze"]["from"]), default=None)
+if line:
+    print(f"freeze ACTIVE for line {line['line']} until {line['freeze']['to']}: fixes only, no feat")
+elif nxt:
+    print(f"no freeze today; next: line {nxt['line']} from {nxt['freeze']['from']} (promote {nxt.get('promote', '?')})")
+else:
+    print("no freeze today; no later freeze in fork/calendar.yaml")
 PY
 )"; echo "$FREEZE"
 [[ "$FREEZE" == *ACTIVE* ]] && warn+=("$FREEZE")
