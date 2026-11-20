@@ -13,3 +13,5 @@ fork/
 .github/workflows/weekly-release.yml
 .github/workflows/upstream-sync.yml
 .github/workflows/promote.yml
+.github/workflows/diag-image-index.yml
+.claude/skills/
