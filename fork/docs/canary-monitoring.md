@@ -1,6 +1,6 @@
 # Canary operator monitoring (`CANARY_MONITORING`)
 
-The procedure is in [releasing](releasing.md) (cutting a release, phase 1); this page adds the details of what is deployed.
+The procedure is in [RELEASING](releasing.md) (cutting a release, phase 1); this page adds the details of what is deployed.
 
 The canary operator is scraped by the user-workload Prometheus: a ServiceMonitor, a metrics Service and a scraper
 ServiceAccount with a static token Secret (the canary has no CSV, so OLM provides no ServiceAccount). The manifests are in

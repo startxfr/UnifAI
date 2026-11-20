@@ -5,7 +5,7 @@ description: Write and publish documentation pages under fork/docs/ of the UnifA
 
 # Publishing fork documentation
 
-Index and drafts: `fork/docs/README.md` once published; until then drafts live outside the repository.
+Index and drafts: `fork/docs/README.md`.
 
 ## Writing a page
 - English, concise. One topic per page; link to the file that is authoritative (a ROADMAP row, `fork/docs/releasing.md`, a workflow)
@@ -16,12 +16,16 @@ Index and drafts: `fork/docs/README.md` once published; until then drafts live o
   `fork/docs/roadmap.md` (it writes release progress there; do not edit it).
 - No secrets, no unpublished vulnerability details: the repository is public.
 
-## Phase 1 rules (now)
-- **New pages only** in `fork/docs/`, plus one line linking `fork/docs/README.md` in `fork/docs/fork-tooling.md`.
-- **Do not move or rename** the flat pages (`README`, `RELEASING`, `ROADMAP`, `ROADMAP-ARCHIVE`, `POST-FREEZE-CHECKS`,
-  `RAG-GIT-SOURCES`, `RERANKER-EVAL`) without the owner's go, and only after fixing every reference. Find them with
-  `git ls-files -z | xargs -0 grep -nIE "<page>\.md"`: workflows (`.github/workflows/*`), `fork/ci/*.py`, `fork/hooks/guard-fork-only`,
-  `fork/unifai-operator/Makefile`, `fork/calendar.yaml`, `rag/entrypoint.sh`, `MEMORY.md`.
+## Layout (since the move of 2026-11-20)
+All pages live in `fork/docs/`, indexed by `fork/docs/README.md`: architecture, install, ci-and-testing, releasing, features,
+roadmap and roadmap-archive, rag-git-sources, reranker-eval, post-freeze-checks, canary-monitoring, per-version and incident pages.
+`fork/README.md` is only a pointer. Add new pages there and link them from the index.
+
+- **Moving or renaming a page** needs the owner's go and the fix of every reference first: find them with
+  `git grep -nE "<page>\.md"` (workflows, `fork/ci/*.py`, `fork/hooks/guard-fork-only`, `fork/unifai-operator/Makefile`,
+  `fork/calendar.yaml`, `rag/entrypoint.sh`, `MEMORY.md`, `.claude/skills`). Do the pure move (`git mv`) in its own commit,
+  the content split in another, so git keeps the renames. Run `python -m pytest -q fork/ci` after.
+- Editing `fork/docs/roadmap.md` content: tell unifai-main first (see the fork-roadmap-entry skill).
 
 ## When to publish
 - Only when unifai-main gives the signal, and after a green CI on `devel`.

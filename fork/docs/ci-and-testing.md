@@ -1,22 +1,4 @@
-# Fork tooling
-
-Fork-only files (never part of an upstream PR): `Makefile`, `fork.mk` (local, git-ignored), `fork.mk.example`, `fork/`.
-
-- `make help` lists every target. `make init` sets up the `upstream` remote and **disables pushes** to `origin`/`upstream`
-  (`git config --unset remote.origin.pushurl` when you want to publish).
-- Branches: `main` mirrors `upstream/main` (ff-only); `devel` = `main` + fork delta; features start from `main`
-  (`make feature-start`), are merged into `devel` to test (`make feature-to-devel`) and can then go upstream (`make contrib-*`).
-- Deployment: `make overlay` copies `helm/` to `.fork/helm/` and deep-merges `fork/values/<file>.yaml` over `helm/values/<file>.yaml`
-  (placeholders in braces are read from `fork.mk`); image repositories/tags come from `fork/images.yaml`. Upstream files stay untouched.
-- Known gaps: `helmfile` is not validated here (not installed when written); `make helm-lint` reports upstream chart issues
-  (`multiagent/be` template without extension, `rabbitmq` missing `common` dependency).
-
-Topic pages (CI gates, incidents, delivered versions): [README.md](README.md).
-
-## Guard rails for main
-`main` mirrors upstream, so fork-only paths (`fork/fork-only-paths`) must never reach it. `make init` installs
-`fork/hooks/guard-fork-only` as pre-commit and pre-merge-commit hook: it refuses these paths on every branch except
-`devel`, `stable` and `release-*` (the release branches, see [releasing.md](releasing.md)).
+# CI and testing
 
 ## Signed images (CI)
 
@@ -29,7 +11,7 @@ verifies all of it before deploying
 
 - A push to `devel` that touches an image's code publishes `devel-<sha>` and `devel` (environment `quay-devel`, no approval,
   restricted to the `devel` branch). Releases are not built: `release.yml` (tag `vX.Y.Z` cut by `cut-release.yml`, see
-  [releasing.md](releasing.md)) tags those signed digests `vX.Y.Z` and signs them with its own identity.
+  [RELEASING.md](releasing.md)) tags those signed digests `vX.Y.Z` and signs them with its own identity.
 - A push builds only the images whose code has no `devel-<sha>` image yet (`fork/ci/release_images.py --missing`):
   the five application images together, the operator image when its code or Makefile changed, everything when
   `publish-images.yml` itself changed. Comparing with the images rather than with the previous push also builds a
@@ -46,7 +28,7 @@ verifies all of it before deploying
 - The operator image (`quay.io/zuno/unifai-operator:<branch>-<sha>`) is built by the same workflow, when the
   operator's code or Makefile changed; the canary deploys it by digest. The quay robot needs write access to
   `unifai-operator` too.
-- A release `vX.Y.Z` (`cut-release.yml` then `release.yml`, [releasing.md](releasing.md)) adds what a production cluster
+- A release `vX.Y.Z` (`cut-release.yml` then `release.yml`, [RELEASING.md](releasing.md)) adds what a production cluster
   verifies, with `fork/ci/sign_and_attest.sh` (keyless, `id-token: write`): its own signature, provenance and
   SBOM-artifact signature on the six digests built on `devel` (the `devel` identity is accepted only by clusters that opt
   in), and the signature, provenance and SBOM artifact of the bundle and the catalog it builds. `release.json` on the
@@ -60,3 +42,19 @@ verifies all of it before deploying
 - The UI image bakes the self-signed nginx key and certificate that `make ui-certs` generates into a public image. That is the
   existing behaviour and signing does not change it: the signature attests who built the image, not that it holds no secret.
   Generating the pair when the container starts is the real fix (upstream code, later).
+
+
+## Tests and CI gates
+
+| Suite | Where | What it covers | Role |
+|---|---|---|---|
+| fork-tests | `.github/workflows/fork-tests.yml` | no cluster: outbound guard (MCP/A2A clients against real local servers), fork-ci (`fork/ci/test_*.py`: signature and provenance scripts), unit tests of multi-agent, rag and identity minus the debt in `fork/ci/unit-test-debt.txt` (run by `fork/ci/run_unit_tests.py`) | gate of the weekly release (`fork/ci/release_gate.py`): a red run skips the release |
+| e2e-kind | `.github/workflows/e2e-kind.yml`, `fork/unifai-operator/hack/kind/e2e.sh`, Go tests in `fork/unifai-operator/test/e2e/` | light e2e suite of the operator on a throwaway kind cluster, mock LLM, no registry or secret written | release gate (RELEASING phase 2), weekly included ("CI green + e2e on kind"): `release.yml` calls it on the six digests it is about to publish. With no input it tests the signed `devel` images of the commit. Also runs on a push to `devel` touching its paths, or by hand |
+| Canary | `E2E_VERSION=devel-<sha> make canary-ci canary-e2e-full canary-delete` in `fork/unifai-operator`, on demo333 | real cluster | procedure rule ([RELEASING](releasing.md)): required before a manual release and a promotion (promotion = `canary-e2e-full` green). The automatic weekly release has no canary; in a rehearsal the canary checks are only warnings |
+| diag-image-index | `.github/workflows/diag-image-index.yml` (`workflow_dispatch`) | builds a tiny image three ways into a local registry; nothing is pushed to Quay | diagnostic of R-561, see [R-561](incident-r561-image-index.md) (ROADMAP status: Open) |
+
+Limits of e2e-kind: Route CRD without a router, static RWX volumes, stand-in service CA, restore test skipped.
+
+### Recent regression test
+R-558: `multi-agent/tests/unit/providers/test_a2a_stream_status.py` (red before the fix, green after). R-559 and R-560 are
+delivered in 0.1.73 with no dedicated test cited in the ROADMAP.
