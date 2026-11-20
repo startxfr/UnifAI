@@ -58,7 +58,7 @@ RELEASE_GATE_STUB = """import datetime as dt
 from zoneinfo import ZoneInfo
 PARIS = ZoneInfo("Europe/Paris")
 def active_freeze(calendar, day):
-    for line in calendar["lines"]:
+    for line in (calendar or {}).get("lines") or []:
         if dt.date.fromisoformat(str(line["freeze"]["from"])) <= day <= dt.date.fromisoformat(str(line["freeze"]["to"])):
             return line
     return None
@@ -505,6 +505,18 @@ class PrepareCut(SandboxTest):
         rc, out = self.prepare()
         self.assertIn("no freeze today; next: line 0.1", out)
         self.assertNotIn("WARNING freeze", out)
+
+    def test_no_later_freeze_in_the_calendar_is_a_message_not_a_traceback(self):
+        import datetime as dt
+        past = dt.date.today() - dt.timedelta(days=400)
+        for label, text in (("empty file", ""), ("no line", "lines: []\n"),
+                            ("only a past freeze",
+                             f'lines:\n  - line: "0.1"\n    freeze: {{ from: {past}, to: {past} }}\n    promote: {past}\n')):
+            write(self.sb.work / "fork/calendar.yaml", text)
+            rc, out = self.prepare()
+            self.assertEqual(rc, 0, (label, out))
+            self.assertNotIn("Traceback", out, label)
+            self.assertIn("no freeze today; no later freeze in fork/calendar.yaml", out, label)
 
     def test_ci_image_failure_is_fatal_and_writes_no_script(self):
         self.sb.stub("make", "echo 'no signed image for this commit'; exit 3\n")
