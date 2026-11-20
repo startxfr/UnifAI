@@ -1,6 +1,6 @@
 # R-561: OCI image index and provenance (v0.1.73)
 
-Status: **Open** in [ROADMAP](roadmap.md) (row R-561); the incident itself is fixed and v0.1.73 is delivered.
+Status: **closed** 2026-11-20 in [ROADMAP](roadmap.md) (row R-561): the incident is fixed, v0.1.73 and v0.1.74 are delivered, and the indexes are kept.
 
 ## Symptom
 The first cut of v0.1.73 (2026-11-19) failed at the step "Tag and sign the six images" of `release.yml`: the Quay tag was
@@ -33,8 +33,9 @@ RESULT envflag -> application/vnd.docker.distribution.manifest.v2+json
 
 `noprov` is `docker build --provenance=false`; `envflag` is `BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker build`.
 
-## Open
-Durable choice for `publish-images.yml`: keep the indexes (which `release.yml` now handles) or add `--provenance=false`.
-Either rebuilds the five application images, so it needs a canary, with the 0.2 line. No change made to it so far.
+## Decision (2026-11-20)
+Keep the OCI indexes: the BuildKit provenance attestation stays, `release.yml` copies the whole index
+(`skopeo copy --all`), and mirrors copy by digest with `oras cp -r`. `publish-images.yml` is not changed, so no image is
+rebuilt and no canary is needed. v0.1.74 shipped indexes end to end and was verified (cosign 8/8).
 
 See the R-561 row of [ROADMAP](roadmap.md) for the authoritative text.
