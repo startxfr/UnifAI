@@ -1,0 +1,77 @@
+# Names and namespace are written out: the namePrefix of ../canary does not apply to what this overlay adds.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: unifai-operator-canary-metrics-scraper
+  namespace: unifai-operator-canary
+  labels:
+    unifai.startx.fr/canary-monitoring: "true"
+---
+# A static token for the scraper: the user-workload Prometheus cannot use a token file.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: unifai-operator-canary-metrics-token
+  namespace: unifai-operator-canary
+  labels:
+    unifai.startx.fr/canary-monitoring: "true"
+  annotations:
+    kubernetes.io/service-account.name: unifai-operator-canary-metrics-scraper
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: unifai-operator-canary-metrics-scraper
+  labels:
+    unifai.startx.fr/canary-monitoring: "true"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: unifai-operator-canary-metrics-reader
+subjects:
+- kind: ServiceAccount
+  name: unifai-operator-canary-metrics-scraper
+  namespace: unifai-operator-canary
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: unifai-operator-canary-metrics-service
+  namespace: unifai-operator-canary
+  labels:
+    unifai.startx.fr/canary-monitoring: "true"
+    control-plane: canary-controller-manager-metrics
+spec:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    control-plane: controller-manager
+    app.kubernetes.io/name: unifai-operator
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: unifai-operator-canary-controller-manager-metrics-monitor
+  namespace: unifai-operator-canary
+  labels:
+    unifai.startx.fr/canary-monitoring: "true"
+spec:
+  endpoints:
+  - path: /metrics
+    port: https
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials:
+        name: unifai-operator-canary-metrics-token
+        key: token
+    tlsConfig:
+      # the metrics certificate is self-signed: the token is what protects the endpoint
+      insecureSkipVerify: true
+  selector:
+    matchLabels:
+      control-plane: canary-controller-manager-metrics

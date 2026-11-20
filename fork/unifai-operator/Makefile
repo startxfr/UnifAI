@@ -364,6 +364,11 @@ CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:latest
 # Releases go through GitHub (fork/RELEASING.md: cut-release.yml, release.yml, promote.yml); the canary targets below
 # are the manual step before a manual release or a promotion. `make release` is a local flow for development only.
 CANARY_NS ?= unifai-operator-canary
+# Feature flag: with on (the default) the user-workload Prometheus scrapes the canary operator (config/canary-monitoring:
+# metrics port, metrics Service, scraper token, ServiceMonitor), so its reconcile errors are visible; off removes it
+# and leaves the canary as config/canary describes it. It is skipped with a notice when the cluster has no
+# ServiceMonitor CRD. `make canary-monitoring CANARY_MONITORING=on|off` switches it on a running canary.
+CANARY_MONITORING ?= on
 
 # The operator image the canary tests and the release ships is built and signed by the CI (publish-images.yml, on a
 # push to devel that changes these paths), tagged devel-<sha> of the last commit that changed them. It is deployed
@@ -385,10 +390,25 @@ canary-deploy: manifests kustomize ## Deploy IMG as a canary instance (only reco
 	kubectl apply --server-side --force-conflicts -f config/crd/bases
 	cd config/canary && $(KUSTOMIZE) edit set image $(IMAGE_TAG_BASE)=$(IMG)
 	$(KUSTOMIZE) build config/canary | kubectl apply -f -
+	$(MAKE) canary-monitoring
 	kubectl -n $(CANARY_NS) rollout restart deploy/unifai-operator-canary-controller-manager
 	kubectl -n $(CANARY_NS) rollout status deploy/unifai-operator-canary-controller-manager --timeout=300s
 	@img=$$(kubectl -n $(CANARY_NS) get deploy/unifai-operator-canary-controller-manager -o jsonpath='{.spec.template.spec.containers[0].image}'); \
 	  [ "$$img" = "$(IMG)" ] || { echo "canary runs $$img, expected $(IMG)"; exit 1; }
+
+.PHONY: canary-monitoring
+canary-monitoring: kustomize ## Switch the monitoring of the canary instance: CANARY_MONITORING=on (default) or off.
+	@case "$(CANARY_MONITORING)" in \
+	  on) if kubectl get crd servicemonitors.monitoring.coreos.com >/dev/null 2>&1; then \
+	        $(KUSTOMIZE) build config/canary-monitoring | kubectl apply -f -; \
+	      else echo "canary monitoring skipped: no ServiceMonitor CRD on this cluster"; fi ;; \
+	  off) if kubectl get crd servicemonitors.monitoring.coreos.com >/dev/null 2>&1; then \
+	        kubectl -n $(CANARY_NS) delete servicemonitor -l unifai.startx.fr/canary-monitoring=true --ignore-not-found; fi; \
+	      kubectl -n $(CANARY_NS) delete service,secret,serviceaccount -l unifai.startx.fr/canary-monitoring=true --ignore-not-found; \
+	      kubectl delete clusterrolebinding -l unifai.startx.fr/canary-monitoring=true --ignore-not-found; \
+	      $(KUSTOMIZE) build config/canary | kubectl apply -f - ;; \
+	  *) echo "CANARY_MONITORING must be on or off, got '$(CANARY_MONITORING)'"; exit 1 ;; \
+	esac
 
 .PHONY: canary-e2e
 canary-e2e: ## Run the e2e suite against the canary instance (upgrade test from the OLM instance included).
@@ -401,6 +421,7 @@ canary-e2e-full: ## Run the full e2e suite against the canary instance (releases
 .PHONY: canary-delete
 canary-delete: kustomize ## Remove the canary instance, after the e2e namespaces it left (their stacks need its finalizers).
 	-kubectl get ns -o name | grep '^namespace/unifai-e2e-' | xargs -r kubectl delete --wait=true --timeout=10m
+	-kubectl delete clusterrolebinding -l unifai.startx.fr/canary-monitoring=true --ignore-not-found
 	$(KUSTOMIZE) build config/canary | kubectl delete --ignore-not-found -f -
 
 .PHONY: release

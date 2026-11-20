@@ -1,0 +1,4 @@
+# Serves the metrics over HTTPS on :8443, as the OLM instance does (config/default/manager_metrics_patch.yaml).
+- op: add
+  path: /spec/template/spec/containers/0/args/0
+  value: --metrics-bind-address=:8443

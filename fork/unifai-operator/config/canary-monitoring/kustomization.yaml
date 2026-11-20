@@ -1,0 +1,17 @@
+# Optional monitoring of the canary instance (make canary-deploy CANARY_MONITORING=on, the default; off removes it).
+# The user-workload Prometheus then scrapes the canary operator, so its reconcile errors show in
+# controller_runtime_reconcile_total{namespace=...} like those of the OLM instance (zuno-demo-assist, 2026-11-19: the
+# canary was not scraped). It builds on ../canary and adds: the metrics port of the manager, a metrics Service, a
+# scraper ServiceAccount with a static token Secret (the OLM instance gets them from its CSV and the operator; the
+# canary has no CSV) and a ServiceMonitor. Everything it adds carries unifai.startx.fr/canary-monitoring=true, which
+# is what make canary-monitoring-off deletes.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../canary
+- monitoring.yaml
+patches:
+- path: metrics_args_patch.yaml
+  target:
+    kind: Deployment
+    name: unifai-operator-canary-controller-manager

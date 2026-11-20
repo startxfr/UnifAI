@@ -85,6 +85,12 @@ canary-delete` (in `fork/unifai-operator`) on the operator image of the `devel` 
 `operator` input of cut-release. The cut fails if `devel` resolves another operator (a later commit changed its code).
 Nothing is ever rebuilt: the release promotes the existing `devel-<sha>` images by digest.
 
+The canary operator is scraped by the user-workload Prometheus (feature flag `CANARY_MONITORING`, `on` by default; `off`
+removes the ServiceMonitor, the metrics Service and the scraper token, and is skipped with a notice on a cluster
+without the ServiceMonitor CRD): its reconcile errors then show in `controller_runtime_reconcile_total` for the
+namespace `unifai-operator-canary`. Switch it on a running canary with `make canary-monitoring CANARY_MONITORING=off|on`
+in `fork/unifai-operator`.
+
 `cut-release.yml` (Actions → cut-release → Run workflow, on `devel`) takes a `kind`:
 
 - `rc`: rehearsal `vVERSION-rc.N` into `quay.io/zuno/test-unifai-*` (environment `quay-test`), GitHub pre-release, no
