@@ -422,7 +422,7 @@ on that digest, then `catalog-add CHANNELS=alpha catalog-build catalog-push` (lo
 write access and signs nothing).
 
 Release through GitHub (no quay credentials on the workstation) — since v0.1.54 the operator ships with the five
-application images under one product version `vX.Y.Z` ([../RELEASING.md](../RELEASING.md)); the `operator-vX.Y.Z` tags
+application images under one product version `vX.Y.Z` ([../docs/releasing.md](../docs/releasing.md)); the `operator-vX.Y.Z` tags
 and `make release-files` (removed) belonged to the transition flow (0.1.29 → 0.1.53) and are no longer used:
 
 ```bash

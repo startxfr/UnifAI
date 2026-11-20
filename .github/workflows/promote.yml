@@ -1,5 +1,5 @@
 # Fork-only (fork/fork-only-paths): the quarterly promotion of a line to the OLM `stable` channel
-# (fork/RELEASING.md, fork/calendar.yaml). Run on devel with an existing release vX.Y.N, after the full canary on
+# (fork/docs/releasing.md, fork/calendar.yaml). Run on devel with an existing release vX.Y.N, after the full canary on
 # demo333 and with the `quay-release` approval. Nothing is rebuilt or re-signed: vX.Y.N stays the release it is.
 #
 # 1. check (fork/ci/promote.py): a weekly or manual release of the bot, ≥ 7 days on alpha, line in the calendar and
@@ -13,7 +13,7 @@
 #
 # rehearsal: the same run on throwaway branches, before the freeze. The age, freeze and canary checks only warn, devel
 # is not touched: its commit goes to promote-rehearsal-X.Y and the release branch is release-X.Y-rehearsal, where
-# cut-release kind rc rehearses a hotfix into the test repositories. Delete both branches afterwards (RELEASING.md).
+# cut-release kind rc rehearses a hotfix into the test repositories. Delete both branches afterwards (fork/docs/releasing.md).
 name: promote
 
 on:

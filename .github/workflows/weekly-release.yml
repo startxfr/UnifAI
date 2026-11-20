@@ -1,4 +1,4 @@
-# Fork-only (fork/fork-only-paths): the weekly release of the fork (fork/RELEASING.md), Friday 17:00 UTC (18:00 Paris
+# Fork-only (fork/fork-only-paths): the weekly release of the fork (fork/docs/releasing.md), Friday 17:00 UTC (18:00 Paris
 # in winter, 19:00 in summer). fork/ci/release_gate.py decides; when it says yes, cut-release.yml cuts `kind: weekly`,
 # whose tag release.yml publishes WITHOUT approval (environment quay-weekly), after the kind e2e gate.
 # Skipped when devel did not change since the last vX.Y.Z, when the fork CI of the devel head is not green (it waits up

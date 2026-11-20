@@ -5,9 +5,9 @@ description: Dry run (rehearsal) of the promotion of a release line to the OLM s
 
 # fork-promote-rehearsal
 
-Source of truth: `fork/RELEASING.md` (section Rehearsal), `.github/workflows/promote.yml`, `fork/ci/promote.py`,
+Source of truth: `fork/docs/releasing.md` (section Rehearsal), `.github/workflows/promote.yml`, `fork/ci/promote.py`,
 `fork/calendar.yaml`, and the plan note `/home/cl/.local/share/unifai-main-keep/rehearsal-r526-2.md` (outside the repo,
-read it, it may be newer than this skill). The result goes in the R-526 row of `fork/ROADMAP.md`.
+read it, it may be newer than this skill). The result goes in the R-526 row of `fork/docs/roadmap.md`.
 
 ## Hard rules
 
@@ -53,4 +53,4 @@ Let N = Z+1 (the hotfix version). Tooling: `opm`, `cosign`, `skopeo`, `gh` (read
 ## 4. Report
 
 Write the outcome (date, versions, cosign x/8, opm result, hotfix, anything surprising) in the R-526 row of
-`fork/ROADMAP.md`, in the same terse style, as an explicit-path commit only when the owner asks.
+`fork/docs/roadmap.md`, in the same terse style, as an explicit-path commit only when the owner asks.

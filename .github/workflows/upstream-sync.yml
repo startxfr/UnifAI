@@ -1,4 +1,4 @@
-# Fork-only (fork/fork-only-paths): the weekly upstream sync of the fork (fork/RELEASING.md), Thursday 06:00 UTC.
+# Fork-only (fork/fork-only-paths): the weekly upstream sync of the fork (fork/docs/releasing.md), Thursday 06:00 UTC.
 # 1. fast-forwards `main` to redhat-community-ai-tools/UnifAI main (read only: nothing is ever pushed upstream);
 # 2. opens, or refreshes, the PR main→devel with a merge preview: conflicts, `make charts-check` (embedded operator
 #    charts against the new helm/) and `make fork-check` (deliberate fork divergences still there).
@@ -71,7 +71,7 @@ jobs:
           git worktree add -q --detach "$RUNNER_TEMP/preview" origin/devel
           cd "$RUNNER_TEMP/preview"
           {
-            echo "Weekly upstream sync (fork/RELEASING.md): \`main\` now mirrors upstream $(git rev-parse --short=9 origin/main)."
+            echo "Weekly upstream sync (fork/docs/releasing.md): \`main\` now mirrors upstream $(git rev-parse --short=9 origin/main)."
             echo "**Merge with a merge commit** (not squash, not rebase). Refreshed by upstream-sync.yml every Thursday."
             echo
             echo "### $BEHIND upstream commit(s) not in devel"

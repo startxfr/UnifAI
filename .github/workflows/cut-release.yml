@@ -1,4 +1,4 @@
-# Fork-only (fork/fork-only-paths): cuts a release of the fork (fork/RELEASING.md). It does not publish anything: it
+# Fork-only (fork/fork-only-paths): cuts a release of the fork (fork/docs/releasing.md). It does not publish anything: it
 # resolves the six images of the devel head (fork/ci/release_images.py: the signed devel-<sha> builds of the same code,
 # operator at the Makefile VERSION), fast-forwards `stable` to that commit and pushes an annotated tag vX.Y.Z whose
 # message carries the kind and those digests. The tag starts release.yml, which publishes them.

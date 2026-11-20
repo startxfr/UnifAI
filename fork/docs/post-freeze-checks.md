@@ -30,10 +30,10 @@ Send back: `oc get unifaiteam r545-probe -o yaml` (status and events) after step
 Send back: the final answer text, the session events of the turn, and the used/cap figures.
 
 ## 4. R-530, OCP 4.22 source then ranking
-1. Apply `ocp-4-22-docs` from `fork/RAG-GIT-SOURCES.md` (first manifest). It took 9 min 36 s for 1859 pages on 0.1.65. Embedding load: only after 59 allows it.
+1. Apply `ocp-4-22-docs` from `fork/docs/rag-git-sources.md` (first manifest). It took 9 min 36 s for 1859 pages on 0.1.65. Embedding load: only after 59 allows it.
 2. When Ready, send a9 the source name `ocp-4-22-docs` and the finish time. a9 re-measures the ranking (baseline EN21 0.71 / 0.86 / 0.77).
 
 Send back: the status line, pages count, duration.
 
 ## 5. RHACM (private), only with the user's explicit go
-Apply `rhacm-2-17-docs` with `visibility: private` (see `fork/RAG-GIT-SOURCES.md`). 1056 documents, 4.4 MB. No sharing until the licence is clarified.
+Apply `rhacm-2-17-docs` with `visibility: private` (see `fork/docs/rag-git-sources.md`). 1056 documents, 4.4 MB. No sharing until the licence is clarified.

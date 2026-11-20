@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Refuse to commit/merge fork-only paths (listed in fork/fork-only-paths on devel) anywhere but on the fork branches:
-# devel, stable and release-* carry the fork; main mirrors upstream and contribution branches start from it (fork/RELEASING.md).
+# devel, stable and release-* carry the fork; main mirrors upstream and contribution branches start from it (fork/docs/releasing.md).
 # Installed as .git/hooks/pre-commit and .git/hooks/pre-merge-commit by `make init`.
 branch=$(git branch --show-current)
 case "$branch" in

@@ -6,7 +6,7 @@ The fork has its own release rhythm, independent of upstream and still answering
 |---|---|---|---|---|---|
 | **Weekly** | every Friday 18:00 Europe/Paris, skipped when `devel` did not change | `0.X.Y` (next patch of the current line) | `alpha` | CI green + e2e on an ephemeral kind cluster | none (automatic) |
 | **Manual** | any time, several per week if needed | `0.X.Y` | `alpha` | same as weekly | `quay-release` |
-| **Minor** (promotion) | quarterly, see [calendar.yaml](calendar.yaml) | an existing `0.X.N`, promoted as is | `stable` | 2-week feature freeze, ≥ 1 week on demo333, full canary (`canary-e2e-full`) green | `quay-release` |
+| **Minor** (promotion) | quarterly, see [calendar.yaml](../calendar.yaml) | an existing `0.X.N`, promoted as is | `stable` | 2-week feature freeze, ≥ 1 week on demo333, full canary (`canary-e2e-full`) green | `quay-release` |
 | **Hotfix** | when needed, on the promoted line only | `0.X.N+1` on `release-0.X` | `stable` | same as weekly | `quay-release` |
 | **Major** | yearly, **1.0 on 2027-09-15** | a line `X.0` | as a minor | as a minor | `quay-release` |
 
@@ -51,12 +51,12 @@ feature/* ──merge──► devel ──ff at each release──► stable   
 - `devel` is where we develop (`main` + fork delta). Upstream syncs land here through a PR from `main`.
 - `stable` is fast-forwarded to the released `devel` commit at each release and carries the `v*` tags.
 - `release-0.X` is created at promotion and carries the hotfix tags of that line.
-- The fork-only paths ([fork-only-paths](fork-only-paths)) are allowed on `devel`, `stable` and `release-*`, refused on
-  `main` and on contribution branches ([hooks/guard-fork-only](hooks/guard-fork-only)).
+- The fork-only paths ([fork-only-paths](../fork-only-paths)) are allowed on `devel`, `stable` and `release-*`, refused on
+  `main` and on contribution branches ([hooks/guard-fork-only](../hooks/guard-fork-only)).
 
 ## Calendar
 
-[calendar.yaml](calendar.yaml) holds the freeze and promote dates. During a freeze only fixes are merged into `devel`
+[calendar.yaml](../calendar.yaml) holds the freeze and promote dates. During a freeze only fixes are merged into `devel`
 (no `feat` commits); weekly releases continue with those fixes.
 
 | Line | Weekly releases | Freeze | Promotion to stable |
@@ -74,9 +74,9 @@ feature/* ──merge──► devel ──ff at each release──► stable   
 - **Maintainer**: approves `quay-release` (manual, minor, hotfix), runs the full canary on demo333 before a manual
   release and before a promotion, merges the weekly upstream PR.
 - **Operator session (startx-unifai-b9)**: after each release, checks that the post-release commit holds the digests of
-  `release.json`, sends them to the zuno-demo sessions and writes "delivered X.Y.Z" in [ROADMAP.md](ROADMAP.md).
+  `release.json`, sends them to the zuno-demo sessions and writes "delivered X.Y.Z" in [roadmap.md](roadmap.md).
 - **zuno-demo**: consumes releases from `release.json`; pins and rolls when it decides (no CD from the fork). Its
-  feature requests go to [ROADMAP.md](ROADMAP.md) with the target line.
+  feature requests go to [roadmap.md](roadmap.md) with the target line.
 
 ## Cutting a release (phase 1)
 
@@ -99,7 +99,7 @@ in `fork/unifai-operator`.
 - `weekly`: `vVERSION` without approval (environment `quay-weekly`), skipped when `devel` has no change since the last
   release.
 
-It resolves the six signed images of the `devel` head ([ci/release_images.py](ci/release_images.py), also runnable
+It resolves the six signed images of the `devel` head ([ci/release_images.py](../ci/release_images.py), also runnable
 locally: `python3 fork/ci/release_images.py --version 0.1.52`), fast-forwards `stable` and pushes the annotated tag with
 the release bot. The tag starts `release.yml`:
 
@@ -107,7 +107,7 @@ the release bot. The tag starts `release.yml`:
    those images (`e2e-kind.yml`), and re-resolves them;
 2. it tags the six digests `vX.Y.Z` and signs them with `release.yml@refs/tags/vX.Y.Z`;
 3. it builds and signs the bundle and the catalog (`alpha` channel only);
-4. it publishes the GitHub release with notes ([ci/release_notes.py](ci/release_notes.py)) and `release.json`;
+4. it publishes the GitHub release with notes ([ci/release_notes.py](../ci/release_notes.py)) and `release.json`;
 5. the bot commits the release files and the next patch `VERSION` to `devel` (`release(fork): vX.Y.Z published…`).
 
 Requirements before the first run: the settings of the GitHub bot, the environments `release-bot`, `quay-weekly`,
@@ -133,7 +133,7 @@ A release that adds a field to a stored element config therefore needs a line he
 - **`upstream-sync.yml`**, Thursday 06:00 UTC (and Run workflow): fast-forwards `main` to upstream `main` (read only,
   nothing is pushed upstream), then opens or refreshes the PR `main→devel` with a merge preview (conflicts,
   `make charts-check`, `make fork-check`). A human merges it **with a merge commit**.
-- **`weekly-release.yml`**, Friday 17:00 UTC: [ci/release_gate.py](ci/release_gate.py) decides, then cut-release runs
+- **`weekly-release.yml`**, Friday 17:00 UTC: [ci/release_gate.py](../ci/release_gate.py) decides, then cut-release runs
   with `kind: weekly`. No release when `devel` did not change since the last `vX.Y.Z`, when a fork workflow of the
   `devel` head failed or still runs after 45 minutes, or during a freeze when a `feat` commit reached `devel` (revert it,
   the next weekly goes out). A manual Run workflow is a dry run unless `dry_run` is unticked. Locally:
@@ -141,12 +141,12 @@ A release that adds a field to a stored element config therefore needs a line he
 
 ## Promotion and hotfixes (phase 4)
 
-**Promotion** (on the promote date of [calendar.yaml](calendar.yaml)):
+**Promotion** (on the promote date of [calendar.yaml](../calendar.yaml)):
 
 1. the maintainer picks the release to promote, `vX.Y.N` (a weekly or manual release, at least 7 days on alpha, usually
    the last one of the freeze), and runs `E2E_VERSION=vX.Y.N make canary-ci canary-e2e-full canary-delete` on demo333;
 2. Actions → promote → Run workflow on `devel`: `version` = `X.Y.N`, tick `canary`, then approve `quay-release`.
-   [ci/promote.py](ci/promote.py) checks it (locally: `python3 fork/ci/promote.py --version X.Y.N --canary`);
+   [ci/promote.py](../ci/promote.py) checks it (locally: `python3 fork/ci/promote.py --version X.Y.N --canary`);
 3. the bot commits on `devel` the stable entry of `vX.Y.N` (`skipRange ">=<previous line>.0 <X.Y.N"`) and
    `VERSION X.(Y+1).0`, and creates `release-X.Y` at `vX.Y.N` with `VERSION` = the first patch of `X.Y` that no tag
    uses;

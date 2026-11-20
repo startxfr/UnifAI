@@ -5,7 +5,7 @@ Usage: catalog_add.py TEMPLATE PACKAGE VERSION BUNDLE_IMAGE CHANNELS [SKIP_RANGE
 The bundle is appended to every channel of CHANNELS (comma-separated, created if missing) and replaces the current
 head of that channel, so OLM upgrades installed operators along the channel. Re-adding a version is a no-op.
 SKIP_RANGE (e.g. ">=0.1.0 <0.1.60") lets OLM upgrade straight to it from any version of the range: the promotion of
-a line to `stable` (fork/RELEASING.md), whose entry replaces the old head but skips every release in between.
+a line to `stable` (fork/docs/releasing.md), whose entry replaces the old head but skips every release in between.
 """
 import sys
 from pathlib import Path

@@ -36,7 +36,7 @@ Deploy UnifAI autonomously on our OpenShift cluster, evolve it, and contribute s
 - Upstream has no CONTRIBUTING; PRs come from in-repo branches; review gate = CodeRabbit + Cursor pipeline (arch APPROVE, score >= 8/10) needing secrets forks do not get.
 
 ## Backlog
-Single backlog, working rules and area owners (multi-session): `fork/ROADMAP.md`. Weekly: `make upstream-check`.
+Single backlog, working rules and area owners (multi-session): `fork/docs/roadmap.md`. Weekly: `make upstream-check`.
 CI: `.github/workflows/unifai-operator.yml` (fork-only, checks the operator on push/PR to devel).
 
 ## Key commands

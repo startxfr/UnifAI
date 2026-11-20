@@ -1,4 +1,4 @@
-# Release calendar of the startxfr/UnifAI fork (fork/RELEASING.md).
+# Release calendar of the startxfr/UnifAI fork (fork/docs/releasing.md).
 # Read by the weekly release automation: no weekly feature release during a freeze, promotion to the OLM `stable`
 # channel on the promote date. Dates are inclusive, Europe/Paris.
 weekly:

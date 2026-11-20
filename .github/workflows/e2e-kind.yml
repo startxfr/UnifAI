@@ -1,6 +1,6 @@
 # Fork-only (fork/fork-only-paths): the light e2e suite of the UnifAI operator on a throwaway kind cluster
 # (fork/unifai-operator/hack/kind/e2e.sh), with the mock LLM: no cluster, no registry write, no secret. It is the
-# gate of a release (fork/RELEASING.md, phase 2); release.yml calls it on the six digests it is about to publish.
+# gate of a release (fork/docs/releasing.md, phase 2); release.yml calls it on the six digests it is about to publish.
 #
 # Without inputs it tests the signed devel images of the commit (fork/ci/release_images.py).
 name: e2e-kind

@@ -11,12 +11,12 @@ Fork-only files (never part of an upstream PR): `Makefile`, `fork.mk` (local, gi
 - Known gaps: `helmfile` is not validated here (not installed when written); `make helm-lint` reports upstream chart issues
   (`multiagent/be` template without extension, `rabbitmq` missing `common` dependency).
 
-Topic pages (CI gates, incidents, delivered versions): [docs/README.md](docs/README.md).
+Topic pages (CI gates, incidents, delivered versions): [README.md](README.md).
 
 ## Guard rails for main
 `main` mirrors upstream, so fork-only paths (`fork/fork-only-paths`) must never reach it. `make init` installs
 `fork/hooks/guard-fork-only` as pre-commit and pre-merge-commit hook: it refuses these paths on every branch except
-`devel`, `stable` and `release-*` (the release branches, see [RELEASING.md](RELEASING.md)).
+`devel`, `stable` and `release-*` (the release branches, see [releasing.md](releasing.md)).
 
 ## Signed images (CI)
 
@@ -29,7 +29,7 @@ verifies all of it before deploying
 
 - A push to `devel` that touches an image's code publishes `devel-<sha>` and `devel` (environment `quay-devel`, no approval,
   restricted to the `devel` branch). Releases are not built: `release.yml` (tag `vX.Y.Z` cut by `cut-release.yml`, see
-  [RELEASING.md](RELEASING.md)) tags those signed digests `vX.Y.Z` and signs them with its own identity.
+  [releasing.md](releasing.md)) tags those signed digests `vX.Y.Z` and signs them with its own identity.
 - A push builds only the images whose code has no `devel-<sha>` image yet (`fork/ci/release_images.py --missing`):
   the five application images together, the operator image when its code or Makefile changed, everything when
   `publish-images.yml` itself changed. Comparing with the images rather than with the previous push also builds a
@@ -46,7 +46,7 @@ verifies all of it before deploying
 - The operator image (`quay.io/zuno/unifai-operator:<branch>-<sha>`) is built by the same workflow, when the
   operator's code or Makefile changed; the canary deploys it by digest. The quay robot needs write access to
   `unifai-operator` too.
-- A release `vX.Y.Z` (`cut-release.yml` then `release.yml`, [RELEASING.md](RELEASING.md)) adds what a production cluster
+- A release `vX.Y.Z` (`cut-release.yml` then `release.yml`, [releasing.md](releasing.md)) adds what a production cluster
   verifies, with `fork/ci/sign_and_attest.sh` (keyless, `id-token: write`): its own signature, provenance and
   SBOM-artifact signature on the six digests built on `devel` (the `devel` identity is accepted only by clusters that opt
   in), and the signature, provenance and SBOM artifact of the bundle and the catalog it builds. `release.json` on the

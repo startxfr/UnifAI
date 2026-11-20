@@ -1,4 +1,4 @@
-# Fork-only (fork/fork-only-paths): publishes a release vX.Y.Z of the fork (fork/RELEASING.md). Started by the tag
+# Fork-only (fork/fork-only-paths): publishes a release vX.Y.Z of the fork (fork/docs/releasing.md). Started by the tag
 # that cut-release.yml pushes (only the release bot may create v* tags: ruleset `release-tags`).
 #
 # Nothing is rebuilt. The six images (operator, rag, multiagent, backend, identity, ui) are the signed devel-<sha>
@@ -108,7 +108,7 @@ jobs:
           echo "### $tag: $kind release, environment $env, repositories quay.io/zuno/$prefix-*" >> "$GITHUB_STEP_SUMMARY"
 
   # The gate: the light e2e suite on a throwaway kind cluster, on the operator and application images about to be
-  # published (fork/RELEASING.md, phase 2). Nothing is published if it fails.
+  # published (fork/docs/releasing.md, phase 2). Nothing is published if it fails.
   e2e:
     needs: plan
     uses: ./.github/workflows/e2e-kind.yml

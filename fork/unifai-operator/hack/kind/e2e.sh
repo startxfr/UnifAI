@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the light e2e suite (make test-e2e, no E2E_FULL) on a throwaway kind cluster: the gate of a release
-# (fork/RELEASING.md, phase 2), on a GitHub runner or a workstation with docker or podman.
+# (fork/docs/releasing.md, phase 2), on a GitHub runner or a workstation with docker or podman.
 #
 #   hack/kind/e2e.sh <operator image (repo@sha256:...)> <UnifAI images tag (e.g. devel-<sha>)>
 #

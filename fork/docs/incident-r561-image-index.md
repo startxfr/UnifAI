@@ -1,6 +1,6 @@
 # R-561: OCI image index and provenance (v0.1.73)
 
-Status: **Open** in [ROADMAP](../ROADMAP.md) (row R-561); the incident itself is fixed and v0.1.73 is delivered.
+Status: **Open** in [ROADMAP](roadmap.md) (row R-561); the incident itself is fixed and v0.1.73 is delivered.
 
 ## Symptom
 The first cut of v0.1.73 (2026-11-19) failed at the step "Tag and sign the six images" of `release.yml`: the Quay tag was
@@ -37,4 +37,4 @@ RESULT envflag -> application/vnd.docker.distribution.manifest.v2+json
 Durable choice for `publish-images.yml`: keep the indexes (which `release.yml` now handles) or add `--provenance=false`.
 Either rebuilds the five application images, so it needs a canary, with the 0.2 line. No change made to it so far.
 
-See the R-561 row of [ROADMAP](../ROADMAP.md) for the authoritative text.
+See the R-561 row of [ROADMAP](roadmap.md) for the authoritative text.
