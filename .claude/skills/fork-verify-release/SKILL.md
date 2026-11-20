@@ -38,6 +38,11 @@ PyYAML. Writes nothing (temporary directory only, `git fetch` of origin).
    `skipRange`; a `skipRange` may exist only on `stable` (written by promote, [fork/ci/promote.py](../../../fork/ci/promote.py));
    the published alpha channel equals the post-release commit's.
 
+**Hotfix path never tested.** The `kind: hotfix` branches of the script (post-release commit on `release-X.Y`, `vX.Y.Z`
+looked up in the `stable` channel, catalog not compared because it is committed to `devel`) were written from
+release.yml but have never run against a real hotfix release (none exists yet; tested on v0.1.73, a manual release).
+On the first hotfix, read every line of its output, and treat a FAIL there as a possible script bug before a release bug.
+
 ## After a green run
 - The script prints a message (French, see the `fork-peer-brief` skill) with the operator, bundle, catalog and five
   application digests: send it to `zuno-demo`, with `zuno-demo-cluster` in copy (check `ListAgents` for the names).
