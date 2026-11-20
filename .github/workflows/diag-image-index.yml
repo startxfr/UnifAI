@@ -1,0 +1,53 @@
+# Fork-only (fork/fork-only-paths): diagnostic of R-561, run by hand (Actions, diag-image-index, Run workflow).
+# Since 2026-11-19 the CI images (publish-images.yml, plain `docker build` then `docker push` on ubuntu-latest) are OCI
+# image indexes (the image plus a BuildKit provenance attestation) instead of the plain manifests of 0.1.72 and before.
+# This run prints the tooling of the runner and builds a tiny image three ways into a registry local to the runner
+# (nothing leaves the runner, nothing is pushed to quay.io), to show which setting gives which manifest type.
+# It does not touch publish-images.yml and builds none of the product images.
+name: diag-image-index
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Runner and tooling
+        run: |
+          echo "ImageOS=${ImageOS:-} ImageVersion=${ImageVersion:-}"
+          grep -E '^(PRETTY_NAME|VERSION)=' /etc/os-release
+          docker version
+          docker buildx version
+          docker info | grep -E 'Server Version|Storage Driver|driver-type|Default Runtime|containerd|Cgroup Driver' || true
+          docker buildx ls
+
+      - name: A tiny image three ways, into a local registry
+        run: |
+          set -euo pipefail
+          docker run -d --name reg -p 5000:5000 registry:2 > /dev/null
+          for i in $(seq 1 30); do curl -sf localhost:5000/v2/ > /dev/null && break; sleep 1; done
+          mkdir ctx
+          printf 'FROM scratch\nCOPY f /f\n' > ctx/Dockerfile
+          echo x > ctx/f
+          show() {
+            local tag="$1" media
+            media="$(curl -s -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' "localhost:5000/v2/diag/manifests/$tag" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("mediaType"))')"
+            echo "RESULT $tag -> $media"
+          }
+          echo "== docker build, as publish-images.yml does"
+          docker build -t localhost:5000/diag:default ctx
+          docker push localhost:5000/diag:default > /dev/null
+          show default
+          echo "== docker build --provenance=false"
+          docker build --provenance=false -t localhost:5000/diag:noprov ctx
+          docker push localhost:5000/diag:noprov > /dev/null
+          show noprov
+          echo "== BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker build"
+          BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker build -t localhost:5000/diag:envflag ctx
+          docker push localhost:5000/diag:envflag > /dev/null
+          show envflag
