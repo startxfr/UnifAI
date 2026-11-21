@@ -26,6 +26,11 @@ from mas.elements.tools.common.execution.models import ExecutorConfig
 from mas.elements.tools.builtin.time import GetCurrentTimeTool
 from mas.elements.tools.builtin.retriever import RetrieverTool
 
+try:  # opentelemetry is the optional `otel` extra of mas: without it a retrieve_first failure is only logged
+    from opentelemetry import metrics as otel_metrics, trace as otel_trace
+except ImportError:  # pragma: no cover
+    otel_metrics = otel_trace = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -248,9 +253,30 @@ class CustomAgentNode(
                 prompt = self.augment_with_context(prompt)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("retrieve_first: retrieval failed, continuing without context: %s", exc)
+                self._record_retrieve_first_failure(exc)
         context_messages.append(prompt)
 
         return context_messages
+
+    def _record_retrieve_first_failure(self, exc: Exception) -> None:
+        """Make a retrieve_first failure visible in the traces and the metrics, not only in the log (R-564).
+
+        An event on the current span (the node span when OTel owns the context) and the counter
+        `mas.retrieve_first.failures` (meter "mas", as the OTel tracing adapter). Only the exception class is
+        recorded, never its message (it may carry a URL or a token); the counter has the node uid only.
+        """
+        if otel_trace is None:
+            return
+        try:
+            otel_trace.get_current_span().add_event(
+                "retrieve_first.failed", {"mas.retrieve_first.error": type(exc).__name__})
+            # Looked up on each (rare) failure, so the meter provider installed by init_telemetry is the one used.
+            otel_metrics.get_meter("mas").create_counter(
+                "mas.retrieve_first.failures", unit="{failure}",
+                description="retrieve_first retrievals that failed (the turn went on without context)",
+            ).add(1, {"mas.node.uid": str(self.uid)})
+        except Exception:  # noqa: BLE001 - telemetry must never fail the turn
+            logger.debug("retrieve_first: could not record the failure in OTel", exc_info=True)
 
     def _build_agent_results_context(self, thread_id: str) -> Optional[ChatMessage]:
         """Build agent results context from workspace."""
