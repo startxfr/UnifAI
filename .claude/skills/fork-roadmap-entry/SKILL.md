@@ -9,8 +9,8 @@ Source of truth: `fork/docs/roadmap.md` (active backlog) and `fork/docs/roadmap-
 "Working rules" of fork/docs/roadmap.md first; do not copy them here.
 
 ## Before touching the file
-1. **Tell unifai-main first** (SendMessage). It writes release progress in fork/docs/roadmap.md; wait for its answer before editing.
-2. The checkout is shared: edit with explicit paths only, never `git add -A`, and commit only when unifai-main or the owner asks
+1. **Tell unifai-hachley first** (SendMessage; formerly unifai-main). It writes release progress in fork/docs/roadmap.md; wait for its answer before editing.
+2. The checkout is shared: edit with explicit paths only, never `git add -A`, and commit only when unifai-hachley or the owner asks
    (Conventional Commits, `docs(fork): ...`). Fork-only paths go on `devel` only.
 
 ## Format
@@ -21,12 +21,12 @@ Source of truth: `fork/docs/roadmap.md` (active backlog) and `fork/docs/roadmap-
   (workflow run ids), and "Open: ..." for what remains. Absolute dates only (2026-11-19, never "yesterday").
 - **Status**: `todo`, `doing`, `done`, `blocked`, or for a delivery `**delivered 0.1.73** (2026-11-19)`; a deferred item says who
   decided and when.
-- **Owner**: the session or person (e.g. `unifai-main`, `operator`).
+- **Owner**: the session or person (e.g. `unifai-hachley`, `operator`).
 - No secrets, no unpublished vulnerability details: the repository is public.
 - Verify every fact (SHA exists: `git cat-file -t <sha>`; run id and result read from the run) before writing it.
 
 ## Archiving
 A delivered or closed item moves, with its full text unchanged, to the matching section of `fork/docs/roadmap-archive.md`, and its
 short line (`| Id | Item (short) |`) is added to "Archived items (index)" in fork/docs/roadmap.md. A session that records a new proof for an archived id
-edits the row in the archive. A reopened item moves back to fork/docs/roadmap.md. Archive only on unifai-main's go: recent deliveries
+edits the row in the archive. A reopened item moves back to fork/docs/roadmap.md. Archive only on unifai-hachley's go: recent deliveries
 (e.g. R-558..R-561) stay in the active table until it says otherwise.

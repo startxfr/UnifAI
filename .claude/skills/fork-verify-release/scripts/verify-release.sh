@@ -195,7 +195,7 @@ if [ "$fail" != 0 ]; then
 fi
 echo "RESULT: v$V verified (tag, green release run, release.json, registry tags, cosign 8/8, post-release commit, catalog)"
 echo
-echo "---- message for zuno-demo (cc zuno-demo-cluster), in French as fork-peer-brief asks ----"
+echo "---- message for zuno-demo-hachley (cc zuno-demo-cluster, helm-hachley), in French as fork-peer-brief asks ----"
 python3 - "$W/release.json" <<'PY'
 import json, sys
 r = json.load(open(sys.argv[1])); v = r["version"]

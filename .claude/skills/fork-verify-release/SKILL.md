@@ -1,6 +1,6 @@
 ---
 name: fork-verify-release
-description: Verify a published release vX.Y.Z of the startxfr/UnifAI fork, read only, before announcing it to zuno-demo. Use after a cut-release / release.yml run, or when asked "is 0.1.N out", "verify the release", "check release.json", "cosign the release", "send the digests to zuno-demo".
+description: Verify a published release vX.Y.Z of the startxfr/UnifAI fork, read only, before announcing it to zuno-demo-hachley. Use after a cut-release / release.yml run, or when asked "is 0.1.N out", "verify the release", "check release.json", "cosign the release", "send the digests to zuno-demo-hachley".
 ---
 
 # Verifying a fork release (read only)
@@ -45,6 +45,6 @@ On the first hotfix, read every line of its output, and treat a FAIL there as a 
 
 ## After a green run
 - The script prints a message (French, see the `fork-peer-brief` skill) with the operator, bundle, catalog and five
-  application digests: send it to `zuno-demo`, with `zuno-demo-cluster` in copy (check `ListAgents` for the names).
+  application digests: send it to `zuno-demo-hachley`, with `zuno-demo-cluster` in copy, and `helm-hachley` for the chart digests (check `ListAgents` for the names).
 - Write "delivered X.Y.Z" in the ROADMAP rows (`fork-roadmap-entry` skill).
 - Nothing goes on demo333 without the owner's go in the zuno-demo-cluster session.
