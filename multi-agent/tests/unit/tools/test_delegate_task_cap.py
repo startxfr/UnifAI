@@ -31,13 +31,14 @@ class _Service:
         return True
 
 
-def test_the_cap_defaults_to_three_and_zero_means_unlimited(monkeypatch):
+def test_the_cap_defaults_to_two_and_zero_means_unlimited(monkeypatch):
+    # 0.1.75 (R-563): two delegations per work item by default, one answer and one follow-up
     monkeypatch.delenv(MAX_DELEGATIONS_ENV, raising=False)
-    assert max_delegations_per_item() == DEFAULT_MAX_DELEGATIONS == 3
+    assert max_delegations_per_item() == DEFAULT_MAX_DELEGATIONS == 2
     monkeypatch.setenv(MAX_DELEGATIONS_ENV, "5")
     assert max_delegations_per_item() == 5
     monkeypatch.setenv(MAX_DELEGATIONS_ENV, "not a number")
-    assert max_delegations_per_item() == 3
+    assert max_delegations_per_item() == 2
     monkeypatch.setenv(MAX_DELEGATIONS_ENV, "0")
     assert max_delegations_per_item() == 0 and not delegation_cap_reached(_item("a", "b", "c", "d"), 0)
 
