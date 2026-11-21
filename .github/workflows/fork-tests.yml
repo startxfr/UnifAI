@@ -3,7 +3,9 @@
 #   (redirects, address pinning, rebinding), which the cluster e2e has no MCP/A2A fixture for;
 # - fork-ci: the signing and provenance scripts of the image and release workflows;
 # - unit: the unit tests of multi-agent, rag and identity, minus the tests that already fail on upstream main
-#   (fork/ci/unit-test-debt.txt). This workflow gates the weekly release (fork/ci/release_gate.py): a red run skips it.
+#   (fork/ci/unit-test-debt.txt);
+# - ui: the vitest unit tests of the UI (`pnpm test` in ui/, R-568).
+# This workflow gates the weekly release (fork/ci/release_gate.py): a red run skips it.
 name: fork-tests
 
 on:
@@ -14,6 +16,7 @@ on:
       - rag/**
       - shared-resources/identity/**
       - global_utils/**
+      - ui/**
       - fork/ci/**
       - .github/workflows/fork-tests.yml
   pull_request:
@@ -23,6 +26,7 @@ on:
       - rag/**
       - shared-resources/identity/**
       - global_utils/**
+      - ui/**
       - fork/ci/**
       - .github/workflows/fork-tests.yml
   workflow_dispatch:
@@ -106,3 +110,21 @@ jobs:
         env:
           SECRET_KEY: ${{ matrix.secret_key }}
         run: python fork/ci/run_unit_tests.py ${{ matrix.suite }}
+
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"  # the node of ui/deployment/Dockerfile
+      - name: Install (pnpm of package.json packageManager, through corepack)
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+      - name: UI unit tests
+        run: pnpm test
