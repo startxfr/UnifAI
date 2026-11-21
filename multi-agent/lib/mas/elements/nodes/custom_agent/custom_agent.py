@@ -252,7 +252,9 @@ class CustomAgentNode(
             try:
                 prompt = self.augment_with_context(prompt)
             except Exception as exc:  # noqa: BLE001
-                logger.warning("retrieve_first: retrieval failed, continuing without context: %s", exc)
+                # The class only at WARNING: the message may carry a URL or a token (R-566); the detail at DEBUG.
+                logger.warning("retrieve_first: retrieval failed (%s), continuing without context", type(exc).__name__)
+                logger.debug("retrieve_first: retrieval failure detail", exc_info=True)
                 self._record_retrieve_first_failure(exc)
         context_messages.append(prompt)
 
