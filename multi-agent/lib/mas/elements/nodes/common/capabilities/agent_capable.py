@@ -205,6 +205,16 @@ class AgentCapableMixin(Generic[T]):
                 cm = tracing.trace_tool(tool_name=tool.name, tool_input=args)
                 handle = cm.__enter__()
                 _tool_trace_stack[call_id] = (cm, handle)
+                # What the tool knows before running (R-569), off the event loop: it may read the work plan.
+                span_attributes = getattr(tool, "span_attributes", None)  # BaseTool; other tool objects have none
+                try:
+                    attributes = await asyncio.to_thread(span_attributes, args or {}) if span_attributes else None
+                    if attributes:
+                        handle.update(metadata=attributes)
+                except Exception as exc:  # noqa: BLE001 - observability only: the call goes on without these attributes
+                    # The class only at WARNING (the message may carry a URL or a token, as R-566); the detail at DEBUG.
+                    logger.warning("Tool '%s': span attributes unavailable (%s)", tool.name, type(exc).__name__)
+                    logger.debug("Tool '%s': span attributes failure detail", tool.name, exc_info=True)
 
             async def tracing_post_hook(response, context):
                 call_id = response.tool_call_id if response else None

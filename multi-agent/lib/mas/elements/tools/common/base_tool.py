@@ -37,6 +37,13 @@ class BaseTool(ABC):
         """Default async wrapper — runs sync method in thread pool."""
         return await asyncio.to_thread(self.run, *args, **kwargs)
 
+    def span_attributes(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Scalars to put on this call's ``execute_tool`` span, as ``mas.<key>``, read before the call runs (R-569).
+
+        Never the arguments' content: identifiers, flags, counts. None by default; a failure here only loses them.
+        """
+        return {}
+
     def get_args_schema_json(self) -> Optional[Dict[str, Any]]:
         """Return the JSON Schema dict for this tool's parameters."""
         if self.args_schema is None:

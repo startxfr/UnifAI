@@ -56,6 +56,8 @@ _SCALAR = (str, bool, int, float)
 
 # Tool arguments never reach a span, except these identifiers (no user content): a delegation is followed from the
 # trace by the work item it serves and the node it goes to (tool name -> {argument: span attribute}).
+# What is not an argument comes from the tool itself, BaseTool.span_attributes, as mas.<key> through the handle's
+# metadata: mas.delegation.after_rate_limit on iem.delegate_task (R-569).
 _TOOL_SPAN_IDENTIFIERS: Dict[str, Dict[str, str]] = {
     "iem.delegate_task": {"work_item_id": "mas.delegation.work_item_id", "dst_uid": "mas.delegation.target"},
 }

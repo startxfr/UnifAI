@@ -36,6 +36,27 @@ def delegation_cap_reached(item, limit: int) -> bool:
     return bool(limit and item is not None and item.result and len(item.result.delegations) >= limit)
 
 
+RATE_LIMITED_ERROR_TYPE = "rate_limited"  # mas.elements.llms.common.exceptions.RATE_LIMITED_TYPE
+AFTER_RATE_LIMIT_ATTRIBUTE = "delegation.after_rate_limit"  # on the execute_tool span: mas.delegation.after_rate_limit
+
+
+def previous_response_rate_limited(item) -> bool:
+    """True when the last delegation of the work item was answered with a rate limit (error_type rate_limited, R-569).
+
+    The answer is the delegate's AgentResult as stored by the orchestrator: its execution_metadata carries
+    ``error_type`` (custom_agent) or ``error.type`` (agent_capable run_agent). A token ceiling is another type.
+    """
+    delegations = item.result.delegations if item is not None and item.result else []
+    if not delegations or not isinstance(delegations[-1].response_data, dict):
+        return False
+    metadata = delegations[-1].response_data.get("execution_metadata")
+    if not isinstance(metadata, dict):
+        return False
+    error = metadata.get("error")
+    return (metadata.get("error_type") == RATE_LIMITED_ERROR_TYPE
+            or (isinstance(error, dict) and error.get("type") == RATE_LIMITED_ERROR_TYPE))
+
+
 class DelegateTaskArgs(BaseModel):
     """Simplified arguments for delegating a task to an adjacent node."""
     dst_uid: str = Field(
@@ -137,6 +158,21 @@ class DelegateTaskTool(BaseTool):
             "error": (f"Work item {work_item_id} was already delegated {limit} times and is {outcome}. Do NOT delegate it "
                       f"again: give your final answer from the answers you already have."),
         }
+
+    def span_attributes(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """``delegation.after_rate_limit``: does this call follow a rate-limited answer for the same work item (R-569)?
+
+        Read from the work plan before the call, as run() sees it; {} when the plan or the item cannot be found.
+        """
+        work_item_id = (args or {}).get("work_item_id")
+        current_thread = self._get_current_thread()
+        if not work_item_id or current_thread is None:
+            return {}
+        plan = self._get_workspace_service().load_work_plan(current_thread.thread_id, self._get_owner_uid())
+        item = plan.items.get(work_item_id) if plan else None
+        if item is None:
+            return {}
+        return {AFTER_RATE_LIMIT_ATTRIBUTE: previous_response_rate_limited(item)}
 
     def run(self, **kwargs) -> Dict[str, Any]:
         """Delegate task to adjacent node with automatic thread and status management."""
