@@ -11,8 +11,13 @@ so the domain layer never imports adapter classes.
 On ``create()``, initial overrides are loaded from session metadata
 and seeded into the ``OverridesStore`` so the gate has a warm cache.
 On ``remove()``, the store entry is cleaned up.
+
+The approval timeout comes from ``MAS_HITL_TIMEOUT_SECONDS`` (R-567), read at
+each ``create()`` so a changed environment applies after a restart.
 """
 import logging
+import math
+import os
 from typing import Any, Optional
 
 from mas.core.channels import InputCapableChannel
@@ -26,6 +31,29 @@ from .auto_resolving_gate import AutoResolvingApprovalGate
 from .channel_gate import ChannelApprovalGate
 
 logger = logging.getLogger(__name__)
+
+HITL_TIMEOUT_ENV = "MAS_HITL_TIMEOUT_SECONDS"
+DEFAULT_HITL_TIMEOUT_SECONDS = HITLConfig.timeout_seconds  # 300 s
+
+
+def hitl_timeout_seconds() -> float:
+    """Seconds a human has to answer an approval request: ``MAS_HITL_TIMEOUT_SECONDS``, a finite number > 0.
+
+    Absent: the default (300 s). Empty, not a number, <= 0, nan or inf: the default, with a warning that names the
+    variable but never its value (an env value may be anything, a mistyped secret included).
+    """
+    raw = os.environ.get(HITL_TIMEOUT_ENV)
+    if raw is None:
+        return DEFAULT_HITL_TIMEOUT_SECONDS
+    try:
+        value = float(raw.strip())
+    except ValueError:
+        value = math.nan
+    if not (math.isfinite(value) and value > 0):
+        logger.warning("%s is not a positive number of seconds: using the default %gs",
+                       HITL_TIMEOUT_ENV, DEFAULT_HITL_TIMEOUT_SECONDS)
+        return DEFAULT_HITL_TIMEOUT_SECONDS
+    return value
 
 
 class ChannelApprovalGateFactory(ApprovalGateFactory):
@@ -52,7 +80,7 @@ class ChannelApprovalGateFactory(ApprovalGateFactory):
         if not isinstance(channel, InputCapableChannel):
             return None, None
 
-        config = HITLConfig(enabled=True)
+        config = HITLConfig(enabled=True, timeout_seconds=hitl_timeout_seconds())
         inner_gate = ChannelApprovalGate(channel=channel, config=config)
 
         raw_overrides = getattr(session_metadata, "hitl_overrides", None) or {}
