@@ -1,4 +1,4 @@
-import React, { memo, useState, useCallback } from 'react';
+import React, { memo, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { motion } from 'framer-motion';
 import {
   ShieldAlert, ShieldCheck, ShieldX, ShieldQuestion,
@@ -14,6 +14,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { ApprovalEntry, ApprovalDecision, ApprovalStatus, AutoRuleAction } from './types';
+import {
+  clearApprovalFeedback,
+  getApprovalFeedback,
+  setApprovalFeedback,
+  subscribeApprovalFeedback,
+  type ApprovalFeedbackMode,
+} from './approvalFeedbackStore';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -117,21 +124,38 @@ ResolvedBadge.displayName = 'ResolvedBadge';
 
 export const ApprovalCard = memo(({ approval, sessionId, onDecision, onAutoRule }: ApprovalCardProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showFeedback, setShowFeedback] = useState<'reject' | 'redirect' | null>(null);
-  const [feedbackText, setFeedbackText] = useState('');
+  // The Reject / Redirect input lives in a module store keyed by requestId, not in local state: a card remounted
+  // while pending keeps the open input and the reason typed (R-565).
+  const { requestId } = approval;
+  const feedback = useSyncExternalStore(
+    subscribeApprovalFeedback,
+    useCallback(() => getApprovalFeedback(requestId), [requestId]),
+  );
+  const showFeedback = feedback.mode;
+  const feedbackText = feedback.text;
+  const setShowFeedback = useCallback(
+    (mode: ApprovalFeedbackMode | null) => setApprovalFeedback(requestId, { mode }),
+    [requestId],
+  );
+  const setFeedbackText = useCallback((text: string) => setApprovalFeedback(requestId, { text }), [requestId]);
+
+  // Resolved elsewhere (timeout, another tab): nothing left to keep for this request.
+  useEffect(() => {
+    if (approval.status !== 'pending') clearApprovalFeedback(requestId);
+  }, [approval.status, requestId]);
 
   const handleDecision = useCallback(
     async (decision: ApprovalDecision, feedback?: string) => {
       setIsSubmitting(true);
       try {
-        await onDecision(approval.requestId, decision, feedback);
+        await onDecision(requestId, decision, feedback);
+        // Cleared only once the decision went through: after a failure the reason stays for a retry.
+        clearApprovalFeedback(requestId);
       } finally {
         setIsSubmitting(false);
-        setShowFeedback(null);
-        setFeedbackText('');
       }
     },
-    [approval.requestId, onDecision],
+    [requestId, onDecision],
   );
 
   const handleFeedbackSubmit = useCallback(() => {
@@ -228,7 +252,7 @@ export const ApprovalCard = memo(({ approval, sessionId, onDecision, onAutoRule 
                   size="sm"
                   variant="outline"
                   className="h-7 text-xs border-gray-600"
-                  onClick={() => { setShowFeedback(null); setFeedbackText(''); }}
+                  onClick={() => clearApprovalFeedback(requestId)}
                   disabled={isSubmitting}
                 >
                   Cancel
