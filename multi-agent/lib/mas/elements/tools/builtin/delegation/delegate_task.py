@@ -18,9 +18,10 @@ from mas.elements.nodes.common.agent.constants import ToolNames
 
 # One work item is delegated at most this many times (first delegation + follow-ups). A model that never marks an
 # answered item done keeps asking the same agent the same question: 0.1.52 on demo333 sent 11 A2A turns per user turn.
-# 0 = unlimited.
+# 2 by default (the first delegation and one follow-up, owner decision of 2026-11-21); MAS_MAX_DELEGATIONS_PER_ITEM
+# raises it (or lowers it), 0 = unlimited.
 MAX_DELEGATIONS_ENV = "MAS_MAX_DELEGATIONS_PER_ITEM"
-DEFAULT_MAX_DELEGATIONS = 3
+DEFAULT_MAX_DELEGATIONS = 2
 
 
 def max_delegations_per_item() -> int:
