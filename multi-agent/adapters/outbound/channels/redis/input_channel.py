@@ -14,6 +14,7 @@ decorator on the activity — no callback needed here.
 """
 import json
 import logging
+import math
 import threading
 from typing import Any, Optional
 
@@ -107,8 +108,10 @@ class RedisInputCapableChannel(InputCapableChannel):
         remaining = timeout
 
         while remaining > 0 and not self._closed:
-            slice_timeout = min(_BLPOP_SLICE_S, remaining)
-            result = self._redis.blpop(key, timeout=int(slice_timeout))
+            # Whole seconds, never 0: BLPOP with timeout 0 blocks forever, so a fractional rest (300.5 s) is rounded
+            # up and the wait lasts at most one second longer than asked (R-567).
+            slice_timeout = max(1, math.ceil(min(_BLPOP_SLICE_S, remaining)))
+            result = self._redis.blpop(key, timeout=slice_timeout)
 
             if result is not None:
                 _, raw = result
