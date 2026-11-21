@@ -40,7 +40,7 @@ if the forward fails (they come from the cluster, not from this repo).
 
 Re-delegation per work item: fetch the `delegate_task` spans of the window, group by `mas.delegation.work_item_id`
 (and `mas.delegation.target`), count per group. A group above 1 is a re-delegation; above `MAS_MAX_DELEGATIONS_PER_ITEM`
-(default 3, 0 = unlimited) should not happen: the 4th call is refused.
+(default 2 since 0.1.75, 0 = unlimited) should not happen: the 3rd call is refused.
 
 ## What the attributes are (read the code, do not guess)
 

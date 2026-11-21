@@ -9,8 +9,11 @@ What the fork adds to upstream UnifAI, in one line each. The backlog row (R-xxx)
 | Agents | A2A streaming no longer prefixes answers with "Task status: ..." | R-558 |
 | Agents | Token ceiling of one user turn (`zuno.limits.max_tokens_per_turn`, `spec.ceilings.maxTokensPerTurn`) | R-543 |
 | Agents | Delegation spans carry `mas.delegation.work_item_id` and `mas.delegation.target` | R-560 |
-| Agents | A work item is delegated at most twice by default (`MAS_MAX_DELEGATIONS_PER_ITEM`, 0 = unlimited; set with `spec.extraEnv`) | R-563 |
+| Agents | A work item is delegated at most twice by default (`MAS_MAX_DELEGATIONS_PER_ITEM`, 0 = unlimited; set with `spec.extraEnv` under both `multiagent` and `multiagentWorker`, sessions run in the worker) | R-563 |
 | Agents | A `retrieve_first` failure is visible: event `retrieve_first.failed` (attribute `mas.retrieve_first.error`, the exception class only) and counter `mas.retrieve_first.failures`; the turn still runs without context | R-564 |
+| Agents | The HITL approval timeout is configurable (`MAS_HITL_TIMEOUT_SECONDS`, 300 by default, a float > 0; an unanswered approval is rejected when it expires; set with `spec.extraEnv` under both `multiagent` and `multiagentWorker`) | R-567 |
+| UI | An approval card keeps its Reject / Redirect input and reason when it is remounted (state kept by `requestId`) | R-565 |
+| UI | Unit tests of the UI with vitest (`pnpm test` in `ui/`), first one on the approval card | R-568 |
 | RAG | Retriever ranking: DBSF fusion, BM25 v2 index, reranker option (`spec.rag.search`, `spec.rag.reranker`); evaluation in [Reranker evaluation](reranker-eval.md) | R-514, R-518 |
 | RAG | French sparse encoder v3, opt-in and off by default | R-522 |
 | RAG | Git sources (`type: git`), see [RAG git sources](rag-git-sources.md) | R-530 |
