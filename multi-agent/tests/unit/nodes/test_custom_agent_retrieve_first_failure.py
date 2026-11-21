@@ -138,3 +138,41 @@ def test_a_successful_retrieval_records_nothing(reader, spans):
 def test_without_a_recording_span_the_failure_still_does_not_fail_the_turn(reader):
     messages = _context(_node(Mock(retrieve=Mock(side_effect=_RagDown(SECRET)))))
     assert messages[-1].content == "What is the PO status?"
+
+
+# R-566: the log is as careful as the span and the counter: at WARNING the exception CLASS only, the message and the
+# traceback only at DEBUG.
+LOGGER = "mas.elements.nodes.custom_agent.custom_agent"
+
+
+def _failing_records(caplog, error):
+    import logging
+    with caplog.at_level(logging.DEBUG, logger=LOGGER):
+        _context(_node(Mock(retrieve=Mock(side_effect=error))))
+    return [r for r in caplog.records if r.name == LOGGER]
+
+
+def test_the_warning_names_the_exception_class_and_never_its_message(reader, caplog):
+    warnings = [r for r in _failing_records(caplog, _RagDown(SECRET)) if r.levelno >= 30]
+    assert len(warnings) == 1
+    record = warnings[0]
+    assert record.getMessage() == "retrieve_first: retrieval failed (_RagDown), continuing without context"
+    assert record.exc_info is None and not record.exc_text  # a traceback would print the message as well
+    assert "s3cr3t" not in record.getMessage() + repr(record.args) + str(record.exc_text)
+
+
+def test_the_detail_with_the_exception_is_logged_at_debug_only(reader, caplog):
+    records = _failing_records(caplog, _RagDown(SECRET))
+    detail = [r for r in records if r.levelno < 30 and "retrieve_first" in r.getMessage()]
+    assert len(detail) == 1 and detail[0].levelno == 10
+    assert detail[0].exc_info and detail[0].exc_info[1].args == (SECRET,)
+    # nothing at INFO or above carries the message
+    assert all("s3cr3t" not in r.getMessage() and r.exc_info is None for r in records if r.levelno >= 20)
+
+
+def test_the_otel_event_and_the_turn_are_unchanged_by_the_log_change(reader, spans, caplog):
+    tracer, exporter = spans
+    messages, _ = _failing_turn(tracer, _RagDown(SECRET))
+    assert messages[-1].content == "What is the PO status?"
+    (span,) = exporter.get_finished_spans()
+    assert [e.attributes[ERROR_ATTRIBUTE] for e in span.events if e.name == EVENT] == ["_RagDown"]
