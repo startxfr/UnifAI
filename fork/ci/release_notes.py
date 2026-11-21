@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Release notes of a fork release (fork/RELEASING.md), from the conventional commits since the previous release.
+"""Release notes of a fork release (fork/docs/releasing.md), from the conventional commits since the previous release.
 
     release_notes.py <version> [<to ref>] [--from <ref>] [--images images.json]
 

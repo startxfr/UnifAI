@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve the six images a release `vX.Y.Z` ships (fork/RELEASING.md): operator, rag, multiagent, backend, identity, ui.
+"""Resolve the six images a release `vX.Y.Z` ships (fork/docs/releasing.md): operator, rag, multiagent, backend, identity, ui.
 
 A release does not rebuild anything. publish-images.yml builds and signs each image on devel as `devel-<sha>` of the
 head of the push that changed its code, and only when its code changed. For each component this walks the commit's

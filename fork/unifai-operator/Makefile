@@ -361,7 +361,7 @@ endif
 # channels; `make catalog-add` records the current VERSION, `make catalog` renders catalog/ from the template.
 CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:latest
 
-# Releases go through GitHub (fork/RELEASING.md: cut-release.yml, release.yml, promote.yml); the canary targets below
+# Releases go through GitHub (fork/docs/releasing.md: cut-release.yml, release.yml, promote.yml); the canary targets below
 # are the manual step before a manual release or a promotion. `make release` is a local flow for development only.
 CANARY_NS ?= unifai-operator-canary
 # Feature flag: with on (the default) the user-workload Prometheus scrapes the canary operator (config/canary-monitoring:

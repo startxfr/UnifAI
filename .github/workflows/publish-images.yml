@@ -3,11 +3,11 @@
 #
 # - push to devel (when an image's code changed): quay.io/zuno/unifai-<component>:devel-<sha> and :devel,
 #   environment `quay-devel` (no approval, branches devel and release-*);
-# - push to a hotfix branch release-X.Y (fork/RELEASING.md): the same, tagged release-X.Y-<sha> and :release-X.Y,
+# - push to a hotfix branch release-X.Y (fork/docs/releasing.md): the same, tagged release-X.Y-<sha> and :release-X.Y,
 #   signed with this workflow's identity on that branch (checked by cut-release, re-signed by the hotfix release);
 # - manual run: from devel or release-X.Y; the `components` input picks the images (empty = all).
 #
-# Releases do not build here: release.yml (tag vX.Y.Z, fork/RELEASING.md) tags these signed <branch>-<sha> digests
+# Releases do not build here: release.yml (tag vX.Y.Z, fork/docs/releasing.md) tags these signed <branch>-<sha> digests
 # vX.Y.Z and adds its own release signature.
 #
 # The operator image (quay.io/zuno/unifai-operator, fork/unifai-operator/Dockerfile) is built the same way, when the

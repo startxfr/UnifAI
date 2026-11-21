@@ -1,9 +1,9 @@
-"""Plan the promotion of a release vX.Y.N to the OLM `stable` channel (fork/RELEASING.md, promote.yml).
+"""Plan the promotion of a release vX.Y.N to the OLM `stable` channel (fork/docs/releasing.md, promote.yml).
 
 Checks that vX.Y.N is a published release of line X.Y (a weekly or manual tag cut by the release bot, at least
 --min-days old), that the line is in fork/calendar.yaml and its freeze has started, and that the maintainer confirmed
 the full canary on demo333 (with --rehearsal, the age, freeze and canary checks only warn: a dry run of the
-promotion on throwaway branches, fork/RELEASING.md). Then works out:
+promotion on throwaway branches, fork/docs/releasing.md). Then works out:
 - skip_range: ">=<previous line>.0 <X.Y.N", so OLM upgrades a stable install straight to it;
 - next_devel: "<next line>.0", the VERSION devel moves to;
 - hotfix: the first patch of X.Y after every existing vX.Y.* tag, the VERSION release-X.Y starts with.

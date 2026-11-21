@@ -1,4 +1,4 @@
-"""Decide whether the weekly release of the fork runs (fork/RELEASING.md, weekly-release.yml).
+"""Decide whether the weekly release of the fork runs (fork/docs/releasing.md, weekly-release.yml).
 
 The weekly release is skipped when:
 - `devel` has no change since the last vX.Y.Z (the bot's "release(fork): v…" post-release commit is not a change);
