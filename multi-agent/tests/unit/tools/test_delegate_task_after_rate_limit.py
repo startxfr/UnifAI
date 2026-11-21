@@ -206,7 +206,7 @@ def test_a_tool_without_span_attributes_triggers_no_update():
     assert tracing.opened and tracing.handle.updates == []
 
 
-def test_a_failing_span_attributes_breaks_nothing_and_logs_no_message(caplog):
+def test_a_failing_span_attributes_breaks_nothing_and_warns_with_the_class_only(caplog):
     import logging
     tracing = _Tracing()
 
@@ -218,8 +218,11 @@ def test_a_failing_span_attributes_breaks_nothing_and_logs_no_message(caplog):
         _call(_pre_hook(tracing), tool, dict(ARGS))  # no exception: the tool goes on to run
     assert tracing.opened and tracing.handle.updates == []
     loud = [r for r in caplog.records if r.levelno >= logging.WARNING]
-    assert all("s3cr3t" not in r.getMessage() and "workspace down" not in r.getMessage() and r.exc_info is None for r in loud)
-    assert all("RuntimeError" in r.getMessage() for r in loud)  # a warning, if any, names the class only
+    assert len(loud) == 1  # exactly one warning...
+    message = loud[0].getMessage()
+    assert "RuntimeError" in message  # ...that names the class,
+    assert "s3cr3t" not in message and "workspace down" not in message and "mongodb" not in message  # never the message
+    assert loud[0].exc_info is None  # nor a traceback (the detail is DEBUG only)
 
 
 def test_end_to_end_the_span_has_the_attribute_after_a_429_and_false_otherwise():
