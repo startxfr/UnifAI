@@ -597,3 +597,74 @@ func TestEveryPipelineQueueIsConsumed(t *testing.T) {
 		}
 	}
 }
+
+// spec.replicas.multiagent sets the replica count of multiagent-be (R-570). Unset, nothing changes: the rendered values
+// and the hash of running stacks stay the same. The dev profile (no HPA) honours it; prod raises the HPA minimum to it.
+func TestMultiagentReplicas(t *testing.T) {
+	def := testPlan(t, nil)
+	empty := testPlan(t, func(s *unifaiv1.UnifaiStackSpec) { s.Replicas = map[string]int32{} })
+	two := testPlan(t, func(s *unifaiv1.UnifaiStackSpec) { s.Replicas = map[string]int32{"multiagent": 2} })
+	for _, r := range Releases {
+		if !r.IsEnabled(def) {
+			continue
+		}
+		a, err := Render(def, r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := Render(empty, r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := Render(two, r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a.Hash != b.Hash {
+			t.Errorf("%s: an empty spec.replicas changes the hash (it would roll running stacks)", r.Name)
+		}
+		if (a.Hash != c.Hash) != (r.Name == "unifai-multiagent-be") {
+			t.Errorf("%s: spec.replicas.multiagent must change the hash of multiagent-be only (changed: %v)", r.Name, a.Hash != c.Hash)
+		}
+	}
+	replicas := regexp.MustCompile(`(?m)^  replicas: (\d+)$`)
+	count := func(man string) string {
+		m := replicas.FindStringSubmatch(man)
+		if m == nil {
+			return ""
+		}
+		return m[1]
+	}
+	off, on := renderAll(t, def), renderAll(t, two)
+	if got := count(off["unifai-multiagent-be"]); got != "1" {
+		t.Errorf("dev default: multiagent-be replicas = %q, want 1", got)
+	}
+	if got := count(on["unifai-multiagent-be"]); got != "2" {
+		t.Errorf("dev with spec.replicas.multiagent=2: multiagent-be replicas = %q, want 2", got)
+	}
+	if got := count(on["unifai-multiagent-temporal-worker"]); got != "1" {
+		t.Errorf("spec.replicas.multiagent must not scale the temporal worker: replicas = %q", got)
+	}
+	if strings.Contains(on["unifai-multiagent-be"], "HorizontalPodAutoscaler") {
+		t.Errorf("dev profile must still render no HPA")
+	}
+
+	prod := renderAll(t, testPlan(t, func(s *unifaiv1.UnifaiStackSpec) {
+		s.Profile = ProfileProd
+		s.Replicas = map[string]int32{"multiagent": 3}
+	}))
+	hpa := prod["unifai-multiagent-be"]
+	if !strings.Contains(hpa, "kind: HorizontalPodAutoscaler") || !strings.Contains(hpa, "minReplicas: 3") {
+		t.Errorf("prod with spec.replicas.multiagent=3: the HPA minimum must be 3")
+	}
+	if !strings.Contains(hpa, "maxReplicas: 6") {
+		t.Errorf("prod: the HPA maximum of the chart (6) must stay when above the minimum")
+	}
+	big := renderAll(t, testPlan(t, func(s *unifaiv1.UnifaiStackSpec) {
+		s.Profile = ProfileProd
+		s.Replicas = map[string]int32{"multiagent": 8}
+	}))
+	if !strings.Contains(big["unifai-multiagent-be"], "minReplicas: 8") || !strings.Contains(big["unifai-multiagent-be"], "maxReplicas: 8") {
+		t.Errorf("prod: a minimum above the chart maximum must raise the maximum too")
+	}
+}

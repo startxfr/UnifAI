@@ -357,6 +357,13 @@ type UnifaiStackSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self.all(k, k in ['multiagent', 'multiagentWorker', 'rag', 'ragCelery', 'backend', 'identity', 'ui'])",message="extraEnv keys: multiagent, multiagentWorker, rag, ragCelery, backend, identity, ui"
 	// +optional
 	ExtraEnv map[string][]corev1.EnvVar `json:"extraEnv,omitempty"`
+	// Replica count by component; only multiagent (the multiagent-be Deployment, not its temporal worker) for now.
+	// Unset = the chart's 1. The dev profile (no HPA) runs exactly this count; prod raises the HPA minimum to it.
+	// More than one multiagent-be pod needs a ReadWriteMany shared storage (storage.sharedClassName).
+	// +kubebuilder:validation:XValidation:rule="self.all(k, k in ['multiagent'] && self[k] >= 1 && self[k] <= 10)",message="replicas keys: multiagent; values 1 to 10"
+	// +kubebuilder:validation:MaxProperties=1
+	// +optional
+	Replicas map[string]int32 `json:"replicas,omitempty"`
 	// Hosts the multiagent pods may call besides the services of the stack's own namespace, through the outbound URL
 	// guard of MCP, A2A and OAuth discovery calls (OUTBOUND_ALLOWED_HOSTS): a host name, or a suffix starting with a dot
 	// (.gateways.svc). Added to the stack namespace, which is always allowed. An extraEnv OUTBOUND_ALLOWED_HOSTS entry

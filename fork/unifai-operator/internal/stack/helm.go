@@ -86,9 +86,12 @@ func Render(p *Plan, r Release) (*Rendered, error) {
 	if r.IdentityEnv != "" {
 		set(vals, "env."+r.IdentityEnv, IdentityServiceURL)
 	}
-	_, digest, err := loadChart(r.Chart)
+	chrt, digest, err := loadChart(r.Chart)
 	if err != nil {
 		return nil, err
+	}
+	if n, ok := p.Spec.Replicas[r.Component]; ok && n > 0 {
+		replicas(vals, chrt.Values, int(n))
 	}
 	s := p.Spec
 	in := []any{digest, vals, s.Profile, s.Resources[r.Component], s.ExtraEnv[r.Component], s.NodeSelector, s.Tolerations, s.ImagePullSecrets,
@@ -183,4 +186,32 @@ func (e *Engine) uninstall(cfg *action.Configuration, name string) (*release.Rel
 		return nil, err
 	}
 	return res.Release, nil
+}
+
+// replicas sets the replica count of a release (spec.replicas): replicaCount, rendered when autoscaling is off (dev),
+// and the HPA minimum otherwise, raising the maximum when it is lower. Unset, the values are untouched.
+func replicas(vals, chartVals map[string]any, n int) {
+	set(vals, "replicaCount", n)
+	set(vals, "autoscaling.minReplicas", n)
+	hi := n
+	for _, src := range []map[string]any{chartVals, vals} {
+		if a, ok := src["autoscaling"].(map[string]any); ok {
+			if m, ok := toInt(a["maxReplicas"]); ok && m > hi {
+				hi = m
+			}
+		}
+	}
+	set(vals, "autoscaling.maxReplicas", hi)
+}
+
+func toInt(v any) (int, bool) {
+	switch x := v.(type) {
+	case int:
+		return x, true
+	case int64:
+		return int(x), true
+	case float64:
+		return int(x), true
+	}
+	return 0, false
 }

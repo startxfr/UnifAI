@@ -54,6 +54,7 @@ func (r Rule) Refused() string {
 var (
 	ImageKeys    = []string{"mongodb", "qdrant", "rabbitmq", "redis", "redisInsight", "temporal", "rag", "multiagent", "backend", "identity", "ui", "docling", "embedding", "reranker"}
 	ResourceKeys = append(slices.Clone(ImageKeys), "ragCelery", "multiagentWorker")
+	ReplicaKeys  = []string{"multiagent"} // spec.replicas: more than one pod is known safe for multiagent-be only (R-570)
 	SizeKeys     = []string{"mongodb", "qdrant", "redis", "redisInsight", "temporal", "rabbitmq", "ragShared", "multiagentShared", "logging", "docling", "keycloakDb"}
 )
 
@@ -335,6 +336,15 @@ var Rules = map[string][]Rule{
 		{Field: "spec.resources", Message: "resources keys: " + strings.Join(ResourceKeys, ", "),
 			check: func(obj client.Object) bool {
 				return keysIn(mapKeys(obj.(*unifaiv1.UnifaiStack).Spec.Resources), ResourceKeys)
+			}},
+		{Field: "spec.replicas", Message: "replicas keys: " + strings.Join(ReplicaKeys, ", ") + "; values 1 to 10",
+			check: func(obj client.Object) bool {
+				for k, n := range obj.(*unifaiv1.UnifaiStack).Spec.Replicas {
+					if !slices.Contains(ReplicaKeys, k) || n < 1 || n > 10 {
+						return false
+					}
+				}
+				return true
 			}},
 		{Field: "spec.storage.sizes", Message: "sizes keys: " + strings.Join(SizeKeys, ", ") + "; values are quantities",
 			check: func(obj client.Object) bool {

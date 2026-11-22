@@ -2252,6 +2252,13 @@ func (in *UnifaiStackSpec) DeepCopyInto(out *UnifaiStackSpec) {
 			(*out)[key] = outVal
 		}
 	}
+	if in.Replicas != nil {
+		in, out := &in.Replicas, &out.Replicas
+		*out = make(map[string]int32, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	if in.OutboundAllowedHosts != nil {
 		in, out := &in.OutboundAllowedHosts, &out.OutboundAllowedHosts
 		*out = make([]string, len(*in))

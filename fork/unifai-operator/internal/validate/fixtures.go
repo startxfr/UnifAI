@@ -124,7 +124,17 @@ func Fixtures() []Fixture {
 			s.Images = map[string]string{"rag": "quay.io/x/rag:1"}
 			s.Storage.Sizes = map[string]string{"mongodb": "20Gi"}
 			s.Backup = &unifaiv1.BackupSpec{Schedule: "0 2 * * *", S3: s3}
+			s.Replicas = map[string]int32{"multiagent": 2}
 		}), nil},
+		{"stack replicas of another component", stackWith(func(s *unifaiv1.UnifaiStackSpec) {
+			s.Replicas = map[string]int32{"rag": 2}
+		}), []string{"spec.replicas"}},
+		{"stack replicas zero", stackWith(func(s *unifaiv1.UnifaiStackSpec) {
+			s.Replicas = map[string]int32{"multiagent": 0}
+		}), []string{"spec.replicas"}},
+		{"stack replicas above 10", stackWith(func(s *unifaiv1.UnifaiStackSpec) {
+			s.Replicas = map[string]int32{"multiagent": 11}
+		}), []string{"spec.replicas"}},
 		{"stack invalid", stackWith(func(s *unifaiv1.UnifaiStackSpec) {
 			s.Images = map[string]string{"mas": "x"}
 			s.Resources = map[string]corev1.ResourceRequirements{"ragcelery": {}}
