@@ -108,4 +108,16 @@ describe('ApprovalCard keeps its Reject input by requestId', () => {
     render(card('req-a'));
     expect(screen.queryByPlaceholderText(REASON_PLACEHOLDER)).toBeNull();
   });
+
+  it('keeps the reason and the buttons after a decision that fails, without an unhandled rejection', async () => {
+    const user = userEvent.setup();
+    const onDecision = vi.fn().mockRejectedValue(new Error('submit failed'));
+    render(card('req-a', onDecision));
+    await user.click(screen.getByRole('button', { name: 'Reject' }));
+    await user.type(screen.getByPlaceholderText(REASON_PLACEHOLDER), 'à réessayer');
+    await user.click(screen.getByRole('button', { name: 'Reject' })); // fails: vitest fails the run on an unhandled rejection
+    expect(onDecision).toHaveBeenCalledWith('req-a', 'reject', 'à réessayer');
+    expect((screen.getByPlaceholderText(REASON_PLACEHOLDER) as HTMLTextAreaElement).value).toBe('à réessayer');
+    expect((screen.getByRole('button', { name: 'Reject' }) as HTMLButtonElement).disabled).toBe(false); // retry possible
+  });
 });

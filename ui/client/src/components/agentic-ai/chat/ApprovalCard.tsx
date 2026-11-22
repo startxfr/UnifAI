@@ -151,6 +151,8 @@ export const ApprovalCard = memo(({ approval, sessionId, onDecision, onAutoRule 
         await onDecision(requestId, decision, feedback);
         // Cleared only once the decision went through: after a failure the reason stays for a retry.
         clearApprovalFeedback(requestId);
+      } catch {
+        // The caller reports the failure (toast); the card only stays retryable, with its reason.
       } finally {
         setIsSubmitting(false);
       }
