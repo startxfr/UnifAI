@@ -104,6 +104,16 @@ spec:
 ```
 An `extraEnv` entry `OUTBOUND_ALLOWED_HOSTS` replaces that whole value (the namespace included).
 
+`replicas` sets the pod count of a component, from 1 to 10 (operator 0.1.77, R-570). Only `multiagent` is accepted:
+the multiagent-be Deployment, not its Temporal worker. Unset, the chart's count stays (1) and nothing rolls. The `dev`
+profile runs exactly this count (it has no HPA); `prod` raises the HPA minimum to it (and the maximum when lower).
+More than one pod needs the multiagent shared storage on a ReadWriteMany class (`storage.sharedClassName`):
+```yaml
+spec:
+  replicas:
+    multiagent: 2
+```
+
 `openTelemetry` exports traces and metrics (OTLP) of the multiagent server and Temporal worker, the RAG server and
 Celery worker and the backend, through the global_utils telemetry bootstrap (fork commit c918f732b, images built from
 it): `UNIFAI_OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`/`_PROTOCOL`, `OTEL_SERVICE_NAME` (the Helm release name,

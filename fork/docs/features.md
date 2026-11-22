@@ -21,4 +21,5 @@ What the fork adds to upstream UnifAI, in one line each. The backlog row (R-xxx)
 | Operator | `OUTBOUND_ALLOWED_HOSTS` set by the operator on multiagent and the temporal worker | R-544 |
 | Operator | Neutral contract namespace (`contractNamespace`), `redhat-docs` crawl mode removed | R-556 |
 | Operator | OKF profile 1.0 bundles, legacy `v0.2`/`v0.3` still read on the 0.1 line | R-557 |
+| Operator | Replica count of multiagent-be (`spec.replicas.multiagent`, 1 to 10, unset = 1; dev runs it, prod raises the HPA minimum; needs a ReadWriteMany shared storage) | R-570 |
 | Delivery | One product version, signed images, weekly releases, promotion: [Releasing](releasing.md), [CI and testing](ci-and-testing.md) | R-526 |
