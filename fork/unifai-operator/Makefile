@@ -420,7 +420,7 @@ canary-e2e-full: ## Run the full e2e suite against the canary instance (releases
 
 .PHONY: canary-delete
 canary-delete: kustomize ## Remove the canary instance, after the e2e namespaces it left (their stacks need its finalizers).
-	-kubectl get ns -o name | grep '^namespace/unifai-e2e-' | xargs -r kubectl delete --wait=true --timeout=10m
+	-kubectl get ns -o name | { grep '^namespace/unifai-e2e-' || true; } | xargs -r kubectl delete --wait=true --timeout=10m
 	-kubectl delete clusterrolebinding -l unifai.startx.fr/canary-monitoring=true --ignore-not-found
 	$(KUSTOMIZE) build config/canary | kubectl delete --ignore-not-found -f -
 
