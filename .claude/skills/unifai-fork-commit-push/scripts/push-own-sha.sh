@@ -35,7 +35,7 @@ files = subprocess.run(["git", "diff", "--name-only", f"origin/devel...{sha}"], 
 under = lambda f, p: f == p or f.startswith(p + "/")
 hit = sorted({c for f in files for c, ps in COMPONENTS.items() if any(under(f, p) for p in ps)})
 if "operator" in hit:
-    print("WARNING rebuilds the OPERATOR image: new digest; a manual cut needs a canary on it (fork-cut-prep)")
+    print("WARNING rebuilds the OPERATOR image: new digest; a manual cut needs a canary on it (unifai-fork-cut-prep)")
 if set(hit) - {"operator"}:
     print("WARNING rebuilds the five application images")
 PY

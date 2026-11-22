@@ -1,9 +1,9 @@
 ---
-name: fork-promote-rehearsal
+name: unifai-fork-promote-rehearsal
 description: Dry run (rehearsal) of the promotion of a release line to the OLM stable channel, and its read-only verification (R-526). Use for "promote rehearsal", "essai à blanc", "rehearsal-r526", release-0.1-rehearsal, v0.X.Y-rc.1 checks, opm render of the test catalog, cosign check of an rc, or the line promotion of 2026-12-15.
 ---
 
-# fork-promote-rehearsal
+# unifai-fork-promote-rehearsal
 
 Source of truth: `fork/docs/releasing.md` (section Rehearsal), `.github/workflows/promote.yml`, `fork/ci/promote.py`,
 `fork/calendar.yaml`, and the plan note `/home/cl/.local/share/unifai-main-keep/rehearsal-r526-2.md` (outside the repo,

@@ -1,8 +1,8 @@
 """Black-box tests of the four scripts of the fork skills under .claude/skills (no network, no real remote).
 
-    check-staged.sh, push-own-sha.sh   (fork-commit-push)
-    prepare-cut.sh                     (fork-cut-prep)
-    verify-release.sh                  (fork-verify-release)
+    check-staged.sh, push-own-sha.sh   (unifai-fork-commit-push)
+    prepare-cut.sh                     (unifai-fork-cut-prep)
+    verify-release.sh                  (unifai-fork-verify-release)
 
 Each test copies the scripts and fork/ci/release_images.py into a throwaway git repository whose `origin` is a local
 bare repository named like startxfr/UnifAI (push-own-sha.sh refuses any other), and puts fake gh, skopeo, cosign, opm,
@@ -21,10 +21,10 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SKILLS = ROOT / ".claude" / "skills"
 SCRIPTS = {
-    "check-staged.sh": SKILLS / "fork-commit-push/scripts/check-staged.sh",
-    "push-own-sha.sh": SKILLS / "fork-commit-push/scripts/push-own-sha.sh",
-    "prepare-cut.sh": SKILLS / "fork-cut-prep/scripts/prepare-cut.sh",
-    "verify-release.sh": SKILLS / "fork-verify-release/scripts/verify-release.sh",
+    "check-staged.sh": SKILLS / "unifai-fork-commit-push/scripts/check-staged.sh",
+    "push-own-sha.sh": SKILLS / "unifai-fork-commit-push/scripts/push-own-sha.sh",
+    "prepare-cut.sh": SKILLS / "unifai-fork-cut-prep/scripts/prepare-cut.sh",
+    "verify-release.sh": SKILLS / "unifai-fork-verify-release/scripts/verify-release.sh",
 }
 IMAGES = ["operator", "rag", "multiagent", "backend", "identity", "ui"]
 GH = "startxfr/UnifAI"

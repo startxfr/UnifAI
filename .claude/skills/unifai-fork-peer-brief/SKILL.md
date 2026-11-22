@@ -1,5 +1,5 @@
 ---
-name: fork-peer-brief
+name: unifai-fork-peer-brief
 description: Write a message to a zuno-demo* or helm-* peer session about the UnifAI fork (release, canary, digests, a request). Use when about to SendMessage to zuno-demo-hachley, zuno-demo-cluster, zuno-demo-agents-hachley, zuno-demo-assist or helm-hachley, or when asked to "brief", "notify" or "answer" a zuno session.
 ---
 

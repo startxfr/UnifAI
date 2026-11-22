@@ -1,5 +1,5 @@
 ---
-name: fork-cut-prep
+name: unifai-fork-cut-prep
 description: Prepare a manual cut of the startxfr/UnifAI fork for the owner, without triggering it - devel head, canaried operator digest, canary command, cut-release inputs, Friday weekly cron and gate, freeze. Use when asked to "prepare the cut", "prepare 0.1.N", "owner actions", "can we release today", "will the weekly go out".
 ---
 
@@ -16,7 +16,7 @@ owner explicitly asks for that very action. Claude prepares; the owner runs.
 
 ## Run
 ```
-.claude/skills/fork-cut-prep/scripts/prepare-cut.sh <scratchpad>/owner-cut-X.Y.Z.sh
+.claude/skills/unifai-fork-cut-prep/scripts/prepare-cut.sh <scratchpad>/owner-cut-X.Y.Z.sh
 ```
 It fetches `origin/devel`, runs `make ci-image` (Go from `/home/cl/sdk/go1.26.4/bin`), the gate and the calendar, prints
 warnings, and writes the owner script (outside the repository). Read its output before handing the script over.
@@ -46,4 +46,4 @@ warnings, and writes the owner script (outside the repository). Read its output 
   reached `devel`. **The weekly cuts without canary**: a code change pushed on Friday ships untested by the canary
   unless the manual cut goes first. Local check: `python3 fork/ci/release_gate.py --rev origin/devel`.
 - **Freeze**: `fork/calendar.yaml` (next: line 0.1, 2026-12-01 to 12-14, promotion 2026-12-15): fixes only.
-- After the release: the `fork-verify-release` skill, with the full canaried digest.
+- After the release: the `unifai-fork-verify-release` skill, with the full canaried digest.

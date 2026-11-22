@@ -111,7 +111,7 @@ GitHub, startxfr/UnifAI, Actions, cut-release, Run workflow, branch devel:
    operator = \$OPERATOR
 Then approve the environment quay-release on the release.yml run of tag v$VERSION.
 The cut fails if devel resolves another operator (a commit under the operator build paths landed since): tell unifai-main.
-Then tell unifai-main "v$VERSION cut": it verifies (fork-verify-release) and sends the digests to zuno-demo.
+Then tell unifai-main "v$VERSION cut": it verifies (unifai-fork-verify-release) and sends the digests to zuno-demo.
 EOT
   ;;
 4) # AFTER THE RELEASE: nothing to run here

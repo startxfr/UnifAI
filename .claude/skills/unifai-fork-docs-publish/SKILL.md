@@ -1,5 +1,5 @@
 ---
-name: fork-docs-publish
+name: unifai-fork-docs-publish
 description: Write and publish documentation pages under fork/docs/ of the UnifAI fork. Use when asked to document fork work (release incidents, CI, canary, RAG, delivered versions), to publish drafted pages, or to reorganise fork/*.md.
 ---
 
@@ -25,7 +25,7 @@ roadmap and roadmap-archive, rag-git-sources, reranker-eval, post-freeze-checks,
   `git grep -nE "<page>\.md"` (workflows, `fork/ci/*.py`, `fork/hooks/guard-fork-only`, `fork/unifai-operator/Makefile`,
   `fork/calendar.yaml`, `rag/entrypoint.sh`, `MEMORY.md`, `.claude/skills`). Do the pure move (`git mv`) in its own commit,
   the content split in another, so git keeps the renames. Run `python -m pytest -q fork/ci` after.
-- Editing `fork/docs/roadmap.md` content: tell unifai-main first (see the fork-roadmap-entry skill).
+- Editing `fork/docs/roadmap.md` content: tell unifai-main first (see the unifai-fork-roadmap-entry skill).
 
 ## When to publish
 - Only when unifai-main gives the signal, and after a green CI on `devel`.

@@ -1,5 +1,5 @@
 ---
-name: fork-roadmap-entry
+name: unifai-fork-roadmap-entry
 description: Add or update an R-xxx row in fork/docs/roadmap.md (or its archive). Use when recording a new fork backlog item, a delivery ("delivered 0.1.x"), a proof, an "Open:" follow-up, or when asked to "update the roadmap", "add an R-number", "archive a delivered item".
 ---
 

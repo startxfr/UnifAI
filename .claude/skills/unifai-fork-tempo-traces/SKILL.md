@@ -1,9 +1,9 @@
 ---
-name: fork-tempo-traces
+name: unifai-fork-tempo-traces
 description: Read-only analysis of multi-agent traces in Tempo (namespace zuno-monitoring). Use when asked to count or inspect delegations, re-delegations per work item, delegate_task spans, MAS_MAX_DELEGATIONS_PER_ITEM refusals, A2A send_message per session, or any "look at the traces / Tempo / TraceQL" request on a zuno cluster.
 ---
 
-# fork-tempo-traces
+# unifai-fork-tempo-traces
 
 Read-only. Never write to Tempo or the cluster beyond the port-forward. Count first, conclude after: state the numbers
 (spans, work items, sessions, time window) before any diagnosis.
