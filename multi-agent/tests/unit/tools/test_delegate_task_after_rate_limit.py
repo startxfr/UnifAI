@@ -262,3 +262,38 @@ def test_end_to_end_the_span_has_the_attribute_after_a_429_and_false_otherwise()
     assert not any(k.startswith("mas.delegation") for k in spans["execute_tool search"].attributes)
     unknown = [s for s in exporter.get_finished_spans() if s.attributes.get("mas.delegation.work_item_id") == "unknown"]
     assert len(unknown) == 1 and "mas.delegation.after_rate_limit" not in unknown[0].attributes
+
+
+def _count_thread_hops(monkeypatch):
+    import mas.elements.nodes.common.capabilities.agent_capable as agent_capable
+    hops, real = [], agent_capable.asyncio.to_thread
+
+    async def counting(fn, *a, **kw):
+        hops.append(fn)
+        return await real(fn, *a, **kw)
+
+    monkeypatch.setattr(agent_capable.asyncio, "to_thread", counting)
+    return hops
+
+
+def test_a_tool_keeping_the_default_span_attributes_costs_no_thread_hop(monkeypatch):
+    from mas.elements.tools.common.base_tool import BaseTool
+
+    class _Plain(BaseTool):
+        name, description = "search", "a tool that adds nothing to its span"
+
+        def run(self, *a, **kw):
+            return "ok"
+
+    hops, tracing = _count_thread_hops(monkeypatch), _Tracing()
+    _call(_pre_hook(tracing), _Plain(), {"q": "x"})
+    assert tracing.opened and tracing.handle.updates == []
+    assert hops == []  # BaseTool.span_attributes returns {}: not worth a worker thread on every call
+
+
+def test_a_tool_overriding_span_attributes_is_still_read_off_the_event_loop(monkeypatch):
+    hops, tracing = _count_thread_hops(monkeypatch), _Tracing()
+    tool, _ = _tool([_exchange(0, _answer(error_type="rate_limited"))])
+    _call(_pre_hook(tracing), tool, dict(ARGS))
+    assert len(hops) == 1  # it may read the work plan
+    assert tracing.handle.updates == [{"metadata": {KEY: True}}]

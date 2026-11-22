@@ -207,6 +207,8 @@ class AgentCapableMixin(Generic[T]):
                 _tool_trace_stack[call_id] = (cm, handle)
                 # What the tool knows before running (R-569), off the event loop: it may read the work plan.
                 span_attributes = getattr(tool, "span_attributes", None)  # BaseTool; other tool objects have none
+                if getattr(span_attributes, "__func__", None) is BaseTool.span_attributes:
+                    span_attributes = None  # the default returns {}: no worker thread for it on every call
                 try:
                     attributes = await asyncio.to_thread(span_attributes, args or {}) if span_attributes else None
                     if attributes:
