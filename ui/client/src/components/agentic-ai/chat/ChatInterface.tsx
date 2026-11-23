@@ -26,6 +26,7 @@ import { StreamLogDisplay } from "./StreamLogDisplay";
 import { ApprovalBadge } from "./ApprovalBadge";
 import { RateLimitNotice } from "./RateLimitNotice";
 import { submitApproval, submitApprovalRule } from "@/api/sessions";
+import { applyAutoRule, decideApproval } from "./helpers/approvalActions";
 import { useToast } from "@/hooks/use-toast";
 import { UmamiTrack } from '@/components/ui/umamitrack';
 import { UmamiEvents } from '@/config/umamiEvents';
@@ -878,6 +879,12 @@ export default function ChatInterface({
 
   // ── HITL approval ──────────────────────────────────────────────────────────
 
+  const approvalDeps = useMemo(
+    () => ({ submitApproval, submitApprovalRule, toast }),
+    [toast],
+  );
+
+  // Rejects after a failure (one toast first): ApprovalCard keeps the reason being typed for a retry (R-568).
   const handleApprovalDecision = useCallback(
     async (
       requestId: string,
@@ -885,8 +892,6 @@ export default function ChatInterface({
       feedback?: string,
       modifiedArgs?: Record<string, any>,
     ) => {
-      if (!runId) return;
-
       const statusMap: Record<ApprovalDecision, ApprovalStatus> = {
         approve: 'approved',
         reject: 'rejected',
@@ -894,15 +899,7 @@ export default function ChatInterface({
         redirect: 'redirected',
       };
 
-      try {
-        await submitApproval({
-          sessionId: runId,
-          requestId,
-          decision,
-          feedback,
-          modifiedArgs,
-        });
-
+      await decideApproval(approvalDeps, { runId, requestId, decision, feedback, modifiedArgs }, () => {
         // Optimistically update the approval status in nodeListRef
         for (const entry of nodeListRef.current.values()) {
           const approval = entry.approvals?.find((a) => a.requestId === requestId);
@@ -936,54 +933,20 @@ export default function ChatInterface({
           streamLogDataRef.current = { ...streamLogDataRef.current, [currentMessageId]: flushed };
           setStreamLogData(prev => ({ ...prev, [currentMessageId]: flushed }));
         }
-      } catch (err) {
-        console.error('Error submitting approval:', err);
-        toast({
-          title: 'Approval failed',
-          description: 'Could not submit your decision. Please try again.',
-          variant: 'destructive',
-        });
-      }
+      });
     },
-    [runId, nodeListRef, toast, currentStreamingMessageId],
+    [runId, nodeListRef, approvalDeps, currentStreamingMessageId],
   );
 
+  // Always resolves (ApprovalCard's auto-rule click has no catch), with at most one toast.
   const handleAutoRule = useCallback(
-    async (
+    (
       requestId: string,
       nodeUid: string | null,
       toolName: string | null,
       action: AutoRuleAction,
-    ) => {
-      if (!runId) return;
-
-      const decision: ApprovalDecision = action === 'auto_approve' ? 'approve' : 'reject';
-      const feedback = action === 'auto_approve' ? undefined : 'auto-reject rule applied';
-
-      try {
-        await submitApprovalRule({
-          sessionId: runId,
-          nodeUid,
-          toolName,
-          action,
-        });
-
-        await handleApprovalDecision(requestId, decision, feedback);
-
-        toast({
-          title: action === 'auto_approve' ? 'Auto-approve rule saved' : 'Auto-reject rule saved',
-          description: 'Future matching requests will be resolved automatically.',
-        });
-      } catch (err) {
-        console.error('Failed to save auto-rule:', err);
-        toast({
-          title: 'Rule save failed',
-          description: 'Could not save the rule. The request was not resolved.',
-          variant: 'destructive',
-        });
-      }
-    },
-    [runId, handleApprovalDecision, toast],
+    ) => applyAutoRule(approvalDeps, { runId, requestId, nodeUid, toolName, action }, handleApprovalDecision),
+    [runId, approvalDeps, handleApprovalDecision],
   );
 
   const pendingApprovalCount = useMemo(() => {
